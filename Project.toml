@@ -1,0 +1,10 @@
+name = "PaddedMatrices"
+uuid = "1f4db776-fdbc-11e8-06f3-e1707b8b4170"
+authors = ["Chris Elrod <elrodc@gmail.com>"]
+version = "0.1.0"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
