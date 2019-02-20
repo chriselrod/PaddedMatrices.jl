@@ -1,3 +1,5 @@
 
-## Fall back definition for scalars.
+"""
+Fall back definition for scalars.
+"""
 @inline invchol(x) = SIMDPirates.rsqrt(x)
