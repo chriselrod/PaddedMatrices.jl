@@ -3,6 +3,16 @@ uuid = "1f4db776-fdbc-11e8-06f3-e1707b8b4170"
 authors = ["Chris Elrod <elrodc@gmail.com>"]
 version = "0.1.0"
 
+[deps]
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+LoopVectorization = "bdcacae8-1622-11e9-2a5c-532679323890"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+SIMDPirates = "21efa798-c60a-11e8-04d3-e1a92915a26a"
+SLEEF = "3e6341c9-01f6-5312-b33f-f8894a2e817a"
+UnsafeArrays = "c4a57d5a-5b31-53a6-b365-19f8c011fbd6"
+VectorizationBase = "3d5dd08c-fd9d-11e8-17fa-ed2836048c2f"
+VectorizedRNG = "33b4df10-0173-11e9-2a0c-851a7edac40e"
+
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 

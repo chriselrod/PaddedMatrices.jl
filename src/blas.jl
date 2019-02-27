@@ -1,7 +1,7 @@
 
 
-@generated function Base.:*(A::AbstractConstantFixedSizePaddedMatrix{M,N,T,R1,L1}, B::AbstractConstantFixedSizePaddedMatrix{N,P,T,R2,L2}) where {M,N,P,T,R1,R2,L1,L2}
-# @generated function Base.:*(A::AbstractConstantFixedSizePaddedMatrix{M,N,T,R1,L1}, B::AbstractConstantFixedSizePaddedMatrix{N,P,T,R2,L2}) where {M,N,P,T,R1,R2,L2,L1}
+# @generated function Base.:*(A::AbstractConstantFixedSizePaddedMatrix{M,N,T,R1,L1}, B::AbstractConstantFixedSizePaddedMatrix{N,P,T,R2,L2}) where {M,N,P,T,R1,R2,L1,L2}
+@generated function Base.:*(A::AbstractConstantFixedSizePaddedMatrix{M,N,T,R1,L1}, B::AbstractConstantFixedSizePaddedMatrix{N,P,T,R2,L2}) where {M,N,P,T,R1,R2,L2,L1}
     static_mul_quote(M,N,P,T,R1,R2)
 end
 # @generated function Base.:*(A::LinearAlgebra.Adjoint{T,StaticSIMDVector{N,T,R1,L1}}, B::StaticSIMDMatrix{N,P,T,R2}) where {N,P,T,R1,R2,L1}
@@ -12,11 +12,11 @@ end
 end
 
 
-@generated function Base.:*(A::AbstractSizedSIMDMatrix{M,N,T,ADR}, X::AbstractSizedSIMDMatrix{N,P,T,XR}) where {M,N,P,T,ADR,XR}
+@generated function Base.:*(A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR}, X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}) where {M,N,P,T,ADR,XR}
     quote
-        D = SizedSIMDArray{$(Tuple{M,P}),$T,2,$ADR,$(ADR*P)}(undef)
+        D = AbstractMutableFixedSizePaddedMatrix{$(Tuple{M,P}),$T,2,$ADR,$(ADR*P)}(undef)
         $(mulquote(ADR,N,P,ADR,XR,T))
-        StaticSIMDMatrix(D)
+        ConstantFixedSizePaddedMatrix(D)
     end
 end
 
@@ -42,17 +42,14 @@ end
 @generated function LinearAlgebra.mul!(D::AbstractMutableFixedSizePaddedMatrix{M,P,T,ADR},
                             A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR},
                             X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}) where {M,N,P,T,ADR,XR}
-
-    mulquote(ADR,N,P,ADR,XR,T)
+    quote
+        $(Expr(:meta,:inline))
+        $(mulquote(ADR,N,P,ADR,XR,T))
+    end
 end
-# @generated function LinearAlgebra.mul!(D::SIMDArrays.AbstractSizedSIMDMatrix{M,P,T,ADR},
-#                             A::SIMDArrays.AbstractSizedSIMDMatrix{M,N,T,ADR},
-#                             X::SIMDArrays.AbstractSizedSIMDMatrix{N,P,T,XR}) where {M,N,P,T,ADR,XR}
-#
-#     SIMDArrays.mulquote(ADR,N,P,ADR,XR,T)
-# end
+
 @generated function LinearAlgebra.mul!(D::AbstractMutableFixedSizePaddedVector{M,T,ADR},
-                            A::AAbstractMutableFixedSizePaddedMatrix{M,N,T,ADR},
+                            A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR},
                             X::AbstractMutableFixedSizePaddedVector{N,T,XR}) where {M,N,P,T,ADR,XR}
 
     mulquote(ADR,N,1,ADR,XR,T)
@@ -73,6 +70,91 @@ end
 #     # so we pass along M as the correct number of rows.
 #     mulquote(M,N,P,ADR,XR,T,prefetchAX)
 # end
+
+@generated function Base.:*(A::Diagonal{T,<:AbstractFixedSizePaddedVector{N,T,P}}, B::AbstractFixedSizePaddedVector{N,T,P}) where {N,T,P}
+    quote
+        $(Expr(:meta,:inline)) # do we really want to force inline this?
+        mv = MutableFixedSizePaddedVector{$N,$T,$P,$P}(undef)
+        Adiag = A.diag
+        @vectorize $T for i ∈ 1:$P
+            mv[i] = Adiag[i] * B[i]
+        end
+        ConstantFixedSizePaddedArray(mv)
+    end
+end
+
+@inline function Base.:+(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
+    @fastmath @inbounds @simd ivdep for i ∈ 1:L
+        mv[i] = A[i] + B[i]
+    end
+    ConstantFixedSizePaddedArray(mv)
+end
+@inline function Base.:+(a::T, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
+    @fastmath @inbounds @simd ivdep for i ∈ 1:L
+        mv[i] = a + B[i]
+    end
+    ConstantFixedSizePaddedArray(mv)
+end
+@inline function Base.:+(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, b::T) where {S,T<:Number,N,P,L}
+    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
+    @fastmath @inbounds @simd ivdep for i ∈ 1:L
+        mv[i] = A[i] + b
+    end
+    ConstantFixedSizePaddedArray(mv)
+end
+@inline function Base.:-(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
+    @fastmath @inbounds @simd ivdep for i ∈ 1:L
+        mv[i] = A[i] - B[i]
+    end
+    ConstantFixedSizePaddedArray(mv)
+end
+@inline function Base.:-(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, b::T) where {S,T<:Number,N,L,P}
+    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
+    @fastmath @inbounds @simd ivdep for i ∈ 1:L
+        mv[i] = A[i] - b
+    end
+    ConstantFixedSizePaddedArray(mv)
+end
+@inline function Base.:-(a::T, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
+    @fastmath @inbounds @simd ivdep for i ∈ 1:L
+        mv[i] = a - B[i]
+    end
+    ConstantFixedSizePaddedArray(mv)
+end
+@inline function Base.:*(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, b::T) where {S,T<:Number,N,P,L}
+    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
+    @fastmath @inbounds @simd ivdep for i ∈ 1:L
+        mv[i] = A[i] * b
+    end
+    ConstantFixedSizePaddedArray(mv)
+end
+@inline function Base.:*(a::T, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
+    @fastmath @inbounds @simd ivdep for i ∈ 1:L
+        mv[i] = a * B[i]
+    end
+    ConstantFixedSizePaddedArray(mv)
+end
+@inline function SIMDPirates.vfma(a::T, x::AbstractFixedSizePaddedArray{S,T,N,P,L}, y::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
+    @fastmath @inbounds @simd ivdep for i ∈ 1:L
+        mv[i] = a * x[i] + y[i]
+    end
+    ConstantFixedSizePaddedArray(mv)
+end
+@inline function SIMDPirates.vfnmadd(a::T, x::AbstractFixedSizePaddedArray{S,T,N,P,L}, y::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
+    @fastmath @inbounds @simd ivdep for i ∈ 1:L
+        mv[i] = y[i] - a * x[i]
+    end
+    ConstantFixedSizePaddedArray(mv)
+end
+
+
 
 """
 Not within BLAS module, because we aren't supporting the full gemm API at the moment.
@@ -122,9 +204,9 @@ function mulquote(M,N,P,ADR,XR,T,init=:initkernel!,prefetchAX=nothing)
     end
 end
 
-function initkernel_quote(D::SizedSIMDMatrix{M,Pₖ,T,stride_AD},
-                            A::SizedSIMDMatrix{M,N,T,stride_AD},
-                            X::SizedSIMDMatrix{N,Pₖ,T,stride_X}) where {M,Pₖ,stride_AD,stride_X,N,T}
+function initkernel_quote(D::AbstractMutableFixedSizePaddedMatrix{M,Pₖ,T,stride_AD},
+                            A::AbstractMutableFixedSizePaddedMatrix{M,N,T,stride_AD},
+                            X::AbstractMutableFixedSizePaddedMatrix{N,Pₖ,T,stride_X}) where {M,Pₖ,stride_AD,stride_X,N,T}
     kernel_quote(M,Pₖ,stride_AD,stride_X,N,T,true,true)
 end
 

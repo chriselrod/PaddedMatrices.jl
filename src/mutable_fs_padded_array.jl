@@ -1,3 +1,23 @@
+function calc_NPL(S, T)
+    SV = S.parameters
+    N = length(SV)
+
+    nrow = SV[1]
+    W, Wshift = VectorizationBase.pick_vector_width_shift(T)
+    TwoN = 2nrow
+
+    while W >= TwoN
+        W >>= 1
+    end
+    rem = (nrow & (W-1))
+    padded_rows = rem == 0 ? nrow : nrow + W - rem
+    L = padded_rows
+    for n ∈ 2:N
+        L *= SV[n]
+    end
+    N, padded_rows, L
+end
+
 function init_mutable_fs_padded_array_quote(S, T)
     SV = S.parameters
     N = length(SV)
@@ -12,15 +32,21 @@ function init_mutable_fs_padded_array_quote(S, T)
         for n ∈ 2:N
             L *= SV[n]
         end
-        return quote
-            out = MStaticPaddedArray{$S,$T,$N,$padded_rows,$L}(undef)
-            @nloops $(N-1) i j -> 1:S[j+1] begin
-                @inbounds for i_0 ∈ $(padded_rows+1-W):$padded_rows
-                    ( @nref $N out n -> i_{n-1} ) = zero($T)
-                end
-            end
-            out
+        q = quote
+            $(Expr(:meta,:inline))
+            out = MutableFixedSizePaddedArray{$S,$T,$N,$padded_rows,$L}(undef)
         end
+        if rem > 0
+            push!(q.args, quote
+                @nloops $(N-1) i j -> 1:$SV[j+1] begin
+                    @inbounds for i_0 ∈ $(padded_rows+1-W):$padded_rows
+                        ( @nref $N out n -> i_{n-1} ) = zero($T)
+                    end
+                end
+                out
+            end)
+        end
+        return q
     end
     while W >= TwoN
         W >>= 1
@@ -32,7 +58,8 @@ function init_mutable_fs_padded_array_quote(S, T)
         L *= SV[n]
     end
     quote
-        out = MStaticPaddedArray{$S,$T,$N,$padded_rows,$L}(undef)
+        $(Expr(:meta,:inline))
+        out = MutableFixedSizePaddedArray{$S,$T,$N,$padded_rows,$L}(undef)
         for l ∈ 1:$L
             out[l] = zero($T)
         end
@@ -51,22 +78,33 @@ L, number of elements (including buffer zeros).
 """
 mutable struct MutableFixedSizePaddedArray{S,T,N,P,L} <: AbstractMutableFixedSizePaddedArray{S,T,N,P,L}
     data::NTuple{L,T}
-    function MutableFixedSizePaddedArray{S,T,N,R,L}(::UndefInitializer) where {S,T,N,R,L}
+    @inline function MutableFixedSizePaddedArray{S,T,N,R,L}(::UndefInitializer) where {S,T,N,R,L}
         new()
     end
-    @generated function MutableFixedSizePaddedArray{S,T}(::UndefInitializer) where {S,T}
-        init_mpadded_array_quote(S, T)
-    end
-    @generated function MutableFixedSizePaddedArray{S,T,N}(::UndefInitializer) where {S,T,N}
-        init_mpadded_array_quote(S, T)
+    @inline function MutableFixedSizePaddedArray{S,T,N,R,L}(data::NTuple{L,T}) where {S,T,N,R,L}
+        new(data)
     end
 end
-const MutableFixedSizePaddedVector{S,T,P,L} = MutableFixedSizePaddedArray{Tuple{S},T,1,P,L}
+@generated function MutableFixedSizePaddedArray{S,T}(::UndefInitializer) where {S,T}
+    init_mutable_fs_padded_array_quote(S, T)
+end
+@generated function MutableFixedSizePaddedArray{S,T,N}(::UndefInitializer) where {S,T,N}
+    init_mutable_fs_padded_array_quote(S, T)
+end
+const MutableFixedSizePaddedVector{M,T,P,L} = MutableFixedSizePaddedArray{Tuple{M},T,1,P,L}
 const MutableFixedSizePaddedMatrix{M,N,T,P,L} = MutableFixedSizePaddedArray{Tuple{M,N},T,2,P,L}
+
+@inline MutableFixedSizePaddedVector(A::AbstractFixedSizePaddedArray{S,T,1,P,L}) where {S,T,P,L} = MutableFixedSizePaddedArray{S,T,1,P,L}(A.data)
+@inline MutableFixedSizePaddedMatrix(A::AbstractFixedSizePaddedArray{S,T,2,P,L}) where {S,T,P,L} = MutableFixedSizePaddedArray{S,T,2,P,L}(A.data)
+@inline MutableFixedSizePaddedArray(A::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L}= MutableFixedSizePaddedArray{S,T,N,P,L}(A.data)
 
 @generated function MutableFixedSizePaddedArray(::UndefInitializer, ::Val{S}, ::Type{T1}=Float64) where {S,T1}
     SD = Tuple{S...}
     init_mutable_fs_padded_array_quote(SD, T)
+end
+
+function Base.fill()
+
 end
 
 """
@@ -94,9 +132,9 @@ const PtrMatrix{M,N,T,R,L} = PtrArray{Tuple{M,N},T,2,R,L}
 
 
 @inline Base.pointer(ptr::PtrMatrix) = ptr.ptr
-@inline Base.pointer(A::AbstractMutableFixedSizePaddedArray{S,T}) where {S,T} = pointer_from_objref(Base.unsafe_convert(Ptr{T}, A))
+@inline Base.pointer(A::AbstractMutableFixedSizePaddedArray{S,T}) where {S,T} = Base.unsafe_convert(Ptr{T}, pointer_from_objref(A))
 
-@inline VectorizationBase.vectorizable(A::AbstractMutableFixedSizePaddedArray) = pointer(A)
+@inline VectorizationBase.vectorizable(A::AbstractMutableFixedSizePaddedArray) = VectorizationBase.vpointer(pointer(A))
 
 
 @generated function Base.setindex!(A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}, v, i::CartesianIndex{N}) where {S,T,N,R,L}
@@ -143,18 +181,7 @@ end
     unsafe_load(pointer(A), i)
 end
 
-"""
-Returns zero based index. Don't forget to add one when using with arrays instead of pointers.
-"""
-function sub2ind_expr(S, R)
-    N = length(S)
-    N == 1 && return :(i[1])
-    ex = :(i[$N] - 1)
-    for i ∈ (N - 1):-1:2
-        ex = :(i[$i] - 1 + $(S[i]) * $ex)
-    end
-    :(i[1] + $R * $ex)
-end
+
 
 @generated function Base.getindex(A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}, i::Vararg{Int,N}) where {S,T,N,R,L}
     # dims = ntuple(j -> S.parameters[j], Val(N))
@@ -185,7 +212,7 @@ end
     end
 end
 
-@inline Base.unsafe_convert(::Type{Ptr{T}}, A::SizedSIMDArray) where {T} = Base.unsafe_convert(Ptr{T}, pointer_from_objref(A))
+@inline Base.unsafe_convert(::Type{Ptr{T}}, A::AbstractMutableFixedSizePaddedArray) where {T} = Base.unsafe_convert(Ptr{T}, pointer_from_objref(A))
 @generated function strides(A::AbstractFixedSizePaddedArray{S,T,N,R,L}) where {S,T,N,R,L}
     SV = S.parameters
     N = length(SV)

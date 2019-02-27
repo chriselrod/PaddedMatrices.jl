@@ -7,8 +7,21 @@ while the kernel is unrolled across P. It simply loops over N.
 struct Kernel{Mₖ,Pₖ,stride_AD,stride_X,N} end
 Base.@pure Kernel(Mₖ,N,Pₖ,stride_AD,stride_X) = Kernel{Mₖ,Pₖ,stride_AD,stride_X,N}()
 
+@inline tuple_join(x) = x
+@inline tuple_join(x, y) = (x..., y...)
+@inline tuple_join(x, y, z...) = (x..., tuple_join(y, z...)...)
+@generated function to_tuple(x::NTuple{N,Core.VecElement{T}}) where {N,T}
+    quote
+        $(Expr(:meta,:inline))
+        @inbounds $(Expr(:tuple, [:(x[$n].value) for n ∈ 1:N]...))
+    end
+end
+@inline to_tuple(x::NTuple{N}) where {N} = x
+@inline extract_value(x::Core.VecElement{T}) where {T} = x.value
+@inline extract_value(x) = x
+@inline to_tuple2(x::NTuple{N,Core.VecElement{T}}) where {N,T} = extract_value.(x)
 
-function mul_block(W, R1, R2, m_rep, N, P, poffset = 0)
+function mul_block(W, R1, R2, m_rep, N, P, poffset::Int = 0)
     Prange = (1 + poffset):(P + poffset)
     quote
         $([:(
@@ -23,17 +36,49 @@ function mul_block(W, R1, R2, m_rep, N, P, poffset = 0)
         end
     end
 end
+function mul_block(W, R1, R2, m_rep, N, P, poffset::Symbol)
+    Prange = 1:P
+    quote
+        $([:(
+            $(Symbol(:Acol_,mr)) = @inbounds $(Expr(:tuple, [:(Core.VecElement(A[ $(m + (mr-1)*W) ])) for m ∈ 1:W]...))
+        ) for mr ∈ 1:m_rep]...)
+        $([Expr(:block, [ :($(Symbol(:C_, mr, :_, p)) = SIMDPirates.evmul($(Symbol(:Acol_,mr)), @inbounds B[ 1 + ($(p-1)+$poffset)*$R2 ])) for mr ∈ 1:m_rep]...) for p ∈ Prange]...)
+        @inbounds for n ∈ 1:$(N-1)
+            $([:(
+                $(Symbol(:Acol_,mr)) = @inbounds $(Expr(:tuple, [:(Core.VecElement(A[ $(m + (mr-1)*W) + n*$R1 ])) for m ∈ 1:W]...))
+            ) for mr ∈ 1:m_rep]...)
+            $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd($(Symbol(:Acol_,mr)), B[n + 1 + ($(p-1)+$poffset)*$R2], $(Symbol(:C_, mr, :_, p)) )) for mr ∈ 1:m_rep]...) for p ∈ Prange]...)
+        end
+    end
+end
+function store_block(W, R1, m_rep, P, poffset::Int = 0)
+    Prange = (1 + poffset):(P + poffset)
+    q = quote end
+    for p ∈ Prange, mr ∈ 1:m_rep
+        push!(q.args, :(vstore!(vout + $((p-1)*R1 + (mr-1)*W), $(Symbol(:C_, mr, :_, p)))))
+    end
+    q
+end
+function store_block(W, R1, m_rep, P, poffset::Symbol)
+    Prange = 1:P
+    q = quote end
+    for p ∈ Prange, mr ∈ 1:m_rep
+        push!(q.args, :(vstore!(vout + ($poffset + $(p-1))*$R1 + $((mr-1)*W), $(Symbol(:C_, mr, :_, p)))))
+    end
+    q
+end
 
 function static_mul_quote(M,N,P,T,R1,R2)
-    i = 0
 
     L3 = R1 * P
     W = VectorizationBase.pick_vector_width(R1, T)
     m_rep = R1 ÷ W
-    outtup = Vector{Expr}(undef, R1*P)
+    outtup = Expr(:tuple)
+    # outtup = Expr(:call, :tuple_join)
     for p ∈ 1:P, mr ∈ 1:m_rep, m ∈ 1:W
-        i += 1
-        outtup[i] = :($(Symbol(:C_, mr, :_, p))[$m].value )
+        # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m] ))
+        push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m].value ))
+        # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))))
     end
 
     num_reps = cld(L3 ÷ W + 3, VectorizationBase.REGISTER_COUNT)
@@ -42,23 +87,42 @@ function static_mul_quote(M,N,P,T,R1,R2)
             $(Expr(:meta, :inline))
             $(mul_block(W, R1, R2, m_rep, N, P))
             ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(
-                $(Expr(:tuple, outtup...))
+                $outtup
             )
         end
     end
+    # piter = cld(P, num_reps)
+    # q = quote
+    #     $(Expr(:meta, :inline))
+    #     $(mul_block(W, R1, R2, m_rep, N, piter))
+    # end
+    # plow = piter
+    # for pmax ∈ 2:num_reps-1
+    #     push!(q.args, mul_block(W, R1, R2, m_rep, N, piter, plow))
+    #     plow += piter
+    # end
+    # prem = P - plow
+    # prem > 0 && push!(q.args, mul_block(W, R1, R2, m_rep, N, prem, plow))
+    # push!(q.args,  :(@inbounds ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}( $outtup )) )
+    # # push!(q.args,  outtup )
+    # q
     piter = cld(P, num_reps)
     q = quote
         $(Expr(:meta, :inline))
-        $(mul_block(W, R1, R2, m_rep, N, piter))
+        out = MutableFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(undef)
+        vout = VectorizationBase.vectorizable(out)
+        plow = 0
+        for pmax ∈ 1:$(num_reps-1)
+            $(mul_block(W, R1, R2, m_rep, N, piter, :plow))
+            $(store_block(W, R1, m_rep, piter, :plow))
+            plow += $piter
+        end
     end
-    plow = piter
-    for pmax ∈ 2:num_reps-1
-        push!(q.args, mul_block(W, R1, R2, m_rep, N, piter, plow))
-        plow += piter
-    end
+    plow = piter * (num_reps-1)
     prem = P - plow
     prem > 0 && push!(q.args, mul_block(W, R1, R2, m_rep, N, prem, plow))
-    push!(q.args,  :(@inbounds ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}( $(Expr(:tuple, outtup...)) )))
+    prem > 0 && push!(q.args, store_block(W, R1, m_rep, prem, plow))
+    push!(q.args,  :(ConstantFixedSizePaddedMatrix( out )) )
     q
 end
 
@@ -101,7 +165,7 @@ function create_mask(W, r)
         mask = :(UInt32($(UInt32(2)^r-UInt32(1))))
     elseif W <= 64
         mask = :(UInt64($(UInt64(2)^r-UInt64(1))))
-    else W <= 128
+    else #W <= 128
         mask = :(UInt128($(UInt128(2)^r-UInt128(1))))
     end
     mask
@@ -122,9 +186,9 @@ prefetch_A(::Any, ::Any)    = (nothing, nothing, nothing)
 prefetch_X(::Any, ::Any, ::Any)    = (nothing, nothing, nothing, nothing)
 function prefetch_A(::Type{PF}, N) where {PF <: Union{PrefetchA, PrefetchAX}}
     (
-        :(@nexprs $Qₚ q -> prefetch(pA + pf.A + $CACHELINE_SIZE*(q-1), Val(3), Val(0))),
-        :(@nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))),
-        :(@nexprs $Qₚ q -> prefetch(pA + pf.A + $((N-1)*AD_stride) + $CACHELINE_SIZE*(q-1), Val(3), Val(0)))
+        :(@nexprs $Qₚ q -> prefetch(pA + pf.A + $(VectorizationBase.CACHELINE_SIZE)*(q-1), Val(3), Val(0))),
+        :(@nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $(VectorizationBase.CACHELINE_SIZE)*(q-1), Val(3), Val(0))),
+        :(@nexprs $Qₚ q -> prefetch(pA + pf.A + $((N-1)*AD_stride) + $(VectorizationBase.CACHELINE_SIZE)*(q-1), Val(3), Val(0)))
     )
 end
 function prefetch_X(::Type{PrefetchX}, N, Pₖ)
@@ -164,7 +228,7 @@ function kernel_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, pf =
     T_size = sizeof(T)
     AD_stride = stride_AD * T_size
     X_stride = stride_X * T_size
-    W = REGISTER_SIZE ÷ T_size
+    W = VectorizationBase.REGISTER_SIZE ÷ T_size
     while W >= 2Mₖ
         W >>= 1
     end
@@ -172,12 +236,12 @@ function kernel_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, pf =
     Q, r = divrem(Mₖ, W) #Assuming Mₖ is a multiple of W
     V = Vec{W,T}
     if r == 0
-        mask = mask_expr(W, 0)
+        mask = create_mask(W, 0)
         A_load_expr = :(@nexprs $Q q -> vA_q = vload($V, pA + n*$AD_stride + $WT*(q-1)))
-        D_store1 = :(@nexprs $Q q -> vstore(Dx_p_q, pD + $WT*(q-1) + $AD_stride*(p-1)))
-        D_store2 = :(@nexprs $Q q -> vstore($(Symbol(:Dx_,Pₖ,:_q)), pD + $WT*(q-1) + $(AD_stride*(Pₖ-1))))
+        D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $AD_stride*(p-1), Dx_p_q))
+        D_store2 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $(AD_stride*(Pₖ-1)),$(Symbol(:Dx_,Pₖ,:_q))))
     else
-        mask = mask_expr(W, r)
+        mask = create_mask(W, r)
         if Q == 0
             Q = 1
             A_load_expr = :($(Symbol(:vA_, Q)) = vload($V, pA + $((N-1)*AD_stride) + $(WT*(Q-1)), $mask))
@@ -188,17 +252,14 @@ function kernel_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, pf =
             Q += 1
             push!(A_load_expr.args, :($(Symbol(:vA_, Q)) = vload($V, pA + $((N-1)*AD_stride) + $(WT*(Q-1)), $mask)))
         end
-        # D_store1 = quote
-        #             @nexprs $(Q-1) q -> vstore(Dx_p_q, pD + $WT*(q-1) + $AD_stride*(p-1))
-        #             vstore($(Symbol(:Dx_p_, Q)), pD + $(WT*(Q-1)) + $AD_stride*(p-1), $mask)
-        #         end
-        D_store1 = :(@nexprs $Q q -> vstore(Dx_p_q, pD + $WT*(q-1) + $AD_stride*(p-1)))
+
+        D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $AD_stride*(p-1), Dx_p_q))
         D_store2 = quote
-            @nexprs $(Q-1) q -> vstore($(Symbol(:Dx_,Pₖ,:_q)), pD + $WT*(q-1) + $(AD_stride*(Pₖ-1)))
-            vstore($(Symbol(:Dx_, Pₖ, :_, Q)), pD + $(WT*(Q-1) + AD_stride*(Pₖ-1)), $mask)
+            @nexprs $(Q-1) q -> vstore!(pD + $WT*(q-1) + $(AD_stride*(Pₖ-1)), $(Symbol(:Dx_,Pₖ,:_q)))
+            vstore!(pD + $(WT*(Q-1) + AD_stride*(Pₖ-1)), $(Symbol(:Dx_, Pₖ, :_, Q)), $mask)
         end
     end
-    C = min(CACHELINE_SIZE ÷ T_size,N)
+    C = min(VectorizationBase.CACHELINE_SIZE ÷ T_size,N)
     Qₚ = cld(Mₖ, C)
     # Check whether we are prefetching A and/or X.
     pfA_1, pfA_2, pfA_3 = prefetch_A(pf, N)
@@ -334,6 +395,59 @@ end
 end
 
 
+# """
+# num_cols = elements_per_register * ( REGISTER_COUNT - 2 ) / num_rows - 1
+# # square, assume approx equal
+# num_rows = elements_per_register * ( REGISTER_COUNT - 2 ) / num_rows - 1
+# 0 = num_rows^2 + num_rows - elements_per_register * ( REGISTER_COUNT - 2 )
+#
+#
+# Returns number of elements per register,
+# and the number of rows and columns of the kernel.
+# Ie, 8, 16, 14 means that 8 elements fit per register,
+# and the optimal kernel is
+# 16x14 = 16xN * Nx14
+# matrix multiplication.
+#
+# Rather than all the noise above, we just pick something close to square because:
+# (L1_cache_size - rows*colums) ÷ (rows + columns)
+# will be maximized with relatively square blocks, making that friendliest for the cache.
+# """
+function pick_kernel_size(::Type{T}; D_count = 1, A_count = 1, X_count = 1) where T
+    T_size = sizeof(T)
+    elements_per_register = VectorizationBase.REGISTER_SIZE ÷ T_size
+    cache_line = elements_per_register
+    # cache_line = CACHELINE_SIZE ÷ T_size
+    max_total = elements_per_register * VectorizationBase.REGISTER_COUNT
+    num_cache_lines = cld(max_total, cache_line)
+    prev_num_rows, prev_num_cols = 0, 0
+    prev_ratio = -Inf
+    for a_loads ∈ 1:num_cache_lines
+        num_rows = a_loads * elements_per_register
+        num_cols = (VectorizationBase.REGISTER_COUNT - a_loads - 1) ÷ a_loads # assumes we need only a single B
+        length_D = num_rows * num_cols
+        num_loads = num_cols + a_loads
+        next_ratio = length_D / num_loads
+        if next_ratio < prev_ratio
+            break
+        else
+            prev_ratio = next_ratio
+            prev_num_rows, prev_num_cols = num_rows, num_cols
+        end
+    end
+    elements_per_register, prev_num_rows, prev_num_cols
+end
+# function pick_kernel_size(::Type{T}; D_count = 1, A_count = 1, X_count = 1) where {T}
+#     W = VectorizationBase.pick_vector_width(T)
+#     square = sqrt( (VectorizationBase.REGISTER_COUNT - 1) / W )
+#
+#     vloads_per_row = round(Int, square, RoundUp)
+#     number_of_rows = W * vloads_per_row
+#     number_of_columns = (VectorizationBase.REGISTER_COUNT - 1 - vloads_per_row) ÷ vloads_per_row
+#
+#     W, number_of_rows, number_of_columns
+# end
+
 """
 Given matrices of size M, N, and P...
 This matrix assumes 3 cache levels. This means it is not especially portable, beyond x86_64.
@@ -356,7 +470,7 @@ Should add support for how many copies of each of the matrices we have, so that 
     D = A*(X + C)
 in one step, without as much un/reloading of memory.
 """
-function blocking_structure(M, N, P, ::Type{T} = Float64; cache_size::NTuple{3,Int} = CACHE_SIZE, D_count = 1, A_count = 1, X_count = 1) where T
+function blocking_structure(M, N, P, ::Type{T} = Float64; cache_size::NTuple{3,Int} = VectorizationBase.CACHE_SIZE, D_count = 1, A_count = 1, X_count = 1) where T
     total_elements = M*N*D_count + N*P*A_count + M*P*X_count
     L1, L2, L3 = cache_size .÷ sizeof(T)
     if L1 > total_elements

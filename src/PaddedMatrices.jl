@@ -1,6 +1,21 @@
 module PaddedMatrices
 
-using VectorizationBase, SIMDPirates, Base.Cartesian, UnsafeArrays
+using VectorizationBase, SIMDPirates,
+        Base.Cartesian, UnsafeArrays,
+        SLEEF, VectorizedRNG,
+        LoopVectorization, LinearAlgebra, Random
+
+export @CFixedSize, @MFixedSize,
+    ConstantFixedSizePaddedArray,
+    ConstantFixedSizePaddedVector,
+    ConstantFixedSizePaddedMatrix,
+    MutableFixedSizePaddedArray,
+    MutableFixedSizePaddedVector,
+    MutableFixedSizePaddedMatrix
+
+
+struct Static{N} end
+Base.@pure Static(N) = Static{N}()
 
 abstract type AbstractPaddedArray{T,N} <: AbstractArray{T,N} end
 abstract type AbstractFixedSizePaddedArray{S,T,N,P,L} <: AbstractPaddedArray{T,N} end
@@ -34,16 +49,36 @@ Base.IndexStyle(::AbstractPaddedArray) = IndexCartesian()
 @inline type_length(::Type{<:NTuple{N}}) where {N} = N
 @inline type_length(::Number) = 1
 @inline type_length(::Type{<:Number}) = 1
-@inline is_sized(::AbstractStaticPaddedVector) = true
-@inline is_sized(::Type{<:AbstractStaticPaddedVector}) = true
-@inline is_sized(::AbstractStaticPaddedMatrix) = true
-@inline is_sized(::Type{<:AbstractStaticPaddedMatrix}) = true
-@inline type_length(::AbstractStaticPaddedVector{N}) where {N} = N
-@inline type_length(::Type{<:AbstractStaticPaddedVector{N}}) where {N} = N
-@inline type_length(::AbstractStaticPaddedMatrix{M,N}) where {M,N} = M*N
-@inline type_length(::Type{<:AbstractStaticPaddedMatrix{M,N}}) where {M,N} = M*N
+@inline is_sized(::AbstractFixedSizePaddedVector) = true
+@inline is_sized(::Type{<:AbstractFixedSizePaddedVector}) = true
+@inline is_sized(::AbstractFixedSizePaddedMatrix) = true
+@inline is_sized(::Type{<:AbstractFixedSizePaddedMatrix}) = true
+@inline type_length(::AbstractFixedSizePaddedVector{N}) where {N} = N
+@inline type_length(::Type{<:AbstractFixedSizePaddedVector{N}}) where {N} = N
+@inline type_length(::AbstractFixedSizePaddedMatrix{M,N}) where {M,N} = M*N
+@inline type_length(::Type{<:AbstractFixedSizePaddedMatrix{M,N}}) where {M,N} = M*N
 @inline is_sized(::Any) = false
 
+"""
+Returns one based index.
+"""
+function sub2ind_expr(S, P)
+    N = length(S)
+    N == 1 && return :(i[1])
+    ex = :(i[$N] - 1)
+    for i ∈ (N - 1):-1:2
+        ex = :(i[$i] - 1 + $(S[i]) * $ex)
+    end
+    :(i[1] + $P * $ex)
+end
 
+include("padded_array.jl")
+include("mutable_fs_padded_array.jl")
+include("const_fs_padded_array.jl")
+include("kernels.jl")
+include("blas.jl")
+include("linear_algebra.jl")
+include("rand.jl")
+include("utilities.jl")
 
 end # module
