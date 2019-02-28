@@ -25,14 +25,23 @@ function mul_block(W, R1, R2, m_rep, N, P, poffset::Int = 0)
     Prange = (1 + poffset):(P + poffset)
     quote
         $([:(
-            $(Symbol(:Acol_,mr)) = @inbounds $(Expr(:tuple, [:(Core.VecElement(A[ $(m + (mr-1)*W) ])) for m ∈ 1:W]...))
+            $(Symbol(:Acol_,mr)) = @inbounds $(
+                Expr(:tuple, [:(Core.VecElement(A[ $(m + (mr-1)*W) ])) for m ∈ 1:W]...)
+            )
         ) for mr ∈ 1:m_rep]...)
-        $([Expr(:block, [ :($(Symbol(:C_, mr, :_, p)) = SIMDPirates.evmul($(Symbol(:Acol_,mr)), @inbounds B[ $(1 + (p-1)*R2) ])) for mr ∈ 1:m_rep]...) for p ∈ Prange]...)
+        $([Expr(:block, [ :($(Symbol(:C_, mr, :_, p)) = SIMDPirates.evmul(
+            $(Symbol(:Acol_,mr)), @inbounds B[ $(1 + (p-1)*R2) ])
+            ) for mr ∈ 1:m_rep]...) for p ∈ Prange]...)
         @inbounds for n ∈ 1:$(N-1)
             $([:(
-                $(Symbol(:Acol_,mr)) = @inbounds $(Expr(:tuple, [:(Core.VecElement(A[ $(m + (mr-1)*W) + n*$R1 ])) for m ∈ 1:W]...))
+                $(Symbol(:Acol_,mr)) = @inbounds $(Expr(:tuple,
+                    [:(Core.VecElement(A[ $(m + (mr-1)*W) + n*$R1 ])) for m ∈ 1:W]...)
+                )
             ) for mr ∈ 1:m_rep]...)
-            $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd($(Symbol(:Acol_,mr)), B[n + $(1 + (p-1)*R2)], $(Symbol(:C_, mr, :_, p)) )) for mr ∈ 1:m_rep]...) for p ∈ Prange]...)
+            $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd(
+                $(Symbol(:Acol_,mr)), B[n + $(1 + (p-1)*R2)],
+                $(Symbol(:C_, mr, :_, p)) )) for mr ∈ 1:m_rep]...) for p ∈ Prange]...
+            )
         end
     end
 end
@@ -40,17 +49,74 @@ function mul_block(W, R1, R2, m_rep, N, P, poffset::Symbol)
     Prange = 1:P
     quote
         $([:(
-            $(Symbol(:Acol_,mr)) = @inbounds $(Expr(:tuple, [:(Core.VecElement(A[ $(m + (mr-1)*W) ])) for m ∈ 1:W]...))
+            $(Symbol(:Acol_,mr)) = @inbounds $(Expr(:tuple,
+                [:(Core.VecElement(A[ $(m + (mr-1)*W) ])) for m ∈ 1:W]...)
+            )
         ) for mr ∈ 1:m_rep]...)
-        $([Expr(:block, [ :($(Symbol(:C_, mr, :_, p)) = SIMDPirates.evmul($(Symbol(:Acol_,mr)), @inbounds B[ 1 + ($(p-1)+$poffset)*$R2 ])) for mr ∈ 1:m_rep]...) for p ∈ Prange]...)
+        $([Expr(:block, [ :($(Symbol(:C_, mr, :_, p)) = SIMDPirates.evmul(
+            $(Symbol(:Acol_,mr)), @inbounds B[ 1 + ($(p-1)+$poffset)*$R2 ])
+        ) for mr ∈ 1:m_rep]...) for p ∈ Prange]...)
         @inbounds for n ∈ 1:$(N-1)
             $([:(
-                $(Symbol(:Acol_,mr)) = @inbounds $(Expr(:tuple, [:(Core.VecElement(A[ $(m + (mr-1)*W) + n*$R1 ])) for m ∈ 1:W]...))
+                $(Symbol(:Acol_,mr)) = @inbounds $(Expr(:tuple,
+                [:(Core.VecElement(A[ $(m + (mr-1)*W) + n*$R1 ])) for m ∈ 1:W]...))
             ) for mr ∈ 1:m_rep]...)
-            $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd($(Symbol(:Acol_,mr)), B[n + 1 + ($(p-1)+$poffset)*$R2], $(Symbol(:C_, mr, :_, p)) )) for mr ∈ 1:m_rep]...) for p ∈ Prange]...)
+            $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd(
+                $(Symbol(:Acol_,mr)), B[n + 1 + ($(p-1)+$poffset)*$R2],
+                $(Symbol(:C_, mr, :_, p)) )) for mr ∈ 1:m_rep]...) for p ∈ Prange]...
+            )
         end
     end
 end
+# function mul_block_right_symmetric(sub2ind, W, R1, R2, m_rep, N, P, poffset::Int = 0)
+#     Prange = (1 + poffset):(P + poffset)
+#     quote
+#         $([:(
+#             $(Symbol(:Acol_,mr)) = @inbounds $(
+#                 Expr(:tuple, [:(Core.VecElement(A[ $(m + (mr-1)*W) ])) for m ∈ 1:W]...)
+#             )
+#         ) for mr ∈ 1:m_rep]...)
+#         $(
+#             [Expr(:block,
+#             [ :($(Symbol(:C_, mr, :_, p)) = SIMDPirates.evmul(
+#                 $(Symbol(:Acol_,mr)), @inbounds B[ $(1 + (p-1)*R2) ])
+#             ) for mr ∈ 1:m_rep]...) for p ∈ Prange]...
+#         )
+#         @inbounds for n ∈ 1:$(N-1)
+#             $([:(
+#                 $(Symbol(:Acol_,mr)) = @inbounds $(Expr(:tuple,
+#                 [:(Core.VecElement(A[ $(m + (mr-1)*W) + n*$R1 ])) for m ∈ 1:W]...))
+#             ) for mr ∈ 1:m_rep]...)
+#             $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd(
+#                 $(Symbol(:Acol_,mr)), B[n + $(1 + (p-1)*R2)],
+#                 $(Symbol(:C_, mr, :_, p)) )) for mr ∈ 1:m_rep]...) for p ∈ Prange]...
+#             )
+#         end
+#     end
+# end
+# function mul_block_right_symmetric(sub2ind, W, R1, R2, m_rep, N, P, poffset::Symbol)
+#     Prange = 1:P
+#     quote
+#         $([:(
+#             $(Symbol(:Acol_,mr)) = @inbounds $(Expr(:tuple,
+#             [:(Core.VecElement(A[ $(m + (mr-1)*W) ])) for m ∈ 1:W]...)
+#         )
+#         ) for mr ∈ 1:m_rep]...)
+#         $([Expr(:block, [ :($(Symbol(:C_, mr, :_, p)) = SIMDPirates.evmul(
+#             $(Symbol(:Acol_,mr)), @inbounds B[ 1 + ($(p-1)+$poffset)*$R2 ])
+#             ) for mr ∈ 1:m_rep]...) for p ∈ Prange]...)
+#         @inbounds for n ∈ 1:$(N-1)
+#             $([:(
+#                 $(Symbol(:Acol_,mr)) = @inbounds $(Expr(:tuple,
+#                     [:(Core.VecElement(A[ $(m + (mr-1)*W) + n*$R1 ])) for m ∈ 1:W]...))
+#             ) for mr ∈ 1:m_rep]...)
+#             $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd(
+#                 $(Symbol(:Acol_,mr)), B[n + 1 + ($(p-1)+$poffset)*$R2],
+#                 $(Symbol(:C_, mr, :_, p)) )) for mr ∈ 1:m_rep]...) for p ∈ Prange]...
+#             )
+#         end
+#     end
+# end
 function store_block(W, R1, m_rep, P, poffset::Int = 0)
     Prange = (1 + poffset):(P + poffset)
     q = quote end
@@ -91,21 +157,50 @@ function static_mul_quote(M,N,P,T,R1,R2)
             )
         end
     end
-    # piter = cld(P, num_reps)
-    # q = quote
-    #     $(Expr(:meta, :inline))
-    #     $(mul_block(W, R1, R2, m_rep, N, piter))
-    # end
-    # plow = piter
-    # for pmax ∈ 2:num_reps-1
-    #     push!(q.args, mul_block(W, R1, R2, m_rep, N, piter, plow))
-    #     plow += piter
-    # end
-    # prem = P - plow
-    # prem > 0 && push!(q.args, mul_block(W, R1, R2, m_rep, N, prem, plow))
-    # push!(q.args,  :(@inbounds ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}( $outtup )) )
-    # # push!(q.args,  outtup )
-    # q
+
+    piter = cld(P, num_reps)
+    q = quote
+        $(Expr(:meta, :inline))
+        out = MutableFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(undef)
+        vout = VectorizationBase.vectorizable(out)
+        plow = 0
+        for pmax ∈ 1:$(num_reps-1)
+            $(mul_block(W, R1, R2, m_rep, N, piter, :plow))
+            $(store_block(W, R1, m_rep, piter, :plow))
+            plow += $piter
+        end
+    end
+    plow = piter * (num_reps-1)
+    prem = P - plow
+    prem > 0 && push!(q.args, mul_block(W, R1, R2, m_rep, N, prem, plow))
+    prem > 0 && push!(q.args, store_block(W, R1, m_rep, prem, plow))
+    push!(q.args,  :(ConstantFixedSizePaddedMatrix( out )) )
+    q
+end
+
+function static_by_sym_mul_quote(M,P,T,R1,R2)
+
+    L3 = R1 * P
+    W = VectorizationBase.pick_vector_width(R1, T)
+    m_rep = R1 ÷ W
+    outtup = Expr(:tuple)
+    # outtup = Expr(:call, :tuple_join)
+    for p ∈ 1:P, mr ∈ 1:m_rep, m ∈ 1:W
+        # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m] ))
+        push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m].value ))
+        # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))))
+    end
+
+    num_reps = cld(L3 ÷ W + 3, VectorizationBase.REGISTER_COUNT)
+    if num_reps == 1
+        return quote
+            $(Expr(:meta, :inline))
+            $(mul_block(W, R1, R2, m_rep, N, P))
+            ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(
+                $outtup
+            )
+        end
+    end
     piter = cld(P, num_reps)
     q = quote
         $(Expr(:meta, :inline))
@@ -212,7 +307,13 @@ Read = 0, write = 1.
 
 From LLVM documentation:
 
-address is the address to be prefetched, rw is the specifier determining if the fetch should be for a read (0) or write (1), and locality is a temporal locality specifier ranging from (0) - no locality, to (3) - extremely local keep in cache. The cache type specifies whether the prefetch is performed on the data (1) or instruction (0) cache. The rw, locality and cache type arguments must be constant integers.
+address is the address to be prefetched, rw is the specifier
+determining if the fetch should be for a read (0) or write (1),
+and locality is a temporal locality specifier ranging
+from (0) - no locality, to (3) - extremely local keep in cache.
+The cache type specifies whether the prefetch is performed on
+the data (1) or instruction (0) cache. The rw, locality and
+cache type arguments must be constant integers.
 """
 @generated function prefetch(address, ::Val{Locality} = Val(1), ::Val{RorW} = Val(0)) where {Locality, RorW}
     prefetch_call_string = """%addr = inttoptr i64 %0 to i8*
@@ -470,7 +571,9 @@ Should add support for how many copies of each of the matrices we have, so that 
     D = A*(X + C)
 in one step, without as much un/reloading of memory.
 """
-function blocking_structure(M, N, P, ::Type{T} = Float64; cache_size::NTuple{3,Int} = VectorizationBase.CACHE_SIZE, D_count = 1, A_count = 1, X_count = 1) where T
+function blocking_structure(M, N, P, ::Type{T} = Float64;
+        cache_size::NTuple{3,Int} = VectorizationBase.CACHE_SIZE,
+                D_count = 1, A_count = 1, X_count = 1) where T
     total_elements = M*N*D_count + N*P*A_count + M*P*X_count
     L1, L2, L3 = cache_size .÷ sizeof(T)
     if L1 > total_elements

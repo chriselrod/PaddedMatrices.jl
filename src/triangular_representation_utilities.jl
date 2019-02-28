@@ -1,4 +1,15 @@
-# abstract type LowerTriang
+abstract type AbstractDiagTriangularMatrix{P,T,L} <: AbstractMatrix{T} end
+
+Base.size(::AbstractDiagTriangularMatrix{P}) where {P} = (P,P)
+@inline function Base.getindex(S::AbstractDiagTriangularMatrix{P,T,L}, i) where {P,T,L}
+    @boundscheck i > L && throw(BoundsError())
+    @inbounds S.data[i]
+end
+@inline VectorizationBase.vectorizable(A::AbstractDiagTriangularMatrix) = vStaticPaddedArray(A,0)
+
+
+
+@inline binomial2(n) = (n*(n-1)) >> 1
 
 function padded_diagonal_length(P, T)
     W = VectorizationBase.pick_vector_width(P, T)
@@ -26,7 +37,7 @@ function calculate_L(P, T)
 end
 
 using VectorizationBase
-function lower_triangle_sub2ind_expression(P, T)
+function lower_triangle_sub2ind_quote(P, T)
     # assume inputs are i, j
     # for row, column
     W, Wshift = VectorizationBase.pick_vector_width_shift(P, T)
@@ -56,8 +67,8 @@ function lower_triangle_sub2ind_expression(P, T)
         # We want i >= j, for a lower triangular matrix.
         j, i = minmax(j, i)
         # @boundscheck i > $P && ThrowBoundsError(str)
-        i == j && return i + $pad
-        ind = $(diag_length - num_rows + W - rem_row - 1) + j*$num_rows + i
+        i == j && return i
+        ind = $(P - num_rows + W - rem_row - 1) + j*$num_rows + i
         if j > $rem_row
             j2 = j - $rem_row
             jrem = j2 & $(W-1)
@@ -67,26 +78,88 @@ function lower_triangle_sub2ind_expression(P, T)
         ind
     end
 end
-@generated lower_triangle_sub2ind(::Val{P}, ::Type{T}, i, j) where {T,P} = lower_triangle_sub2ind_expression(P, T)
+@generated function lower_triangle_sub2ind(::Val{P}, ::Type{T}, i, j) where {T,P}
+    quote
+        # $(Expr(:meta, :inline))
+        $(lower_triangle_sub2ind_quote(P, T))
+    end
+end
+
+function upper_triangle_sub2ind_quote(P, T)
+    # assume inputs are i, j
+    # for row, column
+    W, Wshift = VectorizationBase.pick_vector_width_shift(P, T)
+    rem = P & (W - 1)
+    diag_length = rem == 0 ? P : P - rem + W
+    quote
+        # We want i <= j, for a upper triangular matrix.
+        i, j = minmax(i, j)
+        i == j && return i
+        num_blocks = (j-2) >> $Wshift
+        ind = $diag_length + ((num_blocks*(num_blocks+1)) << $(2Wshift - 1))
+        jrem = (j-2) & $(W-1)
+        ind += ((num_blocks+1) * jrem) << $Wshift
+        ind + i
+    end
+end
+@generated function upper_triangle_sub2ind(::Val{P}, ::Type{T}, i, j) where {T,P}
+    quote
+        # $(Expr(:meta, :inline))
+        $(upper_triangle_sub2ind_quote(P, T))
+    end
+end
+
+
+@generated function Base.inv()
+
+end
+@generated function invchol()
+
+end
+
 
 # K = 12
-# [triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
-# [triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [upper_triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [upper_triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
 # K = 13
-# [triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
-# [triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [upper_triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [upper_triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
 # K = 14
-# [triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
-# [triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [upper_triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [upper_triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
 # K = 15
-# [triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
-# [triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [upper_triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [upper_triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
 # K = 16
-# [triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
-# [triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [upper_triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [upper_triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
 # K = 17
-# [triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
-# [triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [upper_triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [upper_triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
 # K = 18
-# [triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
-# [triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [upper_triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [upper_triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
+#
+#
+#
+# K = 12
+# [lower_triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [lower_triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
+# K = 13
+# [lower_triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [lower_triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
+# K = 14
+# [lower_triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [lower_triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
+# K = 15
+# [lower_triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [lower_triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
+# K = 16
+# [lower_triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [lower_triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
+# K = 17
+# [lower_triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [lower_triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]
+# K = 18
+# [lower_triangle_sub2ind(Val(K), Float64, i, j) for i ∈ 1:K, j ∈ 1:K]
+# [lower_triangle_sub2ind(Val(K), UInt128, i, j) for i ∈ 1:K, j ∈ 1:K]

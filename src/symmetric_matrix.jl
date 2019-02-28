@@ -1,5 +1,5 @@
 
-struct AbstractSymmetricMatrix{P,T,L} <: AbstractMatrix{T} end
+struct AbstractSymmetricMatrix{P,T,L} <: AbstractDiagTriangularMatrix{P,T,L} end
 
 """
 The data layout is:
@@ -21,11 +21,7 @@ column 4: 1 elements + 3 padding
 struct SymmetricMatrixL{P,T,L} <: AbstractSymmetricMatrix{P,T,L}
     data::NTuple{L,T}
 end
-Base.size(::AbstractSymmetricMatrixL{P}) = (P,P)
-@inline function Base.getindex(S::AbstractSymmetricMatrix{P,T,L}, i) where {P,T,L}
-    @boundscheck i > L && throw(BoundsError())
-    @inbounds S.data[i]
-end
+
 @inline function Base.getindex(S::SymmetricMatrix{P,T,L}, i, j) where {P,T,L}
     j, i = minmax(j, i)
     @boundscheck i > P && throw(BoundsError())
@@ -36,10 +32,33 @@ struct SymmetricMatrixU{P,T,L} <: AbstractSymmetricMatrix{P,T,L}
     data::NTuple{L,T}
 end
 @inline function Base.getindex(S::SymmetricMatrixU{P,T,L}, i, j) where {P,T,L}
-    j, i = minmax(j, i)
-    @boundscheck i > P && throw(BoundsError())
+    i, j = minmax(i, j)
+    @boundscheck j > P && throw(BoundsError())
     @inbounds S.data[upper_triangle_sub2ind(Val{P}(), T, i, j)]
 end
 
 
-@generated function cholesky()
+@generated function lower_cholesky(Σ::SymmetricMatrixL{P,T,L}) where {P,T,L}
+
+end
+
+### Be more clever than this.
+@generated function quadform(x::AbstractFixedSizePaddedVector{P,T,R}, Σ::SymmetricMatrixL{P,T,L}) where {P,T,R,L}
+    W = pick_vector_width(P, T)
+    quote
+        # vout = vbroadcast(Vec{$P,$T}, zero($T))
+        out = zero($T)
+        @vectorize for i ∈ 1:$P
+            out += x[i] * Σ[i]
+        end
+        for 
+    end
+end
+
+# @generated function Base.:*(A::AbstractFixedSizePaddedMatrix{M,P,T}, Σ::SymmetricMatrix{P,T,L}) where {M,P,T,L}
+#     W, Wshift = VectorizationBase.pick_vector_width_shift(M, T)
+#
+#     quote
+#
+#     end
+# end
