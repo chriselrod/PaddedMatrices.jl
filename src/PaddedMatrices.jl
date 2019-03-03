@@ -31,6 +31,8 @@ const AbstractMutableFixedSizePaddedMatrix{M,N,T,P,L} = AbstractMutableFixedSize
 const AbstractConstantFixedSizePaddedVector{M,T,P,L} = AbstractConstantFixedSizePaddedArray{Tuple{M},T,1,P,L}
 const AbstractConstantFixedSizePaddedMatrix{M,N,T,P,L} = AbstractConstantFixedSizePaddedArray{Tuple{M,N},T,2,P,L}
 
+@inline LoopVectorization.stride_row(::AbstractFixedSizePaddedMatrix{M,N,T,P}) where {M,N,T,P} = P
+
 Base.IndexStyle(::AbstractPaddedArray) = IndexCartesian()
 @noinline ThrowBoundsError() = throw(BoundsError())
 @noinline ThrowBoundsError(str) = throw(BoundsError(str))

@@ -179,6 +179,7 @@ end
 end
 @inline Base.unsafe_load(A::vStaticPaddedArray) = @inbounds A.spa.data[A.offset + 1]
 @inline Base.unsafe_load(A::vStaticPaddedArray, i::Int) = @inbounds A.spa.data[A.offset + i]
+@inline Base.getindex(A::vStaticPaddedArray, i::Int) = @inbounds A.spa.data[A.offset + i]
 
 
 

@@ -21,48 +21,144 @@ end
 @inline extract_value(x) = x
 @inline to_tuple2(x::NTuple{N,Core.VecElement{T}}) where {N,T} = extract_value.(x)
 
-function mul_block(W, R1, R2, m_rep, N, P, poffset::Int = 0)
+function mul_block(V, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B, gemm = nothing)
     Prange = (1 + poffset):(P + poffset)
-    quote
-        $([:(
-            $(Symbol(:Acol_,mr)) = @inbounds $(
-                Expr(:tuple, [:(Core.VecElement(A[ $(m + (mr-1)*W) ])) for m ∈ 1:W]...)
-            )
-        ) for mr ∈ 1:m_rep]...)
-        $([Expr(:block, [ :($(Symbol(:C_, mr, :_, p)) = SIMDPirates.evmul(
-            $(Symbol(:Acol_,mr)), @inbounds B[ $(1 + (p-1)*R2) ])
-            ) for mr ∈ 1:m_rep]...) for p ∈ Prange]...)
-        @inbounds for n ∈ 1:$(N-1)
+    loop_max = isa(N, Number) ? N - 1 : :($N - 1)
+    if gemm == nothing
+        loop_min = 1
+        initialize = quote
             $([:(
-                $(Symbol(:Acol_,mr)) = @inbounds $(Expr(:tuple,
-                    [:(Core.VecElement(A[ $(m + (mr-1)*W) + n*$R1 ])) for m ∈ 1:W]...)
-                )
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(mr-1))
+            ) for mr ∈ 1:m_rep]...)
+            $([Expr(:block, [ :(@inbounds $(Symbol(:C_, mr, :_, p)) = SIMDPirates.evmul(
+                $(Symbol(:Acol_,mr)), $B[ $(1 + (p-1)*R2) ])
+            ) for mr ∈ 1:m_rep]...) for p ∈ Prange]...)
+        end
+    else
+        loop_min = 0
+        R3 = gemm
+        initialize = quote
+            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout + $(mr + (p-1)*R3))) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
+        end
+    end
+    quote
+        $initialize
+        @inbounds for n ∈ $loop_min:$loop_max
+            $([:(
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(mr-1) + n*$R1)
             ) for mr ∈ 1:m_rep]...)
             $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd(
-                $(Symbol(:Acol_,mr)), B[n + $(1 + (p-1)*R2)],
+                $(Symbol(:Acol_,mr)), $B[n + $(1 + (p-1)*R2)],
                 $(Symbol(:C_, mr, :_, p)) )) for mr ∈ 1:m_rep]...) for p ∈ Prange]...
             )
         end
     end
 end
-function mul_block(W, R1, R2, m_rep, N, P, poffset::Symbol)
+function mul_block(V, R1, R2, m_rep, N, P, poffset::Symbol, vA = :vA, B = :B, gemm = nothing)
     Prange = 1:P
-    quote
-        $([:(
-            $(Symbol(:Acol_,mr)) = @inbounds $(Expr(:tuple,
-                [:(Core.VecElement(A[ $(m + (mr-1)*W) ])) for m ∈ 1:W]...)
-            )
-        ) for mr ∈ 1:m_rep]...)
-        $([Expr(:block, [ :($(Symbol(:C_, mr, :_, p)) = SIMDPirates.evmul(
-            $(Symbol(:Acol_,mr)), @inbounds B[ 1 + ($(p-1)+$poffset)*$R2 ])
-        ) for mr ∈ 1:m_rep]...) for p ∈ Prange]...)
-        @inbounds for n ∈ 1:$(N-1)
+    loop_max = isa(N, Number) ? N - 1 : :($N - 1)
+    if gemm == nothing
+        loop_min = 1
+        initialize = quote
             $([:(
-                $(Symbol(:Acol_,mr)) = @inbounds $(Expr(:tuple,
-                [:(Core.VecElement(A[ $(m + (mr-1)*W) + n*$R1 ])) for m ∈ 1:W]...))
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(mr-1))
+            ) for mr ∈ 1:m_rep]...)
+            $([Expr(:block, [ :(@inbounds $(Symbol(:C_, mr, :_, p)) = SIMDPirates.evmul(
+                $(Symbol(:Acol_,mr)), $B[ 1 + ($(p-1)+$poffset)*$R2 ])
+            ) for mr ∈ 1:m_rep]...) for p ∈ Prange]...)
+        end
+    else
+        loop_min = 0
+        R3 = gemm
+        initialize = quote
+            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout + $mr + ($(p-1)+$poffset)*$R3)) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
+        end
+    end
+    quote
+        $initialize
+        @inbounds for n ∈ $loop_min:$loop_max
+            $([:(
+                $(Symbol(:Acol_,mr)) = vload($V, $vA + $(mr-1) + n*$R1)
             ) for mr ∈ 1:m_rep]...)
             $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd(
-                $(Symbol(:Acol_,mr)), B[n + 1 + ($(p-1)+$poffset)*$R2],
+                $(Symbol(:Acol_,mr)), $B[n + 1 + ($(p-1)+$poffset)*$R2],
+                $(Symbol(:C_, mr, :_, p)) )) for mr ∈ 1:m_rep]...) for p ∈ Prange]...
+            )
+        end
+    end
+end
+
+"""
+The suffix: _nt
+stands for
+    n - not transposed
+    t - tranposed
+
+Meaning the operation is
+A * B′
+ie, A is not transposed, and B is tranposed.
+"""
+function mul_block_nt(V, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B, gemm = nothing)
+    Prange = (1 + poffset):(P + poffset)
+    loop_max = isa(N, Number) ? N - 1 : :($N - 1)
+    if gemm == nothing
+        loop_min = 1
+        initialize = quote
+            $([:(
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(mr-1))
+            ) for mr ∈ 1:m_rep]...)
+            $([Expr(:block, [ :(@inbounds $(Symbol(:C_, mr, :_, p)) = SIMDPirates.evmul(
+                $(Symbol(:Acol_,mr)), $B[ $p ])
+                ) for mr ∈ 1:m_rep]...) for p ∈ Prange]...)
+        end
+    else
+        loop_min = 0
+        R3 = gemm
+        initialize = quote
+            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout + $(mr + (p-1)*R3))) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
+        end
+    end
+    quote
+        $initialize
+        @inbounds for n ∈ $loop_min:$loop_max
+            $([:(
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(mr-1) + n*$R1)
+            ) for mr ∈ 1:m_rep]...)
+            $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd(
+                $(Symbol(:Acol_,mr)), $B[n*$R2 + $p],
+                $(Symbol(:C_, mr, :_, p)) )) for mr ∈ 1:m_rep]...) for p ∈ Prange]...
+            )
+        end
+    end
+end
+function mul_block_nt(V, R1, R2, m_rep, N, P, poffset::Symbol, vA = :vA, B = :B, gemm = nothing)
+    Prange = 1:P
+    loop_max = isa(N, Number) ? N - 1 : :($N - 1)
+    if gemm == nothing
+        loop_min = 1
+        initialize = quote
+            $([:(
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(mr-1))
+            ) for mr ∈ 1:m_rep]...)
+            $([Expr(:block, [ :(@inbounds $(Symbol(:C_, mr, :_, p)) = SIMDPirates.evmul(
+                $(Symbol(:Acol_,mr)), $B[ $p + $poffset ])
+            ) for mr ∈ 1:m_rep]...) for p ∈ Prange]...)
+        end
+    else
+        loop_min = 0
+        R3 = gemm
+        initialize = quote
+            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout + $mr + ($(p-1)+$poffset)*$R3)) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
+        end
+    end
+    quote
+        $initialize
+        @inbounds for n ∈ $loop_min:$loop_max
+            $([:(
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(mr-1) + n*$R1)
+            ) for mr ∈ 1:m_rep]...)
+            $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd(
+                $(Symbol(:Acol_,mr)), $B[n*$R2 + $p+$poffset],
                 $(Symbol(:C_, mr, :_, p)) )) for mr ∈ 1:m_rep]...) for p ∈ Prange]...
             )
         end
@@ -139,22 +235,24 @@ function static_mul_quote(M,N,P,T,R1,R2)
     L3 = R1 * P
     W = VectorizationBase.pick_vector_width(R1, T)
     m_rep = R1 ÷ W
-    outtup = Expr(:tuple)
-    # outtup = Expr(:call, :tuple_join)
-    for p ∈ 1:P, mr ∈ 1:m_rep, m ∈ 1:W
-        # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m] ))
-        push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m].value ))
-        # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))))
-    end
-
+    V = Vec{W,T}
     num_reps = cld(L3 ÷ W + 3, VectorizationBase.REGISTER_COUNT)
     if num_reps == 1
+        outtup = Expr(:tuple)
+        # outtup = Expr(:call, :tuple_join)
+        for p ∈ 1:P, mr ∈ 1:m_rep, m ∈ 1:W
+            # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m] ))
+            push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m].value ))
+            # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))))
+        end
         return quote
             $(Expr(:meta, :inline))
-            $(mul_block(W, R1, R2, m_rep, N, P))
-            ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(
-                $outtup
-            )
+            vA = VectorizationBase.vectorizable(A)
+            $(mul_block(V, R1, R2, m_rep, N, P))
+            # ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(
+            #     $outtup
+            # )
+            output_data = $outtup
         end
     end
 
@@ -164,8 +262,9 @@ function static_mul_quote(M,N,P,T,R1,R2)
         out = MutableFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(undef)
         vout = VectorizationBase.vectorizable(out)
         plow = 0
+        vA = VectorizationBase.vectorizable(A)
         for pmax ∈ 1:$(num_reps-1)
-            $(mul_block(W, R1, R2, m_rep, N, piter, :plow))
+            $(mul_block(V, R1, R2, m_rep, N, piter, :plow))
             $(store_block(W, R1, m_rep, piter, :plow))
             plow += $piter
         end
@@ -174,66 +273,125 @@ function static_mul_quote(M,N,P,T,R1,R2)
     prem = P - plow
     prem > 0 && push!(q.args, mul_block(W, R1, R2, m_rep, N, prem, plow))
     prem > 0 && push!(q.args, store_block(W, R1, m_rep, prem, plow))
-    push!(q.args,  :(ConstantFixedSizePaddedMatrix( out )) )
+    # push!(q.args,  :(ConstantFixedSizePaddedMatrix( out )) )
+    push!(q.args, :(output_data = out.data))
     q
 end
 
-function static_by_sym_mul_quote(M,P,T,R1,R2)
+function static_mul_nt_quote(M,N,P,T,R1,R2)
 
     L3 = R1 * P
     W = VectorizationBase.pick_vector_width(R1, T)
     m_rep = R1 ÷ W
-    outtup = Expr(:tuple)
-    # outtup = Expr(:call, :tuple_join)
-    for p ∈ 1:P, mr ∈ 1:m_rep, m ∈ 1:W
-        # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m] ))
-        push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m].value ))
-        # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))))
-    end
-
+    V = Vec{W,T}
     num_reps = cld(L3 ÷ W + 3, VectorizationBase.REGISTER_COUNT)
     if num_reps == 1
+        outtup = Expr(:tuple)
+        # outtup = Expr(:call, :tuple_join)
+        for p ∈ 1:P, mr ∈ 1:m_rep, m ∈ 1:W
+            # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m] ))
+            push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m].value ))
+            # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))))
+        end
         return quote
             $(Expr(:meta, :inline))
-            $(mul_block(W, R1, R2, m_rep, N, P))
-            ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(
-                $outtup
-            )
+            vA = VectorizationBase.vectorizable(A)
+            Bparent = B.parent
+            $(mul_block_nt(V, R1, R2, m_rep, N, P, 0, :vA, :Bparent))
+            # ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(
+            #     $outtup
+            # )
+            output_data = $outtup
         end
     end
+
     piter = cld(P, num_reps)
     q = quote
         $(Expr(:meta, :inline))
         out = MutableFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(undef)
         vout = VectorizationBase.vectorizable(out)
         plow = 0
+        Bparent = B.parent
+        vA = VectorizationBase.vectorizable(A)
         for pmax ∈ 1:$(num_reps-1)
-            $(mul_block(W, R1, R2, m_rep, N, piter, :plow))
+            $(mul_block_nt(V, R1, R2, m_rep, N, piter, :plow, :vA, :Bparent))
             $(store_block(W, R1, m_rep, piter, :plow))
             plow += $piter
         end
     end
     plow = piter * (num_reps-1)
     prem = P - plow
-    prem > 0 && push!(q.args, mul_block(W, R1, R2, m_rep, N, prem, plow))
+    prem > 0 && push!(q.args, mul_block_nt(W, R1, R2, m_rep, N, prem, plow, :vA, :Bparent))
     prem > 0 && push!(q.args, store_block(W, R1, m_rep, prem, plow))
-    push!(q.args,  :(ConstantFixedSizePaddedMatrix( out )) )
+    # push!(q.args,  :(ConstantFixedSizePaddedMatrix( out )) )
+    push!(q.args, :(output_data = out.data))
     q
 end
 
-function mulinit(V, WT, Q, Pₖ, X_stride, r, mask_expr, inline_expr, pfA_1)
+
+# function static_by_sym_mul_quote(M,P,T,R1,R2)
+#
+#     L3 = R1 * P
+#     W = VectorizationBase.pick_vector_width(R1, T)
+#     m_rep = R1 ÷ W
+#     outtup = Expr(:tuple)
+#     # outtup = Expr(:call, :tuple_join)
+#     for p ∈ 1:P, mr ∈ 1:m_rep, m ∈ 1:W
+#         # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m] ))
+#         push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m].value ))
+#         # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))))
+#     end
+#
+#     num_reps = cld(L3 ÷ W + 3, VectorizationBase.REGISTER_COUNT)
+#     if num_reps == 1
+#         return quote
+#             $(Expr(:meta, :inline))
+#             $(mul_block(W, R1, R2, m_rep, N, P))
+#             ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(
+#                 $outtup
+#             )
+#         end
+#     end
+#     piter = cld(P, num_reps)
+#     q = quote
+#         $(Expr(:meta, :inline))
+#         out = MutableFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(undef)
+#         vout = VectorizationBase.vectorizable(out)
+#         plow = 0
+#         for pmax ∈ 1:$(num_reps-1)
+#             $(mul_block(W, R1, R2, m_rep, N, piter, :plow))
+#             $(store_block(W, R1, m_rep, piter, :plow))
+#             plow += $piter
+#         end
+#     end
+#     plow = piter * (num_reps-1)
+#     prem = P - plow
+#     prem > 0 && push!(q.args, mul_block(W, R1, R2, m_rep, N, prem, plow))
+#     prem > 0 && push!(q.args, store_block(W, R1, m_rep, prem, plow))
+#     push!(q.args,  :(ConstantFixedSizePaddedMatrix( out )) )
+#     q
+# end
+
+function mulinit(V, WT, Q, Pₖ, X_stride, r, mask_expr, inline_expr, pfA_1, X_transposed = false)
     q_load_expr = :(@nexprs $Q q -> vA_q = vload($V, pA + $WT*(q-1)))
-    quote
-        $inline_expr
+    if X_transposed
+        X_load_expr = :(pX + (p-1))
+    else
+        X_load_expr = :(pX + (p-1)*$X_stride)
+    end
+    q = quote
         $q_load_expr
         @nexprs $Pₖ p -> begin
-            vX = vbroadcast($V, unsafe_load(pX + (p-1)*$X_stride))
+            vX = vbroadcast($V, unsafe_load($X_load_expr))
             @nexprs $Q q -> Dx_p_q = SIMDPirates.vmul(vA_q, vX)
         end
-        $pfA_1
     end
+    inline_expr == :nothing || pushfirst!(q.args, inline_expr)
+    pfA_1 == :nothing || push!(q.args, pfA_1)
+    q
+
 end
-function gemminit(V, WT, Q, Pₖ, AD_stride, r, mask_expr, inline_expr)
+function gemminit(V, WT, Q, Pₖ, AD_stride, r, mask_expr, inline_expr, X_transposed = false)
     if r == 0
         q = quote
             $inline_expr
@@ -249,6 +407,7 @@ function gemminit(V, WT, Q, Pₖ, AD_stride, r, mask_expr, inline_expr)
         end
         push!(q.args, :($(Symbol(:Dx_,Pₖ,:_,Q)) = vload($V, pD + $(WT*(Q-1) + AD_stride*(Pₖ-1)),$mask_expr)))
     end
+    inline_expr == :nothing || pushfirst!(q.args, inline_expr)
     q
 end
 function create_mask(W, r)
@@ -495,6 +654,179 @@ end
     kernel_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,true,true)
 end
 
+"""
+quote for
+    D (+)= A * X'
+"""
+function kernel_nt_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, pf = nothing)
+    T_size = sizeof(T)
+    AD_stride = stride_AD * T_size
+    X_stride = stride_X * T_size
+    W = VectorizationBase.REGISTER_SIZE ÷ T_size
+    while W >= 2Mₖ
+        W >>= 1
+    end
+    WT = W * T_size
+    Q, r = divrem(Mₖ, W) #Assuming Mₖ is a multiple of W
+    V = Vec{W,T}
+    if r == 0
+        mask = create_mask(W, 0)
+        A_load_expr = :(@nexprs $Q q -> vA_q = vload($V, pA + n*$AD_stride + $WT*(q-1)))
+        D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $AD_stride*(p-1), Dx_p_q))
+        D_store2 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $(AD_stride*(Pₖ-1)),$(Symbol(:Dx_,Pₖ,:_q))))
+    else
+        mask = create_mask(W, r)
+        if Q == 0
+            Q = 1
+            A_load_expr = :($(Symbol(:vA_, Q)) = vload($V, pA + $((N-1)*AD_stride) + $(WT*(Q-1)), $mask))
+        else
+            A_load_expr = quote
+                @nexprs $Q q -> vA_q = vload($V, pA + $((N-1)*AD_stride) + $WT*(q-1))
+            end
+            Q += 1
+            push!(A_load_expr.args, :($(Symbol(:vA_, Q)) = vload($V, pA + $((N-1)*AD_stride) + $(WT*(Q-1)), $mask)))
+        end
+
+        D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $AD_stride*(p-1), Dx_p_q))
+        D_store2 = quote
+            @nexprs $(Q-1) q -> vstore!(pD + $WT*(q-1) + $(AD_stride*(Pₖ-1)), $(Symbol(:Dx_,Pₖ,:_q)))
+            vstore!(pD + $(WT*(Q-1) + AD_stride*(Pₖ-1)), $(Symbol(:Dx_, Pₖ, :_, Q)), $mask)
+        end
+    end
+    C = min(VectorizationBase.CACHELINE_SIZE ÷ T_size,N)
+    Qₚ = cld(Mₖ, C)
+    # Check whether we are prefetching A and/or X.
+    pfA_1, pfA_2, pfA_3 = prefetch_A(pf, N)
+    pfX_1, pfX_2, pfX_3, pfX_4 = prefetch_X(pf, N, Pₖ)
+    inline_expr = inline ? Expr(:meta, :inline) : :(nothing)
+    if init
+        q = mulinit(V, WT, Q, Pₖ, X_stride, r, mask, inline_expr, pfA_1)
+    else
+        q = gemminit(V, WT, Q, Pₖ, AD_stride, r, mask, inline_expr)
+    end
+
+    if pfX_1 == nothing
+        push!(q.args,
+        quote
+            for n ∈ $(Int(init)):$(r == 0 ? N-1 : N-2 )
+                @nexprs $Q q -> vA_q = vload($V, pA + n*$AD_stride + $WT*(q-1))
+                @nexprs $Pₖ p -> begin
+                    vX = vbroadcast($V, unsafe_load(pX + n*$X_stride + (p-1)*$T_size))
+                    @nexprs $Q q -> Dx_p_q = vmuladd(vA_q, vX, Dx_p_q)
+                end
+                $pfA_2
+                # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
+            end
+        end)
+        if r > 0
+            push!(q.args,
+            quote
+                $A_load_expr
+                @nexprs $Pₖ p -> begin
+                    vX = vbroadcast($V, unsafe_load(pX + $((N-1)*X_stride) + (p-1)*$T_size))
+                    @nexprs $Q q -> Dx_p_q = vmuladd(vA_q, vX, Dx_p_q)
+                end
+                $pfA_3
+                @nexprs $Pₖ p -> $D_store1
+                nothing
+            end )
+        else
+            push!(q.args,
+            quote
+                @nexprs $(Pₖ-1) p -> $D_store1
+                $D_store2
+                nothing
+            end)
+        end
+    else
+        push!(q.args,
+        quote
+            # @nexprs $Qₚ q -> prefetch(pA + pf.A + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
+            for n ∈ $(Int(init)):$(C-1)
+                @nexprs $Q q -> vA_q = vload($V, pA + n*$AD_stride + $WT*(q-1))
+                @nexprs $Pₖ p -> begin
+                    vX = vbroadcast($V, unsafe_load(pX + n*$X_stride + (p-1)*$T_size))
+                    @nexprs $Q q -> Dx_p_q = vmuladd(vA_q, vX, Dx_p_q)
+                end
+                $pfA_2
+                # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
+            end
+            # @nexprs $Pₖ p -> prefetch(pX + pf.X + (p-1)*$X_stride, Val(3), Val(0))
+            $pfX_1
+        end)
+        if (N - (N % C) == N) && (r > 0)
+            C_upper_bound = N - 2C
+            must_finish_iter = true
+            remaining_iterations = N-2C+1:N-C-1
+        else
+            C_upper_bound = N - C
+            must_finish_iter = N - (N % C) < (r == 0 ? N-1 : N-2 )
+            remaining_iterations = (N - (N % C)):(r == 0 ? N-1 : N-2 )
+        end
+        push!(q.args,
+        quote
+            for n₁ ∈ $C:$C:$C_upper_bound
+                for n ∈ n₁:n₁+$(C-1)
+                    @nexprs $Q q -> vA_q = vload($V, pA + n*$AD_stride + $WT*(q-1))
+                    @nexprs $Pₖ p -> begin
+                        vX = vbroadcast($V, unsafe_load(pX + n*$X_stride + (p-1)*$T_size))
+                        @nexprs $Q q -> Dx_p_q = vmuladd(vA_q, vX, Dx_p_q)
+                    end
+                    $pfA_2
+                    # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
+                end
+                # @nexprs $Pₖ p -> prefetch(pX + pf.X + n₁*$T_size + (p-1)*$X_stride, Val(3), Val(0))
+                $pfX_2
+            end
+        end)
+        if must_finish_iter
+            push!(q.args,
+            quote
+                for n ∈ $remaining_iterations
+                    @nexprs $Q q -> vA_q = vload($V, pA + n*$AD_stride + $WT*(q-1))
+                    @nexprs $Pₖ p -> begin
+                        vX = vbroadcast($V, unsafe_load(pX + n*$X_stride + (p-1)*$T_size))
+                        @nexprs $Q q -> Dx_p_q = vmuladd(vA_q, vX, Dx_p_q)
+                    end
+                    $pfA_2
+                    # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
+                end
+            end)
+        end
+        if r > 0
+            push!(q.args,
+            quote
+                $A_load_expr
+                @nexprs $Pₖ p -> begin
+                    vX = vbroadcast($V, unsafe_load(pX + $((N-1)*X_stride) + (p-1)*$T_size))
+                    @nexprs $Q q -> Dx_p_q = vmuladd(vA_q, vX, Dx_p_q)
+                end
+                $pfA_3
+            end )
+        end
+
+        push!(q.args,
+        quote
+            @nexprs $(Pₖ-1) p -> begin
+                # prefetch(pX + pf.X + $(N*T_size) + (p-1)*$X_stride, Val(3), Val(0))
+                $pfX_3
+                $D_store1
+            end
+            $pfX_4
+            $D_store2
+            nothing
+        end)
+    end
+    q
+end
+
+@generated function kernel_nt!(pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_AD,stride_X,N}) where {Mₖ,Pₖ,stride_AD,stride_X,N,T}
+    kernel_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,false,true)
+end
+
+@generated function initkernel_nt!(pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, K::Kernel{Mₖ,Pₖ,stride_AD,stride_X,N}) where {Mₖ,Pₖ,stride_AD,stride_X,N,T}
+    kernel_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,true,true)
+end
 
 # """
 # num_cols = elements_per_register * ( REGISTER_COUNT - 2 ) / num_rows - 1

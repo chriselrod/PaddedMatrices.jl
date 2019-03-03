@@ -2,13 +2,38 @@
 
 # @generated function Base.:*(A::AbstractConstantFixedSizePaddedMatrix{M,N,T,R1,L1}, B::AbstractConstantFixedSizePaddedMatrix{N,P,T,R2,L2}) where {M,N,P,T,R1,R2,L1,L2}
 @generated function Base.:*(A::AbstractConstantFixedSizePaddedMatrix{M,N,T,R1,L1}, B::AbstractConstantFixedSizePaddedMatrix{N,P,T,R2,L2}) where {M,N,P,T,R1,R2,L2,L1}
-    static_mul_quote(M,N,P,T,R1,R2)
+    q = static_mul_quote(M,N,P,T,R1,R2)
+    # push!(q.args,  :(ConstantFixedSizePaddedMatrix( out )) )
+    push!(q.args,  :(ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$(R1*P)}( output_data )) )
+    q
+end
+@generated function Base.:*(
+            A::AbstractConstantFixedSizePaddedMatrix{M,N,T,R1,L1},
+            B::LinearAlgebra.Adjoint{T,<:AbstractConstantFixedSizePaddedMatrix{P,N,T,R2,L2}}
+        ) where {M,N,P,T,R1,R2,L1,L2}
+        # ) where {M,N,P,T,R1,R2,L2,L1}
+    q = static_mul_nt_quote(M,N,P,T,R1,R2)
+    # push!(q.args,  :(ConstantFixedSizePaddedMatrix( out )) )
+    push!(q.args,  :(ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$(R1*P)}( output_data )) )
+    q
+end
+@generated function Base.:*(
+            A::AbstractConstantFixedSizePaddedVector{M,T,R1,L1},
+            B::LinearAlgebra.Adjoint{T,<:AbstractConstantFixedSizePaddedVector{P,T,R2,L2}}
+        ) where {M,P,T,R1,R2,L1,L2}
+        # ) where {M,N,P,T,R1,R2,L2,L1}
+    q = static_mul_nt_quote(M,1,P,T,R1,1)
+    # push!(q.args,  :(ConstantFixedSizePaddedMatrix( out )) )
+    push!(q.args,  :(ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$(R1*P)}( output_data )) )
+    q
 end
 # @generated function Base.:*(A::LinearAlgebra.Adjoint{T,StaticSIMDVector{N,T,R1,L1}}, B::StaticSIMDMatrix{N,P,T,R2}) where {N,P,T,R1,R2,L1}
 #     static_mul_quote(1,N,P,T,R1,R2)
 # end
 @generated function Base.:*(A::AbstractConstantFixedSizePaddedMatrix{M,N,T,R1}, B::AbstractConstantFixedSizePaddedVector{N,T,R2}) where {M,N,T,R1,R2}
-    static_mul_quote(M,N,1,T,R1,R2)
+    q = static_mul_quote(M,N,1,T,R1,R2)
+    push!(q.args,  :(ConstantFixedSizePaddedVector{$M,$T,$R1,$R1}( output_data )) )
+    q
 end
 
 
@@ -210,12 +235,12 @@ function initkernel_quote(D::AbstractMutableFixedSizePaddedMatrix{M,Pₖ,T,strid
     kernel_quote(M,Pₖ,stride_AD,stride_X,N,T,true,true)
 end
 
-function block_loop_quote(L1M,L1N,L1P,stride_AD,stride_X,M_iter,M_remain,P_iter,P_remain,T_size,kernel=:kernel!,pA=:pAₙ,pX=:pXₙ,pD=:pD)
+function block_loop_quote(L1M,L1N,L1P,stride_AD,stride_X,M_iter,M_remain,P_iter,P_remain,T_size,kernel=:kernel!,pA=:pAₙ,pX=:pXₙ,pD=:pD,X_transposed=false)
 
     if M_remain == 0
         D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_AD)*pᵢ)
         A = :($pA + $(T_size*L1M)*mᵢ)
-        X = :($pX + $(T_size*L1P*stride_X)*pᵢ)
+        X = X_transposed ? pX : :($pX + $(T_size*L1P*stride_X)*pᵢ)
         if P_iter > M_iter + 1 # Excess of 1 is okay.
             PM_ratio, PM_remainder = divrem(P_iter, M_iter)
             q = quote
@@ -255,7 +280,7 @@ function block_loop_quote(L1M,L1N,L1P,stride_AD,stride_X,M_iter,M_remain,P_iter,
         ### Here
         D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_AD)*pᵢ)
         A = :($pA + $(T_size*L1M)*mᵢ)
-        X = :($pX + $(T_size*L1P*stride_X)*pᵢ)
+        X = X_transposed ? pX : :($pX + $(T_size*L1P*stride_X)*pᵢ)
         D_r = :($pD + $(T_size*L1M*M_iter) + $(T_size*L1P*stride_AD)*pᵢ)
         A_r = :($pA + $(T_size*L1M*M_iter))
         if P_iter > M_iter + 2
@@ -313,7 +338,7 @@ function block_loop_quote(L1M,L1N,L1P,stride_AD,stride_X,M_iter,M_remain,P_iter,
         if M_remain == 0
             D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_AD*P_iter))
             A = :($pA + $(T_size*L1M)*mᵢ)
-            X = :($pX + $(T_size*L1P*stride_X*P_iter))
+            X = X_transposed ? pX : :($pX + $(T_size*L1P*stride_X*P_iter))
             push!(q.args,
             quote
                 for mᵢ ∈ $(MP_terminal):$(M_iter-1)
@@ -327,7 +352,7 @@ function block_loop_quote(L1M,L1N,L1P,stride_AD,stride_X,M_iter,M_remain,P_iter,
         else
             D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_AD*P_iter))
             A = :($pA + $(T_size*L1M)*mᵢ)
-            X = :($pX + $(T_size*L1P*stride_X*P_iter))
+            X = X_transposed ? pX : :($pX + $(T_size*L1P*stride_X*P_iter))
             D_r = :($pD + $(T_size*L1M*M_iter) + $(T_size*L1P*stride_AD*P_iter))
             A_r = :($pA + $(T_size*L1M*M_iter))
             push!(q.args,
