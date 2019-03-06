@@ -51,14 +51,30 @@ Base.IndexStyle(::AbstractPaddedArray) = IndexCartesian()
 @inline type_length(::Type{<:NTuple{N}}) where {N} = N
 @inline type_length(::Number) = 1
 @inline type_length(::Type{<:Number}) = 1
-@inline is_sized(::AbstractFixedSizePaddedVector) = true
-@inline is_sized(::Type{<:AbstractFixedSizePaddedVector}) = true
-@inline is_sized(::AbstractFixedSizePaddedMatrix) = true
-@inline is_sized(::Type{<:AbstractFixedSizePaddedMatrix}) = true
-@inline type_length(::AbstractFixedSizePaddedVector{N}) where {N} = N
-@inline type_length(::Type{<:AbstractFixedSizePaddedVector{N}}) where {N} = N
-@inline type_length(::AbstractFixedSizePaddedMatrix{M,N}) where {M,N} = M*N
-@inline type_length(::Type{<:AbstractFixedSizePaddedMatrix{M,N}}) where {M,N} = M*N
+# @inline is_sized(::AbstractFixedSizePaddedVector) = true
+# @inline is_sized(::Type{<:AbstractFixedSizePaddedVector}) = true
+@inline is_sized(::AbstractFixedSizePaddedArray) = true
+@inline is_sized(::Type{<:AbstractFixedSizePaddedArray}) = true
+# @inline type_length(::AbstractFixedSizePaddedVector{N}) where {N} = N
+# @inline type_length(::Type{<:AbstractFixedSizePaddedVector{N}}) where {N} = N
+# @inline type_length(::AbstractFixedSizePaddedMatrix{M,N}) where {M,N} = M*N
+# @inline type_length(::Type{<:AbstractFixedSizePaddedMatrix{M,N}}) where {M,N} = M*N
+@generated function type_length(::AbstractFixedSizePaddedArray{S,T,N}) where {S,T,N}
+    SV = S.parameters
+    L = 1
+    for n ∈ 1:N
+        L *= SV[n]
+    end
+    L
+end
+@generated function type_length(::Type{<:AbstractFixedSizePaddedArray{S,T,N}}) where {S,T,N}
+    SV = S.parameters
+    L = 1
+    for n ∈ 1:N
+        L *= SV[n]
+    end
+    L
+end
 @inline is_sized(::Any) = false
 
 """
