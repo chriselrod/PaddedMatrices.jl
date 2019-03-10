@@ -2,7 +2,7 @@ module PaddedMatrices
 
 using VectorizationBase, SIMDPirates,
         Base.Cartesian, UnsafeArrays,
-        SLEEF, VectorizedRNG,
+        SLEEFPirates, VectorizedRNG,
         LoopVectorization, LinearAlgebra, Random
 
 export @CFixedSize, @MFixedSize,
@@ -59,18 +59,18 @@ Base.IndexStyle(::AbstractPaddedArray) = IndexCartesian()
 # @inline type_length(::Type{<:AbstractFixedSizePaddedVector{N}}) where {N} = N
 # @inline type_length(::AbstractFixedSizePaddedMatrix{M,N}) where {M,N} = M*N
 # @inline type_length(::Type{<:AbstractFixedSizePaddedMatrix{M,N}}) where {M,N} = M*N
-@generated function type_length(::AbstractFixedSizePaddedArray{S,T,N}) where {S,T,N}
+@generated function type_length(::AbstractFixedSizePaddedArray{S}) where {S}
     SV = S.parameters
     L = 1
-    for n ∈ 1:N
+    for n ∈ 1:length(SV)
         L *= SV[n]
     end
     L
 end
-@generated function type_length(::Type{<:AbstractFixedSizePaddedArray{S,T,N}}) where {S,T,N}
+@generated function type_length(::Type{<:AbstractFixedSizePaddedArray{S}}) where {S}
     SV = S.parameters
     L = 1
-    for n ∈ 1:N
+    for n ∈ 1:length(SV)
         L *= SV[n]
     end
     L
