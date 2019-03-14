@@ -15,9 +15,8 @@ function calc_NP(S, L)
     N, P
 end
 function pick_L(N, T = Float64)
-    W = VectorizationBase.pick_vector_width(N, T)
-    rem = N & (W - 1)
-    rem > 0 ? N + W - rem : N
+    Wm1 = VectorizationBase.pick_vector_width(N, T) - 1
+    (N + Wm1) & ~ Wm1
 end
 
 @inline ConstantFixedSizePaddedVector{N}(data::NTuple{L,T}) where {N,L,T} = ConstantFixedSizePaddedVector{N,T,L,L}(data)
@@ -46,6 +45,22 @@ end
 @inline ConstantFixedSizePaddedVector(A::AbstractFixedSizePaddedArray{S,T,1,P,L}) where {S,T,P,L} = ConstantFixedSizePaddedArray{S,T,1,P,L}(A.data)
 @inline ConstantFixedSizePaddedMatrix(A::AbstractFixedSizePaddedArray{S,T,2,P,L}) where {S,T,P,L} = ConstantFixedSizePaddedArray{S,T,2,P,L}(A.data)
 @inline ConstantFixedSizePaddedArray(A::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L} = ConstantFixedSizePaddedArray{S,T,N,P,L}(A.data)
+
+@generated function ConstantFixedSizePaddedMatrix{M,N}(data::Matrix{T}) where {M,N,T}
+    P = pick_L(M, T)
+    outtup = Expr(:tuple)
+    ind = 0
+    for n ∈ 1:N
+        for m ∈ 1:M
+            ind += 1
+            push!(outtup.args, :(data[$ind]))
+        end
+        for p ∈ M+1:P
+            push!(outtup.args, zero(T))
+        end
+    end
+    :(@inbounds ConstantFixedSizePaddedMatrix{$M,$N,$T}($outtup))
+end
 
 @generated function Base.fill(v::T, ::Type{<:ConstantFixedSizePaddedArray{S}}) where {S,T}
     N, P, L = calc_NPL(S, T)
