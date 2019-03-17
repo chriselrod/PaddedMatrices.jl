@@ -9,8 +9,9 @@ function calc_NPL(S, T)
     while W >= TwoN
         W >>= 1
     end
-    rem = (nrow & (W-1))
-    padded_rows = rem == 0 ? nrow : nrow + W - rem
+    Wm1 = W - 1
+    # rem = nrow & Wm1
+    padded_rows = (nrow + Wm1) & ~Wm1
     L = padded_rows
     for n ∈ 2:N
         L *= SV[n]
@@ -26,8 +27,9 @@ function init_mutable_fs_padded_array_quote(S, T)
     W, Wshift = VectorizationBase.pick_vector_width_shift(T)
     TwoN = 2nrow
     if W < TwoN
-        rem = (nrow & (W-1))
-        padded_rows = rem == 0 ? nrow : nrow + W - rem
+        Wm1 = W - 1
+        rem = nrow & Wm1
+        padded_rows = (nrow + Wm1) & ~Wm1
         L = padded_rows
         for n ∈ 2:N
             L *= SV[n]
@@ -51,8 +53,9 @@ function init_mutable_fs_padded_array_quote(S, T)
     while W >= TwoN
         W >>= 1
     end
-    rem = (nrow & (W-1))
-    padded_rows = rem == 0 ? nrow : nrow + W - rem
+    Wm1 = W - 1
+    # rem = nrow & Wm1
+    padded_rows = (nrow + Wm1) & ~Wm1
     L = padded_rows
     for n ∈ 2:N
         L *= SV[n]

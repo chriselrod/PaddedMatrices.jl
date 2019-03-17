@@ -65,6 +65,6 @@ function Base.fill(::Type{<: PaddedArray}, S::NTuple{N}, v::T) where {T,N}
 end
 
 @inline Base.pointer(A::PaddedArray) = pointer(A.data)
-@inline VectorizationBase.vectorizable(A::PaddedArray) = pointer(A.data)
+@inline VectorizationBase.vectorizable(A::PaddedArray) = VectorizationBase.vpointer(pointer(A.data))
 
 Base.strides(A::PaddedArray) = strides(A.data)

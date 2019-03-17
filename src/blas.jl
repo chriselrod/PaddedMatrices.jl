@@ -96,15 +96,33 @@ end
 #     mulquote(M,N,P,ADR,XR,T,prefetchAX)
 # end
 
-@generated function Base.:*(A::Diagonal{T,<:AbstractFixedSizePaddedVector{N,T,P}}, B::AbstractFixedSizePaddedVector{N,T,P}) where {N,T,P}
+
+function elementwise_product_quote(N,T,P)
     quote
         $(Expr(:meta,:inline)) # do we really want to force inline this?
         mv = MutableFixedSizePaddedVector{$N,$T,$P,$P}(undef)
-        Adiag = A.diag
         @vectorize $T for i ∈ 1:$P
-            mv[i] = Adiag[i] * B[i]
+            mv[i] = A[i] * B[i]
         end
+    end
+end
+
+@generated function Base.:*(Adiagonal::Diagonal{T,<:AbstractFixedSizePaddedVector{N,T,P}}, B::AbstractFixedSizePaddedVector{N,T,P}) where {N,T,P}
+    quote
+        A = Adiagonal.diag
+        $(elementwise_product_quote(N,T,P))
         ConstantFixedSizePaddedArray(mv)
+    end
+end
+@generated function Base.:*(
+            Aadjoint::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{N,T,P}},
+            Bdiagonal::Diagonal{T,<:AbstractFixedSizePaddedVector{N,T,P}}
+        ) where {N,T,P}
+    quote
+        A = Aadjoint.parent
+        B = Bdiagonal.diag
+        $(elementwise_product_quote(N,T,P))
+        ConstantFixedSizePaddedArray(mv)'
     end
 end
 
