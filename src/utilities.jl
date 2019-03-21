@@ -16,3 +16,13 @@
         out
     end
 end
+@generated function Base.prod(A::AbstractFixedSizePaddedVector{L,T}) where {L,T}
+    quote
+        $(Expr(:meta, :inline))
+        out = one(T)
+        @vectorize $T for i ∈ 1:$L
+            out *= A[i]
+        end
+        out
+    end
+end

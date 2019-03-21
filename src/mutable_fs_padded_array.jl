@@ -106,9 +106,9 @@ const MutableFixedSizePaddedMatrix{M,N,T,P,L} = MutableFixedSizePaddedArray{Tupl
     init_mutable_fs_padded_array_quote(SD, T)
 end
 
-function Base.fill()
+# function Base.fill()
 
-end
+# end
 
 """
 This is only meant to make recursive algorithms easiesr to implement.
@@ -140,6 +140,7 @@ const PtrMatrix{M,N,T,R,L} = PtrArray{Tuple{M,N},T,2,R,L}
 @inline VectorizationBase.vectorizable(A::AbstractMutableFixedSizePaddedArray) = VectorizationBase.vpointer(pointer(A))
 
 
+
 @generated function Base.setindex!(A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}, v, i::CartesianIndex{N}) where {S,T,N,R,L}
     dims = ntuple(j -> S.parameters[j], Val(N))
     ex = sub2ind_expr(dims, R)
@@ -149,7 +150,7 @@ const PtrMatrix{M,N,T,R,L} = PtrArray{Tuple{M,N},T,2,R,L}
             Base.Cartesian.@nif $(N+1) d->( d == 1 ? i[d] > $R : i[d] > $dims[d]) d -> ThrowBoundsError("Dimension $d out of bounds") d -> nothing
         end
         # T = eltype(A)
-        unsafe_store!(pointer(A), convert($T,v), $ex)
+        VectorizationBase.store!(pointer(A) + $ex - 1, convert($T,v))
         v
     end
 end
@@ -165,23 +166,23 @@ end
         @boundscheck begin
             Base.Cartesian.@nif $(N+1) d->( d == 1 ? i[d] > $R : i[d] > $dims[d]) d-> ThrowBoundsError("Dimension $d out of bounds $(i[d]) > $R") d -> nothing
         end
-        unsafe_store!(pointer(A), convert($T,v), $ex)
+        VectorizationBase.store!(pointer(A) + $ex - 1, convert($T,v))
         v
     end
 end
 # AbstractMutableFixedSizePaddedArray
 
 
-@inline Base.@propagate_inbounds Base.getindex(A::AbstractMutableFixedSizePaddedArray, i...) = A.data[i...]
+# @inline Base.@propagate_inbounds Base.getindex(A::AbstractMutableFixedSizePaddedArray, i...) = A.data[i...]
 
 @inline function Base.getindex(A::AbstractMutableFixedSizePaddedArray{S,T,1,L,L}, i::Int) where {S,T,L}
     @boundscheck i <= L || ThrowBoundsError("Index $i > full length $L.")
-    unsafe_load(pointer(A), i)
+    VectorizationBase.load(pointer(A) + i - 1)
 end
 @inline function Base.getindex(A::AbstractMutableFixedSizePaddedArray, i::Int)
     @boundscheck i <= full_length(A) || ThrowBoundsError("Index $i > full length $(full_length(A)).")
     T = eltype(A)
-    unsafe_load(pointer(A), i)
+    VectorizationBase.load(pointer(A) + i - 1)
 end
 
 
@@ -199,7 +200,7 @@ end
         # T = eltype(A)
         # unsafe_load(Base.unsafe_convert(Ptr{T}, pointer_from_objref(A) + $(sizeof(T))*($ex) ))
         # A.data[$ex+1]
-        unsafe_load(pointer(A), $ex)
+        VectorizationBase.load(pointer(A) + $ex - 1)
     end
 end
 @generated function Base.getindex(A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}, i::CartesianIndex{N}) where {S,T,N,R,L}
@@ -211,7 +212,7 @@ end
         @boundscheck begin
             Base.Cartesian.@nif $(N+1) d->(d == 1 ? i[d] > $R : i[d] > $dims[d]) d->ThrowBoundsError() d -> nothing
         end
-        unsafe_load(pointer(A), $ex)
+        VectorizationBase.load(pointer(A) + $ex - 1)
     end
 end
 

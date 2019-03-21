@@ -197,7 +197,55 @@ end
     ConstantFixedSizePaddedArray(mv)
 end
 
-
+@generated function LinearAlgebra.dot(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L}
+    if N > 1
+        ST = ntuple(n -> S.parameters[n], Val(N))
+        return quote
+            out = zero(T)
+            ind = 0
+            @nloops $(N-1) i j -> 1:$ST[j+1] begin
+                @vectorize $T for i_0 ∈ 1:$(ST[1])
+                    out += A[ind + i_0] * B[ind + i_0]
+                end
+                ind += P
+            end
+            out
+        end
+    else #if N == 1
+        return quote
+            out = zero(T)
+            @vectorize $T  for i ∈ 1:$(S.parameters[1])
+                out += A[i] * B[i]
+            end
+            out
+        end
+    end
+end
+@generated function dot_self(A::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L}
+    if N > 1
+        ST = ntuple(n -> S.parameters[n], Val(N))
+        return quote
+            out = zero(T)
+            ind = 0
+            @nloops $(N-1) i j -> 1:$ST[j+1] begin
+                @vectorize $T for i_0 ∈ 1:$(ST[1])
+                    Aᵢ = A[ind + i_0]
+                    out += Aᵢ * Aᵢ
+                end
+                ind += P
+            end
+            out
+        end
+    else #if N == 1
+        return quote
+            out = zero(T)
+            @vectorize $T  for i ∈ 1:$(S.parameters[1])
+                out += A[i] * A[i]
+            end
+            out
+        end
+    end
+end
 
 """
 Not within BLAS module, because we aren't supporting the full gemm API at the moment.

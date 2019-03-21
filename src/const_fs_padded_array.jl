@@ -300,3 +300,31 @@ end
 @generated function SIMDPirates.vload(::Type{A}, ptr::vStaticPaddedArray{SPA}) where {T, S,S2, A <: AbstractConstantFixedSizePaddedArray{S,T},SPA <: AbstractConstantFixedSizePaddedArray{S2,T}}
     vload_constant_matrix_quote(T, S, A)
 end
+
+
+@generated function broadcast_array_quote(S, P, W, T, ::Val{N}) where {N}
+    quote
+        q = quote end
+        SV = S.parameters
+        V = Vec{W,T}
+        outtup = Expr(:tuple,)
+        indbase = 0
+        Base.Cartesian.@nloops $(N-1) i j -> 1:SV[j+1] begin
+            ind = indbase
+            @inbounds for i_0 ∈ 1:SV[1]
+                ind += 1
+                push!(q.args, :($(Symbol(:A_, ind)) = vbroadcast(Vec{$W,$T}, @inbounds A[$ind])))
+                push!(outtup.args, Symbol(:A_, ind))
+            end
+            indbase += P
+        end
+        push!(q.args, Expr(:call,
+            Expr(:curly, :ConstantFixedSizePaddedArray, S, V, N, SV[1], prod(SV)),
+            outtup)
+        )
+        q
+    end
+end
+@generated function SIMDPirates.vbroadcast(::Type{Vec{W,T}}, A::ConstantFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L,W}
+    broadcast_array_quote(S, P, W, T, Val(N))
+end

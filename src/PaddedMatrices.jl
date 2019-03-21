@@ -78,11 +78,12 @@ end
 @inline is_sized(::Any) = false
 
 """
-Returns one based index.
+Converts Cartesian one-based index into linear one-based index.
+Just subtract 1 for a zero based index. 
 """
 function sub2ind_expr(S, P)
     N = length(S)
-    N == 1 && return :(i[1])
+    N == 1 && return :(i[1] - 1)
     ex = :(i[$N] - 1)
     for i ∈ (N - 1):-1:2
         ex = :(i[$i] - 1 + $(S[i]) * $ex)
@@ -95,6 +96,7 @@ include("mutable_fs_padded_array.jl")
 include("const_fs_padded_array.jl")
 include("kernels.jl")
 include("blas.jl")
+include("array_of_vecs_funcs.jl")
 include("linear_algebra.jl")
 include("rand.jl")
 include("utilities.jl")
