@@ -61,7 +61,7 @@ end
 end
 
 
-function determine_pattern(M,N,P)
+function determine_pattern(M,N)
     # 4 x 5 preferred for avx512
     # 32 registers means in C = A * B,
     # we have 4*5 = 20 filled from A,
@@ -77,9 +77,9 @@ function determine_pattern(M,N,P)
         km = 3
         kn = 3
     end
-    md, mr = divrem(M, km)
-    nd, nr = divrem(N, kn)
-    mk, mr, nd, nr, km, kn
+    mk, mr = divrem(M, km)
+    nk, nr = divrem(N, kn)
+    mk, mr, nk, nr, km, kn
 end
 
 

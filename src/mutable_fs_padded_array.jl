@@ -136,6 +136,8 @@ const PtrMatrix{M,N,T,R,L} = PtrArray{Tuple{M,N},T,2,R,L}
 
 @inline Base.pointer(ptr::PtrMatrix) = ptr.ptr
 @inline Base.pointer(A::AbstractMutableFixedSizePaddedArray{S,T}) where {S,T} = Base.unsafe_convert(Ptr{T}, pointer_from_objref(A))
+@inline Base.pointer(A::AbstractMutableFixedSizePaddedArray{S,NTuple{W,Core.VecElement{T}}}) where {S,T,W} = Base.unsafe_convert(Ptr{T}, pointer_from_objref(A))
+
 
 @inline VectorizationBase.vectorizable(A::AbstractMutableFixedSizePaddedArray) = VectorizationBase.vpointer(pointer(A))
 
@@ -150,7 +152,7 @@ const PtrMatrix{M,N,T,R,L} = PtrArray{Tuple{M,N},T,2,R,L}
             Base.Cartesian.@nif $(N+1) d->( d == 1 ? i[d] > $R : i[d] > $dims[d]) d -> ThrowBoundsError("Dimension $d out of bounds") d -> nothing
         end
         # T = eltype(A)
-        VectorizationBase.store!(pointer(A) + $ex - 1, convert($T,v))
+        VectorizationBase.store!(pointer(A) + sizeof(T) * ($ex - 1), convert($T,v))
         v
     end
 end
@@ -166,7 +168,38 @@ end
         @boundscheck begin
             Base.Cartesian.@nif $(N+1) d->( d == 1 ? i[d] > $R : i[d] > $dims[d]) d-> ThrowBoundsError("Dimension $d out of bounds $(i[d]) > $R") d -> nothing
         end
-        VectorizationBase.store!(pointer(A) + $ex - 1, convert($T,v))
+        VectorizationBase.store!(pointer(A) + sizeof(T) * ($ex - 1), convert($T,v))
+        v
+    end
+end
+@generated function Base.setindex!(A::AbstractMutableFixedSizePaddedArray{S,NTuple{W,Core.VecElement{T}},N,R,L},
+                                    v::NTuple{W,Core.VecElement{T}}, i::CartesianIndex{N}) where {S,T,N,R,L,W}
+    dims = ntuple(j -> S.parameters[j], Val(N))
+    ex = sub2ind_expr(dims, R)
+    quote
+        $(Expr(:meta, :inline))
+        @boundscheck begin
+            Base.Cartesian.@nif $(N+1) d->( d == 1 ? i[d] > $R : i[d] > $dims[d]) d -> ThrowBoundsError("Dimension $d out of bounds") d -> nothing
+        end
+        # T = eltype(A)
+        SIMDPirates.vstore!(pointer(A) + sizeof(NTuple{W,Core.VecElement{T}}) * ($ex - 1), v)
+        v
+    end
+end
+@generated function Base.setindex!(A::AbstractMutableFixedSizePaddedArray{S,NTuple{W,Core.VecElement{T}},N,R,L},
+                                    v::NTuple{W,Core.VecElement{T}}, i::Vararg{Integer,M}) where {S,T,N,R,L,M,W}
+    dims = ntuple(j -> S.parameters[j], Val(N))
+    if M == 1
+        ex = :(@inbounds i[1])
+    else
+        ex = sub2ind_expr(dims, R)
+    end
+    quote
+        $(Expr(:meta, :inline))
+        @boundscheck begin
+            Base.Cartesian.@nif $(N+1) d->( d == 1 ? i[d] > $R : i[d] > $dims[d]) d-> ThrowBoundsError("Dimension $d out of bounds $(i[d]) > $R") d -> nothing
+        end
+        SIMDPirates.vstore!(pointer(A) + sizeof(NTuple{W,Core.VecElement{T}}) * ($ex - 1), v)
         v
     end
 end
@@ -177,14 +210,25 @@ end
 
 @inline function Base.getindex(A::AbstractMutableFixedSizePaddedArray{S,T,1,L,L}, i::Int) where {S,T,L}
     @boundscheck i <= L || ThrowBoundsError("Index $i > full length $L.")
-    VectorizationBase.load(pointer(A) + i - 1)
+    VectorizationBase.load(pointer(A) + sizeof(T) * (i - 1))
 end
 @inline function Base.getindex(A::AbstractMutableFixedSizePaddedArray, i::Int)
     @boundscheck i <= full_length(A) || ThrowBoundsError("Index $i > full length $(full_length(A)).")
     T = eltype(A)
-    VectorizationBase.load(pointer(A) + i - 1)
+    VectorizationBase.load(pointer(A) + sizeof(T) * (i - 1))
 end
-
+@inline function Base.getindex(A::AbstractMutableFixedSizePaddedArray{S,Vec{W,T},1}, i::Int) where {S,T,L,W}
+    @boundscheck i <= full_length(A) || ThrowBoundsError("Index $i > full length $L.")
+    SIMDPirates.vload(Vec{W,T}, pointer(A) + sizeof(Vec{W,T}) * (i - 1))
+end
+@inline function Base.getindex(A::AbstractMutableFixedSizePaddedArray{S,Vec{W,T}}, i::Int) where {S,T,L,W}
+    @boundscheck i <= L || ThrowBoundsError("Index $i > full length $L.")
+    SIMDPirates.vload(Vec{W,T}, pointer(A) + sizeof(Vec{W,T}) * (i - 1))
+end
+@inline function Base.getindex(A::LinearAlgebra.Adjoint{Union{},<: AbstractMutableFixedSizePaddedArray{S,Vec{W,T}}}, i::Int) where {S,T,L,W}
+    @boundscheck i <= L || ThrowBoundsError("Index $i > full length $L.")
+    SIMDPirates.vload(Vec{W,T}, pointer(A.parent) + sizeof(Vec{W,T}) * (i - 1))
+end
 
 
 @generated function Base.getindex(A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}, i::Vararg{Int,N}) where {S,T,N,R,L}
@@ -200,7 +244,7 @@ end
         # T = eltype(A)
         # unsafe_load(Base.unsafe_convert(Ptr{T}, pointer_from_objref(A) + $(sizeof(T))*($ex) ))
         # A.data[$ex+1]
-        VectorizationBase.load(pointer(A) + $ex - 1)
+        VectorizationBase.load(pointer(A) + $(sizeof(T)) * ($ex - 1))
     end
 end
 @generated function Base.getindex(A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}, i::CartesianIndex{N}) where {S,T,N,R,L}
@@ -212,7 +256,51 @@ end
         @boundscheck begin
             Base.Cartesian.@nif $(N+1) d->(d == 1 ? i[d] > $R : i[d] > $dims[d]) d->ThrowBoundsError() d -> nothing
         end
-        VectorizationBase.load(pointer(A) + $ex - 1)
+        VectorizationBase.load(pointer(A) + $(sizeof(T)) * ($ex - 1))
+    end
+end
+@generated function Base.getindex(A::AbstractMutableFixedSizePaddedArray{S,Vec{W,T},N,R,L}, i::Vararg{Int,N}) where {S,T,N,R,L,W}
+    # dims = ntuple(j -> S.parameters[j], Val(N))
+    sv = S.parameters
+    ex = sub2ind_expr(sv, R)
+    quote
+        $(Expr(:meta, :inline))
+        # @show i, S
+        @boundscheck begin
+            Base.Cartesian.@nif $(N+1) d->(d == 1 ? i[d] > $R : i[d] > $sv[d]) d->ThrowBoundsError() d -> nothing
+        end
+        # T = eltype(A)
+        # unsafe_load(Base.unsafe_convert(Ptr{T}, pointer_from_objref(A) + $(sizeof(T))*($ex) ))
+        # A.data[$ex+1]
+        SIMDPirates.vload(Vec{W,T}, pointer(A) + $(sizeof(Vec{W,T})) * ($ex - 1))
+    end
+end
+@generated function Base.getindex(A::AbstractMutableFixedSizePaddedArray{S,Vec{W,T},N,R,L}, i::CartesianIndex{N}) where {S,T,N,R,L,W}
+    dims = ntuple(j -> S.parameters[j], Val(N))
+    ex = sub2ind_expr(dims, R)
+    quote
+        $(Expr(:meta, :inline))
+        # @show i, S
+        @boundscheck begin
+            Base.Cartesian.@nif $(N+1) d->(d == 1 ? i[d] > $R : i[d] > $dims[d]) d->ThrowBoundsError() d -> nothing
+        end
+        SIMDPirates.vload(Vec{W,T}, pointer(A) + $(sizeof(Vec{W,T})) * ($ex - 1))
+    end
+end
+@generated function Base.getindex(A::LinearAlgebra.Adjoint{Union{},<: AbstractMutableFixedSizePaddedMatrix{M,N,Vec{W,T},R,L}}, i::Int, j::Int) where {M,N,W,T,R,L}
+    # dims = ntuple(j -> S.parameters[j], Val(N))
+    quote
+        $(Expr(:meta, :inline))
+        # @show i, S
+        @boundscheck begin
+            if (j > M) || (i > N)
+                ThrowBoundsError("At least one of: $j > $M or $i > $N.")
+            end
+        end
+        # T = eltype(A)
+        # unsafe_load(Base.unsafe_convert(Ptr{T}, pointer_from_objref(A) + $(sizeof(T))*($ex) ))
+        # A.data[$ex+1]
+        SIMDPirates.vload(Vec{W,T}, pointer(A.parent) + $(sizeof(Vec{W,T})) * ( (i-1)*$R + j-1 ))
     end
 end
 

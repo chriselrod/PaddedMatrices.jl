@@ -113,6 +113,10 @@ end
     @boundscheck i <= full_length(A) || ThrowBoundsError("Index $i < full length $(full_length(A)).")
     @inbounds A.data[i]
 end
+@inline function Base.getindex(A::LinearAlgebra.Adjoint{Union{},<: AbstractConstantFixedSizePaddedMatrix{M,N,Vec{W,T}}}, i::Int) where {M,N,W,T}
+    @boundscheck i <= full_length(A) || ThrowBoundsError("Index $i < full length $(full_length(A)).")
+    @inbounds A.parent.data[i]
+end
 @generated function Base.getindex(A::AbstractConstantFixedSizePaddedArray{S,T,N,P}, i::Vararg{<:Integer,N}) where {S,T,N,P}
     SV = S.parameters
     ex = sub2ind_expr(SV, P)
@@ -133,6 +137,15 @@ end
             Base.Cartesian.@nif $(N+1) d->(d == 1 ? i[d] > $P : i[d] > $SV[d]) d->ThrowBoundsError() d -> nothing
         end
         @inbounds A.data[$ex]
+    end
+end
+@generated function Base.getindex(A::LinearAlgebra.Adjoint{Union{},<:AbstractConstantFixedSizePaddedMatrix{M,N,Vec{W,T},R}}, i::Int, j::Int) where {M,N,W,T,R}
+    quote
+        $(Expr(:meta, :inline))
+        @boundscheck if (i > N) || (j > M)
+            ThrowBoundsError("(i > N) = ($i > $N) || (j > M) = ($j > $M).")
+        end
+        @inbounds A.parent.data[ (i-1)*R + j ]
     end
 end
 
