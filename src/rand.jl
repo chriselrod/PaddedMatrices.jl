@@ -294,16 +294,17 @@ end
 
 
 function rand_expr(expr, R)
+    # @show expr.args
     N = length(expr.args)
     n = 2
-    if isa(expr.args[2], Int)
-        T = Float64
-    else
+    randtypes = Set((:Float32,:Float64,:Int,:Int32,:Int64,:UInt,:UInt32,:UInt64))
+    if expr.args[2] ∈ randtypes
         T = expr.args[2]
         n += 1
+    else
+        T = Float64
     end
-    S = Tuple{expr.args[n:end]...}
-    return :( $(expr.args[1])( $(R){$S, $T}  )  )
+    return :( $(expr.args[1])( $(R){Tuple{$(esc.(expr.args[n:end])...)}, $T}  )  )
 end
 
 macro MFixedSize(expr)

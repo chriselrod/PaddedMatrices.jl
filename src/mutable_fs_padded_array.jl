@@ -1,4 +1,5 @@
 function calc_NPL(S, T)
+    # N, padded_rows, L = calc_NPL(S, T)
     SV = S.parameters
     N = length(SV)
 
@@ -104,6 +105,30 @@ const MutableFixedSizePaddedMatrix{M,N,T,P,L} = MutableFixedSizePaddedArray{Tupl
 @generated function MutableFixedSizePaddedArray(::UndefInitializer, ::Val{S}, ::Type{T1}=Float64) where {S,T1}
     SD = Tuple{S...}
     init_mutable_fs_padded_array_quote(SD, T)
+end
+
+@generated function Base.zero(::Type{<:MutableFixedSizePaddedArray{S,T}}) where {S,T}
+    N,P,L = calc_NPL(S, T)
+    quote
+        $(Expr(:meta,:inline))
+        ma = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        @inbounds @simd ivdep for l ∈ 1:$L
+            ma[l] = zero($T)
+        end
+        ma
+    end
+end
+@generated function Base.zero(::Type{<:MutableFixedSizePaddedArray{S}}) where {S}
+    T = Float64
+    N,P,L = calc_NPL(S, T)
+    quote
+        $(Expr(:meta,:inline))
+        ma = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        @inbounds @simd ivdep for l ∈ 1:$L
+            ma[l] = zero($T)
+        end
+        ma
+    end
 end
 
 # function Base.fill()

@@ -109,6 +109,13 @@ end
     @boundscheck i <= L || ThrowBoundsError("Index $i < full length $(full_length(A)).")
     @inbounds A.data[i]
 end
+@inline function Base.getindex(A::AbstractConstantFixedSizePaddedArray{S,T,1,L,L}, i::Int, j::Int) where {S,T,L}
+    @boundscheck begin
+        j == 1 || ThrowBoundsError("Column index j = $j != 1.")
+        i <= L || ThrowBoundsError("Index $i < full length $(full_length(A)).")
+    end
+    @inbounds A.data[i]
+end
 @inline function Base.getindex(A::AbstractConstantFixedSizePaddedArray, i::Int)
     @boundscheck i <= full_length(A) || ThrowBoundsError("Index $i < full length $(full_length(A)).")
     @inbounds A.data[i]

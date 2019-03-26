@@ -130,7 +130,7 @@ function matrix_of_vecs_mul_quote(M,N,P,W,T)
                     C_m = SIMDPirates.evmul( A_m_1, vB)
                 end
                 Base.Cartesian.@nexprs $(nr-1) n -> begin
-                    vB = B[n+1,p] 
+                    vB = B[n+1,p]
                     Base.Cartesian.@nexprs $kernel_size_m m -> begin
                         C_m = SIMDPirates.vmuladd(A_m_{n+1}, vB, C_m)
                     end
@@ -138,7 +138,7 @@ function matrix_of_vecs_mul_quote(M,N,P,W,T)
                 Base.Cartesian.@nexprs $M m -> C[$mindexpr,p] = C_m
             end
             $(nk > 0 ? nkernexpr : nothing)
-        end        
+        end
     end
     if mr > 0
         mindexpr2 = :(m + $(mk*kernel_size_m))
@@ -171,7 +171,7 @@ function matrix_of_vecs_mul_quote(M,N,P,W,T)
                         C_m = SIMDPirates.evmul(A_m_1, vB)
                     end
                     Base.Cartesian.@nexprs $(nr-1) n -> begin
-                        vB = B[n+1,p] 
+                        vB = B[n+1,p]
                         Base.Cartesian.@nexprs $mr m -> begin
                             C_m = SIMDPirates.vmuladd(A_m_{n+1}, vB, C_m)
                         end
@@ -202,9 +202,53 @@ end
 
     matrix_of_vecs_mul_quote(M,N,P,W,T)
 end
-    
 
 
 
-
-
+function triangle_vsum_quote(T::DataType,M::Int,L::Int,Lfull::Int)
+    quote
+        @inbounds for l ∈ 1:$L
+            out[l] = SIMDPirates.vsum(triangle[$l])
+        end
+        @inbounds for l ∈ $(L+1):$Lfull
+            out[l] = zero($T)
+        end
+    end
+end
+@generated function SIMDPirates.vsum(vA::AbstractFixedSizePaddedArray{S,Vec{W,T}}) where {S,W,T}
+    N, padded_rows, L = calc_NPL(S, T)
+    vL = prod(S.parameters)
+    if N == 1
+        return quote
+            $(Expr(:meta,:inline))
+            @inbounds begin
+                $([ :( $(Symbol(:A_,l)) = SIMDPirates.vsum(vA[$l]) ) for l ∈ 1:vL ]...)
+            end
+            outtup = $(Expr(:tuple, [Symbol(:A_,l) for l ∈ 1:vL ]..., [zero(T) for l ∈ 1+vL:L]...))
+            $(Expr(:call, Expr(:curly, ConstantFixedSizePaddedArray, S, T, N, padded_rows, L), :outtup))
+        end
+    else
+        S1 = S.parameters[1]
+        SR = prod(S.parameters[2:end])
+        q = quote end
+        outtup = Expr(:tuple, )
+        ind = 0
+        for j ∈ 1:SR
+            for i ∈ 1:S1
+                ind += 1
+                push!(q.args, :($(Symbol(:A_,i,:_,j)) =  SIMDPirates.vsum(vA[$ind])))
+                push!(outtup.args, Symbol(:A_,i,:_,j))
+            end
+            for i ∈ S1+1:padded_rows
+                push!(outtup.args, zero(T))
+            end
+        end
+        return quote
+            $(Expr(:meta,:inline))
+            @inbounds begin
+                $q
+            end
+            $(Expr(:call, Expr(:curly, ConstantFixedSizePaddedArray, S, T, N, padded_rows, L), outtup))
+        end
+    end
+end
