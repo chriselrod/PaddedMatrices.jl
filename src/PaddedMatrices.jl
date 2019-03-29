@@ -5,7 +5,7 @@ using VectorizationBase, SIMDPirates,
         SLEEFPirates, VectorizedRNG,
         LoopVectorization, LinearAlgebra, Random
 
-export @CFixedSize, @MFixedSize,
+export @Constant, @Mutable,
     ConstantFixedSizePaddedArray,
     ConstantFixedSizePaddedVector,
     ConstantFixedSizePaddedMatrix,
@@ -79,7 +79,7 @@ end
 
 """
 Converts Cartesian one-based index into linear one-based index.
-Just subtract 1 for a zero based index. 
+Just subtract 1 for a zero based index.
 """
 function sub2ind_expr(S, P)
     N = length(S)
@@ -91,6 +91,9 @@ function sub2ind_expr(S, P)
     :(i[1] + $P * $ex)
 end
 
+
+
+
 include("padded_array.jl")
 include("mutable_fs_padded_array.jl")
 include("const_fs_padded_array.jl")
@@ -100,5 +103,6 @@ include("array_of_vecs_funcs.jl")
 include("linear_algebra.jl")
 include("rand.jl")
 include("utilities.jl")
+include("seed_increments.jl")
 
 end # module

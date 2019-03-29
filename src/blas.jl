@@ -188,14 +188,14 @@ end
     end
     ConstantFixedSizePaddedArray(mv)
 end
-@inline function SIMDPirates.vfma(a::T, x::AbstractFixedSizePaddedArray{S,T,N,P,L}, y::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+@inline function SIMDPirates.vmuladd(a::T, x::AbstractFixedSizePaddedArray{S,T,N,P,L}, y::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
     mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
     @fastmath @inbounds @simd ivdep for i ∈ 1:L
         mv[i] = a * x[i] + y[i]
     end
     ConstantFixedSizePaddedArray(mv)
 end
-@generated function SIMDPirates.vfma(a::T,
+@generated function SIMDPirates.vmuladd(a::T,
                 x::Union{<:AbstractFixedSizePaddedVector{P1,T,L1},LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{P1,T,L1}}}, y::Union{<:AbstractFixedSizePaddedVector{P2,T,L2},LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{P2,T,L2}}}
                 ) where {T,P1,L1,P2,L2}
     if x <: LinearAlgebra.Adjoint

@@ -21,14 +21,14 @@ end
 @inline extract_value(x) = x
 @inline to_tuple2(x::NTuple{N,Core.VecElement{T}}) where {N,T} = extract_value.(x)
 
-function mul_block(V, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B, gemm = nothing)
+function mul_block(V, W, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B, gemm = nothing)
     Prange = (1 + poffset):(P + poffset)
     loop_max = isa(N, Number) ? N - 1 : :($N - 1)
     if gemm == nothing
         loop_min = 1
         initialize = quote
             $([:(
-                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(mr-1))
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(W*(mr-1)))
             ) for mr ∈ 1:m_rep]...)
             $([Expr(:block, [ :(@inbounds $(Symbol(:C_, mr, :_, p)) = SIMDPirates.evmul(
                 $(Symbol(:Acol_,mr)), $B[ $(1 + (p-1)*R2) ])
@@ -45,7 +45,7 @@ function mul_block(V, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B, g
         $initialize
         @inbounds for n ∈ $loop_min:$loop_max
             $([:(
-                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(mr-1) + n*$R1)
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(W*(mr-1)) + n*$R1)
             ) for mr ∈ 1:m_rep]...)
             $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd(
                 $(Symbol(:Acol_,mr)), $B[n + $(1 + (p-1)*R2)],
@@ -54,14 +54,14 @@ function mul_block(V, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B, g
         end
     end
 end
-function mul_block(V, R1, R2, m_rep, N, P, poffset::Symbol, vA = :vA, B = :B, gemm = nothing)
+function mul_block(V, W, R1, R2, m_rep, N, P, poffset::Symbol, vA = :vA, B = :B, gemm = nothing)
     Prange = 1:P
     loop_max = isa(N, Number) ? N - 1 : :($N - 1)
     if gemm == nothing
         loop_min = 1
         initialize = quote
             $([:(
-                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(mr-1))
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(W*(mr-1)))
             ) for mr ∈ 1:m_rep]...)
             $([Expr(:block, [ :(@inbounds $(Symbol(:C_, mr, :_, p)) = SIMDPirates.evmul(
                 $(Symbol(:Acol_,mr)), $B[ 1 + ($(p-1)+$poffset)*$R2 ])
@@ -78,7 +78,7 @@ function mul_block(V, R1, R2, m_rep, N, P, poffset::Symbol, vA = :vA, B = :B, ge
         $initialize
         @inbounds for n ∈ $loop_min:$loop_max
             $([:(
-                $(Symbol(:Acol_,mr)) = vload($V, $vA + $(mr-1) + n*$R1)
+                $(Symbol(:Acol_,mr)) = vload($V, $vA + $(W*(mr-1)) + n*$R1)
             ) for mr ∈ 1:m_rep]...)
             $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd(
                 $(Symbol(:Acol_,mr)), $B[n + 1 + ($(p-1)+$poffset)*$R2],
@@ -98,14 +98,14 @@ Meaning the operation is
 A * B′
 ie, A is not transposed, and B is tranposed.
 """
-function mul_block_nt(V, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B, gemm = nothing)
+function mul_block_nt(V, W, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B, gemm = nothing)
     Prange = (1 + poffset):(P + poffset)
     loop_max = isa(N, Number) ? N - 1 : :($N - 1)
     if gemm == nothing
         loop_min = 1
         initialize = quote
             $([:(
-                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(mr-1))
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(W*(mr-1)))
             ) for mr ∈ 1:m_rep]...)
             $([Expr(:block, [ :(@inbounds $(Symbol(:C_, mr, :_, p)) = SIMDPirates.evmul(
                 $(Symbol(:Acol_,mr)), $B[ $p ])
@@ -122,7 +122,7 @@ function mul_block_nt(V, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B
         $initialize
         @inbounds for n ∈ $loop_min:$loop_max
             $([:(
-                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(mr-1) + n*$R1)
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(W*(mr-1)) + n*$R1)
             ) for mr ∈ 1:m_rep]...)
             $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd(
                 $(Symbol(:Acol_,mr)), $B[n*$R2 + $p],
@@ -131,14 +131,14 @@ function mul_block_nt(V, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B
         end
     end
 end
-function mul_block_nt(V, R1, R2, m_rep, N, P, poffset::Symbol, vA = :vA, B = :B, gemm = nothing)
+function mul_block_nt(V, W, R1, R2, m_rep, N, P, poffset::Symbol, vA = :vA, B = :B, gemm = nothing)
     Prange = 1:P
     loop_max = isa(N, Number) ? N - 1 : :($N - 1)
     if gemm == nothing
         loop_min = 1
         initialize = quote
             $([:(
-                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(mr-1))
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(W*(mr-1)) )
             ) for mr ∈ 1:m_rep]...)
             $([Expr(:block, [ :(@inbounds $(Symbol(:C_, mr, :_, p)) = SIMDPirates.evmul(
                 $(Symbol(:Acol_,mr)), $B[ $p + $poffset ])
@@ -155,7 +155,7 @@ function mul_block_nt(V, R1, R2, m_rep, N, P, poffset::Symbol, vA = :vA, B = :B,
         $initialize
         @inbounds for n ∈ $loop_min:$loop_max
             $([:(
-                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(mr-1) + n*$R1)
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(W*(mr-1)) + n*$R1)
             ) for mr ∈ 1:m_rep]...)
             $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd(
                 $(Symbol(:Acol_,mr)), $B[n*$R2 + $p+$poffset],
@@ -248,7 +248,7 @@ function static_mul_quote(M,N,P,T,R1,R2)
         return quote
             $(Expr(:meta, :inline))
             vA = VectorizationBase.vectorizable(A)
-            $(mul_block(V, R1, R2, m_rep, N, P))
+            $(mul_block(V, W, R1, R2, m_rep, N, P))
             # ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(
             #     $outtup
             # )
@@ -264,14 +264,14 @@ function static_mul_quote(M,N,P,T,R1,R2)
         plow = 0
         vA = VectorizationBase.vectorizable(A)
         for pmax ∈ 1:$(num_reps-1)
-            $(mul_block(V, R1, R2, m_rep, N, piter, :plow))
+            $(mul_block(V, W, R1, R2, m_rep, N, piter, :plow))
             $(store_block(W, R1, m_rep, piter, :plow))
             plow += $piter
         end
     end
     plow = piter * (num_reps-1)
     prem = P - plow
-    prem > 0 && push!(q.args, mul_block(W, R1, R2, m_rep, N, prem, plow))
+    prem > 0 && push!(q.args, mul_block(V, W, R1, R2, m_rep, N, prem, plow))
     prem > 0 && push!(q.args, store_block(W, R1, m_rep, prem, plow))
     # push!(q.args,  :(ConstantFixedSizePaddedMatrix( out )) )
     push!(q.args, :(output_data = out.data))
@@ -297,7 +297,7 @@ function static_mul_nt_quote(M,N,P,T,R1,R2)
             $(Expr(:meta, :inline))
             vA = VectorizationBase.vectorizable(A)
             Bparent = B.parent
-            $(mul_block_nt(V, R1, R2, m_rep, N, P, 0, :vA, :Bparent))
+            $(mul_block_nt(V, W, R1, R2, m_rep, N, P, 0, :vA, :Bparent))
             # ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(
             #     $outtup
             # )
@@ -314,14 +314,14 @@ function static_mul_nt_quote(M,N,P,T,R1,R2)
         Bparent = B.parent
         vA = VectorizationBase.vectorizable(A)
         for pmax ∈ 1:$(num_reps-1)
-            $(mul_block_nt(V, R1, R2, m_rep, N, piter, :plow, :vA, :Bparent))
+            $(mul_block_nt(V, W, R1, R2, m_rep, N, piter, :plow, :vA, :Bparent))
             $(store_block(W, R1, m_rep, piter, :plow))
             plow += $piter
         end
     end
     plow = piter * (num_reps-1)
     prem = P - plow
-    prem > 0 && push!(q.args, mul_block_nt(W, R1, R2, m_rep, N, prem, plow, :vA, :Bparent))
+    prem > 0 && push!(q.args, mul_block_nt(V, W, R1, R2, m_rep, N, prem, plow, :vA, :Bparent))
     prem > 0 && push!(q.args, store_block(W, R1, m_rep, prem, plow))
     # push!(q.args,  :(ConstantFixedSizePaddedMatrix( out )) )
     push!(q.args, :(output_data = out.data))

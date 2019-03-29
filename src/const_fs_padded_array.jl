@@ -174,6 +174,8 @@ struct vStaticPaddedArray{SPA}
     offset::Int
 end
 @inline VectorizationBase.vectorizable(A::AbstractConstantFixedSizePaddedArray) = vStaticPaddedArray(A,0)
+@inline VectorizationBase.vectorizable(A::LinearAlgebra.Diagonal{T,<:AbstractConstantFixedSizePaddedArray}) where {T} = vStaticPaddedArray(A.diag,0)
+@inline VectorizationBase.vectorizable(A::LinearAlgebra.Adjoint{T,<:AbstractConstantFixedSizePaddedArray}) where {T} = vStaticPaddedArray(A.parent,0)
 @inline Base.:+(A::vStaticPaddedArray, i) = vStaticPaddedArray(A.spa, A.offset + i)
 @inline Base.:+(i, A::vStaticPaddedArray) = vStaticPaddedArray(A.spa, A.offset + i)
 @inline Base.:-(A::vStaticPaddedArray, i) = vStaticPaddedArray(A.spa, A.offset - i)
@@ -214,6 +216,7 @@ end
 end
 @inline Base.unsafe_load(A::vStaticPaddedArray) = @inbounds A.spa.data[A.offset + 1]
 @inline Base.unsafe_load(A::vStaticPaddedArray, i::Int) = @inbounds A.spa.data[A.offset + i]
+@inline VectorizationBase.load(A::vStaticPaddedArray) = @inbounds A.spa.data[A.offset + 1]
 @inline Base.getindex(A::vStaticPaddedArray, i::Int) = @inbounds A.spa.data[A.offset + i]
 
 
@@ -348,3 +351,20 @@ end
 @generated function SIMDPirates.vbroadcast(::Type{Vec{W,T}}, A::ConstantFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L,W}
     broadcast_array_quote(S, P, W, T, Val(N))
 end
+
+@generated function Base.vcat(a::AbstractConstantFixedSizePaddedVector{M,T}, b::AbstractConstantFixedSizePaddedVector{N,T}) where {M,N,T}
+    MpN = M + N
+    L = pick_L(MpN, T)
+    outtup = Expr(:tuple,)
+    for m ∈ 1:M
+        push!(outtup.args, :(a[$m]))
+    end
+    for n ∈ 1:N
+        push!(outtup.args, :(b[$n]))
+    end
+    for z ∈ MpN+1:L
+        push!(outtup.args, zero(T))
+    end
+    :(@inbounds ConstantFixedSizePaddedVector{$MpN,$T}($outtup))
+end
+Base.vcat(a::AbstractConstantFixedSizePaddedVector, b::AbstractConstantFixedSizePaddedVector, c::AbstractFixedSizePaddedVector...) = vcat(vcat(a,b), c...)

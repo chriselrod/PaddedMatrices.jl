@@ -1,3 +1,15 @@
+function calc_padding(nrow, T)
+    W, Wshift = VectorizationBase.pick_vector_width_shift(T)
+    TwoN = 2nrow
+
+    while W >= TwoN
+        W >>= 1
+    end
+    Wm1 = W - 1
+    # rem = nrow & Wm1
+    (nrow + Wm1) & ~Wm1
+end
+
 function calc_NPL(S, T)
     # N, padded_rows, L = calc_NPL(S, T)
     SV = S.parameters
@@ -165,6 +177,8 @@ const PtrMatrix{M,N,T,R,L} = PtrArray{Tuple{M,N},T,2,R,L}
 
 
 @inline VectorizationBase.vectorizable(A::AbstractMutableFixedSizePaddedArray) = VectorizationBase.vpointer(pointer(A))
+@inline VectorizationBase.vectorizable(A::LinearAlgebra.Diagonal{T,<:AbstractMutableFixedSizePaddedArray}) where {T} = VectorizationBase.vpointer(pointer(A.diag))
+@inline VectorizationBase.vectorizable(A::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedArray}) where {T} = VectorizationBase.vpointer(pointer(A.parent))
 
 
 

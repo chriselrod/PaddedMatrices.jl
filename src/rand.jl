@@ -307,9 +307,9 @@ function rand_expr(expr, R)
     return :( $(expr.args[1])( $(R){Tuple{$(esc.(expr.args[n:end])...)}, $T}  )  )
 end
 
-macro MFixedSize(expr)
+macro Mutable(expr)
     rand_expr(expr, :MutableFixedSizePaddedArray)
 end
-macro CFixedSize(expr)
+macro Constant(expr)
     rand_expr(expr, :ConstantFixedSizePaddedArray)
 end

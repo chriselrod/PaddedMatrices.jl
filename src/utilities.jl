@@ -16,6 +16,7 @@
         out
     end
 end
+@inline Base.sum(A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T}}) where {S,T} = sum(A.parent)
 @generated function Base.prod(A::AbstractFixedSizePaddedVector{L,T}) where {L,T}
     quote
         $(Expr(:meta, :inline))
