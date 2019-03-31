@@ -12,7 +12,7 @@ function calculate_L_from_size(S, T)
 end
 
 
-@generated function Random.rand!(rng::AbstractRNG, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {S,T<:Union{Float32,Float64},N,R,L}
+@generated function Random.rand!(rng::VectorizedRNG.PCG, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {S,T<:Union{Float32,Float64},N,R,L}
     size_T = sizeof(T)
     W = VectorizationBase.pick_vector_width(L, T)
     nrep, r = divrem(L, 4W)
@@ -49,7 +49,7 @@ end
     q
 end
 Random.rand!(A::AbstractMutableFixedSizePaddedArray) = rand!(VectorizedRNG.GLOBAL_vPCG, A)
-@generated function Random.rand(rng::AbstractRNG, ::Type{ <: ConstantFixedSizePaddedArray{S,T}}) where {S,T<:Union{Float32,Float64}}
+@generated function Random.rand(rng::VectorizedRNG.PCG, ::Type{ <: ConstantFixedSizePaddedArray{S,T}}) where {S,T<:Union{Float32,Float64}}
     N = length(S.parameters)
 
     R, L = calculate_L_from_size(S.parameters, T)
@@ -94,7 +94,7 @@ function Random.rand(::Type{ <: ConstantFixedSizePaddedArray{S,T}}) where {S,T<:
 end
 
 
-@generated function Random.randn!(rng::AbstractRNG, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {S,T<:Union{Float32,Float64},N,R,L}
+@generated function Random.randn!(rng::VectorizedRNG.PCG, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {S,T<:Union{Float32,Float64},N,R,L}
     size_T = sizeof(T)
     W = VectorizationBase.pick_vector_width(L, T)
     nrep, r = divrem(L, 4W)
@@ -132,7 +132,7 @@ end
 end
 Random.randn!(A::AbstractMutableFixedSizePaddedArray) = randn!(VectorizedRNG.GLOBAL_vPCG, A)
 
-@generated function Random.randn(rng::AbstractRNG, ::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {S,T<:Union{Float32,Float64}}
+@generated function Random.randn(rng::VectorizedRNG.PCG, ::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {S,T<:Union{Float32,Float64}}
     N = length(S.parameters)
 
     R, L = calculate_L_from_size(S.parameters, T)
@@ -199,7 +199,7 @@ end
 end
 
 
-@generated function Random.randexp!(rng, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {S,T<:Union{Float32,Float64},N,R,L}
+@generated function Random.randexp!(rng::VectorizedRNG.PCG, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {S,T<:Union{Float32,Float64},N,R,L}
     size_T = sizeof(T)
     W = VectorizationBase.pick_vector_width(L, T)
     nrep, r = divrem(L, 4W)
@@ -238,7 +238,7 @@ end
 Random.randexp!(A::AbstractMutableFixedSizePaddedArray) = randexp!(VectorizedRNG.GLOBAL_vPCG, A)
 
 
-@generated function Random.randexp(rng, ::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {S,T<:Union{Float32,Float64}}
+@generated function Random.randexp(rng::VectorizedRNG.PCG, ::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {S,T<:Union{Float32,Float64}}
     N = length(S.parameters)
 
     R, L = calculate_L_from_size(S.parameters, T)

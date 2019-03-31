@@ -42,6 +42,7 @@ end
         ConstantFixedSizePaddedArray{$S,$T,$N,$P,$L}(data)
     end
 end
+@inline ConstantFixedSizePaddedVector{N,T,P}(A::NTuple{P,T}) where {N,T,P} = ConstantFixedSizePaddedVector{N,T,P,P}(A)
 @inline ConstantFixedSizePaddedVector(A::AbstractFixedSizePaddedArray{S,T,1,P,L}) where {S,T,P,L} = ConstantFixedSizePaddedArray{S,T,1,P,L}(A.data)
 @inline ConstantFixedSizePaddedMatrix(A::AbstractFixedSizePaddedArray{S,T,2,P,L}) where {S,T,P,L} = ConstantFixedSizePaddedArray{S,T,2,P,L}(A.data)
 @inline ConstantFixedSizePaddedArray(A::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L} = ConstantFixedSizePaddedArray{S,T,N,P,L}(A.data)
@@ -173,6 +174,7 @@ struct vStaticPaddedArray{SPA}
     spa::SPA
     offset::Int
 end
+@inline VectorizationBase.vectorizable(A::vStaticPaddedArray) = A
 @inline VectorizationBase.vectorizable(A::AbstractConstantFixedSizePaddedArray) = vStaticPaddedArray(A,0)
 @inline VectorizationBase.vectorizable(A::LinearAlgebra.Diagonal{T,<:AbstractConstantFixedSizePaddedArray}) where {T} = vStaticPaddedArray(A.diag,0)
 @inline VectorizationBase.vectorizable(A::LinearAlgebra.Adjoint{T,<:AbstractConstantFixedSizePaddedArray}) where {T} = vStaticPaddedArray(A.parent,0)

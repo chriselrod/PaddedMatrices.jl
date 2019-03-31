@@ -92,6 +92,9 @@ function store_L_quote!(qa, P, R, output = :Li, ::Type{T} = Float64) where {T} #
         for r ∈ c:P
             push!(outtup, sym(output, r, c))
         end
+        for r ∈ P+1:R
+            push!(outtup, zero(T))
+        end
     end
     push!(qa, :(ConstantFixedSizePaddedMatrix{$P,$P,$T,$R,$(P*R)}($(
         Expr(:tuple, outtup...)
@@ -138,7 +141,7 @@ end
 Assumes the input matrix is positive definite (no checking is done; will return NaNs if not PD).
 Uses the lower triangle of the input matrix S, and returns the upper triangle of the input matrix.
 """
-@generated function chol(S::AbstractConstantFixedSizePaddedMatrix{P,P,T,R}) where {P,T,R}
+@generated function chol(S::AbstractConstantFixedSizePaddedMatrix{P,P,T,R}) where {P,R,T}
     # q = quote @fastmath @inbounds begin end end
     # qa = q.args[2].args[3].args[3].args
     q = quote end

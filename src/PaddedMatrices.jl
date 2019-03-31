@@ -49,8 +49,12 @@ Base.IndexStyle(::AbstractPaddedArray) = IndexCartesian()
 @inline is_sized(::Type{<:Number}) = true
 @inline type_length(::NTuple{N}) where {N} = N
 @inline type_length(::Type{<:NTuple{N}}) where {N} = N
+@inline param_type_length(::NTuple{N}) where {N} = N
+@inline param_type_length(::Type{<:NTuple{N}}) where {N} = N
 @inline type_length(::Number) = 1
 @inline type_length(::Type{<:Number}) = 1
+@inline param_type_length(::Number) = 1
+@inline param_type_length(::Type{<:Number}) = 1
 # @inline is_sized(::AbstractFixedSizePaddedVector) = true
 # @inline is_sized(::Type{<:AbstractFixedSizePaddedVector}) = true
 @inline is_sized(::AbstractFixedSizePaddedArray) = true
@@ -75,6 +79,8 @@ end
     end
     L
 end
+@generated param_type_length(::AbstractFixedSizePaddedArray{S}) where {S} = prod(SV.parameters)
+@generated param_type_length(::Type{<:AbstractFixedSizePaddedArray{S}}) where {S} = prod(S.parameters)
 @inline is_sized(::Any) = false
 
 """
@@ -83,7 +89,7 @@ Just subtract 1 for a zero based index.
 """
 function sub2ind_expr(S, P)
     N = length(S)
-    N == 1 && return :(i[1] - 1)
+    N == 1 && return :(i[1])
     ex = :(i[$N] - 1)
     for i ∈ (N - 1):-1:2
         ex = :(i[$i] - 1 + $(S[i]) * $ex)
