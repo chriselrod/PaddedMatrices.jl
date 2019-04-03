@@ -1,5 +1,7 @@
 module PaddedMatrices
 
+set_zero_subnormals(true)
+
 using VectorizationBase, SIMDPirates,
         Base.Cartesian, UnsafeArrays,
         SLEEFPirates, VectorizedRNG,

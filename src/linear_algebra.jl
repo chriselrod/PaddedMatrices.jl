@@ -52,7 +52,7 @@ function invchol_L_core_quote!(qa, P, output = :L, input = :S, ::Type{T} = Float
         end
     end
 end
-function chol_L_core_quote!(qa, P, input = :S, ::Type{T} = Float64) where T
+function chol_L_core_quote!(qa, P, input = :S, ::Type{T} = Float64, symout = sym, symin = sym) where T
     for c ∈ 1:P
         for cr ∈ 1:c-1, r ∈ c:P
             push!(qa, :( $(sym(input, r, c)) -= $(sym(input, r, cr)) * $(sym(input, c, cr))  ) )
@@ -157,6 +157,45 @@ Uses the lower triangle of the input matrix S, and returns the upper triangle of
     end
     # q
 end
+
+function LAPACK_chol!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, UPLO = 'U') where {N,LDA}
+    INFO = 0
+    ccall((LinearAlgebra.BLAS.@blasfunc(dpotrf_), LinearAlgebra.BLAS.libblas), Cvoid,
+        (Ref{UInt8}, Ref{LinearAlgebra.BLAS.BlasInt}, Ptr{Float64}, Ref{LinearAlgebra.BLAS.BlasInt}, Ref{LinearAlgebra.BLAS.BlasInt}),
+        UPLO, N, A, LDA, INFO)
+end
+function LAPACK_tri_inv!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, UPLO = 'U', DIAG = 'N') where {N,LDA}
+    INFO = 0
+    ccall((LinearAlgebra.BLAS.@blasfunc(dtrtri_), LinearAlgebra.BLAS.libblas), Cvoid,
+        (Ref{UInt8}, Ref{UInt8}, Ref{LinearAlgebra.BLAS.BlasInt}, Ptr{Float64}, Ref{LinearAlgebra.BLAS.BlasInt}, Ref{LinearAlgebra.BLAS.BlasInt}),
+        UPLO, DIAG, N, A, LDA, INFO)
+end
+function BLAS_dtrmv!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, x::AbstractMutableFixedSizePaddedVector{N,Float64,LDA}, UPLO = 'U', TRANS = 'N', DIAG = 'N') where {N,LDA}
+    INCX = 1
+
+    ccall((LinearAlgebra.BLAS.@blasfunc(dtrmv_), LinearAlgebra.BLAS.libblas), Cvoid,
+        (Ref{UInt8}, Ref{UInt8}, Ref{UInt8}, Ref{LinearAlgebra.BLAS.BlasInt}, Ptr{Float64}, Ref{LinearAlgebra.BLAS.BlasInt}, Ptr{Float64}, Ref{LinearAlgebra.BLAS.BlasInt}),
+        UPLO, TRANS, DIAG, N, A, LDA, x, INCX)
+
+end
+function BLAS_dsymv!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, x::AbstractMutableFixedSizePaddedVector{N,Float64,LDA}, y::AbstractMutableFixedSizePaddedVector{N,Float64,LDA}, α = 1.0, β = 0.0, UPLO = 'U') where {N,LDA}
+    INCX = 1
+    INCY = 1
+
+    ccall((LinearAlgebra.BLAS.@blasfunc(dsymv_), LinearAlgebra.BLAS.libblas), Cvoid,
+        (Ref{UInt8}, Ref{LinearAlgebra.BLAS.BlasInt}, Ref{Float64}, Ptr{Float64}, Ref{LinearAlgebra.BLAS.BlasInt}, Ptr{Float64}, Ref{LinearAlgebra.BLAS.BlasInt}, Ref{Float64}, Ptr{Float64}, Ref{LinearAlgebra.BLAS.BlasInt}),
+        UPLO, N, α, A, LDA, x, INCX, β, y, INCY)
+
+end
+# function LAPACK_dsyrk!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, UPLO = 'U', DIAG = 'N') where {N,LDA}
+#     INFO = 0
+#     ccall((LinearAlgebra.BLAS.@blasfunc(dsyrk_), LinearAlgebra.BLAS.libblas), Cvoid,
+#         (Ref{UInt8}, Ref{UInt8}, Ref{LinearAlgebra.BLAS.BlasInt}, Ptr{Float64}, Ref{LinearAlgebra.BLAS.BlasInt}, Ref{LinearAlgebra.BLAS.BlasInt}),
+#         UPLO, DIAG, N, A, LDA, INFO)
+#
+# end
+
+
 """
 Assumes the input matrix is lower triangular.
 """

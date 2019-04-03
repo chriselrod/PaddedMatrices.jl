@@ -1,5 +1,12 @@
 
+@inline function diff!(C::AbstractMutableFixedSizePaddedMatrix{M,N,Vec{W,T}},
+                            A::AbstractFixedSizePaddedMatrix{M,N,T,P},
+                            B::AbstractFixedSizePaddedMatrix{M,N,Vec{W,T}}) where {M,N,W,T,P}
 
+    @inbounds for n ∈ 1:N, m ∈ 1:M
+        C[m,n] = SIMDPirates.vsub( SIMDPirates.vbroadcast(Vec{W,T}, A[m,n]), B[m,n] )
+    end
+end
 
 @generated function LinearAlgebra.dot(
             A::AbstractFixedSizePaddedArray{S,NTuple{W,Core.VecElement{T}},N,P,L},
@@ -215,40 +222,64 @@ function triangle_vsum_quote(T::DataType,M::Int,L::Int,Lfull::Int)
         end
     end
 end
-@generated function SIMDPirates.vsum(vA::AbstractFixedSizePaddedArray{S,Vec{W,T}}) where {S,W,T}
-    N, padded_rows, L = calc_NPL(S, T)
-    vL = prod(S.parameters)
-    if N == 1
-        return quote
-            $(Expr(:meta,:inline))
-            @inbounds begin
-                $([ :( $(Symbol(:A_,l)) = SIMDPirates.vsum(vA[$l]) ) for l ∈ 1:vL ]...)
-            end
-            outtup = $(Expr(:tuple, [Symbol(:A_,l) for l ∈ 1:vL ]..., [zero(T) for l ∈ 1+vL:L]...))
-            $(Expr(:call, Expr(:curly, ConstantFixedSizePaddedArray, S, T, N, padded_rows, L), :outtup))
+# @generated function SIMDPirates.vsum(vA::AbstractFixedSizePaddedArray{S,Vec{W,T}}) where {S,W,T}
+#     N, padded_rows, L = calc_NPL(S, T)
+#     vL = prod(S.parameters)
+#     if N == 1
+#         return quote
+#             $(Expr(:meta,:inline))
+#             @inbounds begin
+#                 $([ :( $(Symbol(:A_,l)) = SIMDPirates.vsum(vA[$l]) ) for l ∈ 1:vL ]...)
+#             end
+#             outtup = $(Expr(:tuple, [Symbol(:A_,l) for l ∈ 1:vL ]..., [zero(T) for l ∈ 1+vL:L]...))
+#             $(Expr(:call, Expr(:curly, ConstantFixedSizePaddedArray, S, T, N, padded_rows, L), :outtup))
+#         end
+#     else
+#         S1 = S.parameters[1]
+#         SR = prod(S.parameters[2:end])
+#         q = quote end
+#         outtup = Expr(:tuple, )
+#         ind = 0
+#         for j ∈ 1:SR
+#             for i ∈ 1:S1
+#                 ind += 1
+#                 push!(q.args, :($(Symbol(:A_,i,:_,j)) =  SIMDPirates.vsum(vA[$ind])))
+#                 push!(outtup.args, Symbol(:A_,i,:_,j))
+#             end
+#             for i ∈ S1+1:padded_rows
+#                 push!(outtup.args, zero(T))
+#             end
+#         end
+#         return quote
+#             $(Expr(:meta,:inline))
+#             @inbounds begin
+#                 $q
+#             end
+#             $(Expr(:call, Expr(:curly, ConstantFixedSizePaddedArray, S, T, N, padded_rows, L), outtup))
+#         end
+#     end
+# end
+@inline function SIMDPirates.vsum(vA::AbstractFixedSizePaddedVector{L,Vec{W,T}}) where {L,W,T}
+    out = MutableFixedSizePaddedVector{L,T}(undef)
+    @inbounds for l ∈ 1:L
+        out[l] = SIMDPirates.vsum(vA[l])
+    end
+    ConstantFixedSizePaddedArray(out)
+end
+@inline function SIMDPirates.vsum(vA::AbstractFixedSizePaddedMatrix{M,N,Vec{W,T},P}) where {M,N,W,T,P}
+    out = MutableFixedSizePaddedMatrix{M,N,T}(undef)
+    @inbounds for n ∈ 1:N, m ∈ 1:M
+        out[m,n] = SIMDPirates.vsum(vA[m,n])
+    end
+    ConstantFixedSizePaddedArray(out)
+end
+
+@generated function zero!(A::AbstractMutableFixedSizePaddedMatrix{M,N,NTuple{W,Core.VecElement{T}},M}) where {M,N,W,T}
+    quote
+        $(Expr(:meta,:inline))
+        @inbounds for i ∈ 1:$(M*N)
+            A[i] = SIMDPirates.vbroadcast(Vec{$W,$T}, zero($T))
         end
-    else
-        S1 = S.parameters[1]
-        SR = prod(S.parameters[2:end])
-        q = quote end
-        outtup = Expr(:tuple, )
-        ind = 0
-        for j ∈ 1:SR
-            for i ∈ 1:S1
-                ind += 1
-                push!(q.args, :($(Symbol(:A_,i,:_,j)) =  SIMDPirates.vsum(vA[$ind])))
-                push!(outtup.args, Symbol(:A_,i,:_,j))
-            end
-            for i ∈ S1+1:padded_rows
-                push!(outtup.args, zero(T))
-            end
-        end
-        return quote
-            $(Expr(:meta,:inline))
-            @inbounds begin
-                $q
-            end
-            $(Expr(:call, Expr(:curly, ConstantFixedSizePaddedArray, S, T, N, padded_rows, L), outtup))
-        end
+        nothing
     end
 end

@@ -125,6 +125,27 @@ end
         ConstantFixedSizePaddedArray(mv)'
     end
 end
+@generated function Base.:*(
+            Adiagonal::Diagonal{T,<:AbstractMutableFixedSizePaddedVector{N,T,P}},
+            B::AbstractMutableFixedSizePaddedVector{N,T,P}) where {N,T,P}
+    quote
+        A = Adiagonal.diag
+        $(elementwise_product_quote(N,T,P))
+        mv
+    end
+end
+@generated function Base.:*(
+            Aadjoint::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedVector{N,T,P}},
+            Bdiagonal::Diagonal{T,<:AbstractMutableFixedSizePaddedVector{N,T,P}}
+        ) where {N,T,P}
+    quote
+        A = Aadjoint.parent
+        B = Bdiagonal.diag
+        $(elementwise_product_quote(N,T,P))
+        mv'
+    end
+end
+
 
 @inline function Base.:+(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
     mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
@@ -132,6 +153,17 @@ end
         mv[i] = A[i] + B[i]
     end
     ConstantFixedSizePaddedArray(mv)
+end
+@inline function Base.:+(A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}, B::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
+    @fastmath @inbounds @simd ivdep for i ∈ 1:L
+        mv[i] = A[i] + B[i]
+    end
+    mv
+end
+@inline function Base.:+(A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}},
+                        B::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}) where {S,T,N,P,L}
+    (A' + B')'
 end
 @inline function Base.:+(a::T, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
     mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
@@ -146,6 +178,22 @@ end
         mv[i] = A[i] + b
     end
     ConstantFixedSizePaddedArray(mv)
+end
+@inline function Base.:+(a::T, Badj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}) where {S,T<:Number,N,P,L}
+    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
+    B = Badj.parent
+    @fastmath @inbounds @simd ivdep for i ∈ 1:L
+        mv[i] = a + B[i]
+    end
+    ConstantFixedSizePaddedArray(mv)'
+end
+@inline function Base.:+(Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}, b::T) where {S,T<:Number,N,P,L}
+    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
+    A = Aadj.parent
+    @fastmath @inbounds @simd ivdep for i ∈ 1:L
+        mv[i] = A[i] + b
+    end
+    ConstantFixedSizePaddedArray(mv)'
 end
 @inline function Base.:-(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
     mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
@@ -174,12 +222,24 @@ end
     end
     ConstantFixedSizePaddedArray(mv)
 end
-@inline function Base.:*(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, b::T) where {S,T<:Number,N,P,L}
+@inline extract_λ(a) = a
+@inline extract_λ(a::UniformScaling) = a.λ
+@inline function Base.:*(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,P,L}
     mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
+    b = extract_λ(bλ)
     @fastmath @inbounds @simd ivdep for i ∈ 1:L
         mv[i] = A[i] * b
     end
     ConstantFixedSizePaddedArray(mv)
+end
+@inline function Base.:*(Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,P,L}
+    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
+    A = Aadj.parent
+    b = extract_λ(bλ)
+    @fastmath @inbounds @simd ivdep for i ∈ 1:L
+        mv[i] = A[i] * b
+    end
+    ConstantFixedSizePaddedArray(mv)'
 end
 @inline function Base.:*(a::T, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
     mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
@@ -205,7 +265,7 @@ end
     end
     if L1 < L2
         return quote
-            mv = MutableFixedSizePaddedVectpr{$P2,$T,$L2}(undef)
+            mv = MutableFixedSizePaddedVector{$P2,$T,$L2}(undef)
             @fastmath @inbounds @simd ivdep for i ∈ 1:$L1
                 mv[i] = a * x[i] + y[i]
             end
@@ -216,7 +276,7 @@ end
         end
     elseif L1 > L2
         return quote
-            mv = MutableFixedSizePaddedVectpr{$P1,$T,$L1}(undef)
+            mv = MutableFixedSizePaddedVector{$P1,$T,$L1}(undef)
             @fastmath @inbounds @simd ivdep for i ∈ 1:$L2
                 mv[i] = a * x[i] + y[i]
             end
@@ -227,7 +287,7 @@ end
         end
     else
         return quote
-            mv = MutableFixedSizePaddedVectpr{$P1,$T,$L1}(undef)
+            mv = MutableFixedSizePaddedVector{$P1,$T,$L1}(undef)
             @fastmath @inbounds @simd ivdep for i ∈ 1:$L1
                 mv[i] = a * x[i] + y[i]
             end

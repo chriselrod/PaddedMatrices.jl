@@ -118,6 +118,14 @@ const MutableFixedSizePaddedMatrix{M,N,T,P,L} = MutableFixedSizePaddedArray{Tupl
     SD = Tuple{S...}
     init_mutable_fs_padded_array_quote(SD, T)
 end
+@generated function MutableFixedSizePaddedArray{S,T,N,P}(::UndefInitializer) where {S,T,N,P}
+    L = P
+    SV = S.parameters
+    for n in 2:N
+        L *= SV[n]
+    end
+    :(MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef))
+end
 
 @generated function Base.zero(::Type{<:MutableFixedSizePaddedArray{S,T}}) where {S,T}
     N,P,L = calc_NPL(S, T)
@@ -142,6 +150,35 @@ end
         ma
     end
 end
+@generated function Base.zero(::Type{<:MutableFixedSizePaddedArray{S,Vec{W,T}}}) where {S,W,T}
+    SV = S.parameters
+    P = SV[1]
+    L = prod(SV)
+    N = length(SV)
+    quote
+        $(Expr(:meta,:inline))
+        ma = MutableFixedSizePaddedArray{$S,Vec{$W,$T},$N,$P,$L}(undef)
+        @inbounds for l ∈ 1:$L
+            ma[l] = SIMDPirates.vbroadcast(Vec{$W,$T}, zero($T))
+        end
+        ma
+    end
+end
+
+function Base.copy(A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L}
+    B = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
+    @inbounds for l ∈ 1:L
+        B[l] = A[l]
+    end
+    B
+end
+function Base.copyto!(B::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}, A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L}
+    @inbounds for l ∈ 1:L
+        B[l] = A[l]
+    end
+    B
+end
+Base.similar(A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L} = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
 
 # function Base.fill()
 
@@ -153,25 +190,27 @@ Wraps a pointer, while passing info on the size of the block and stride.
 """
 struct PtrArray{S,T,N,R,L} <: AbstractMutableFixedSizePaddedArray{S,T,N,R,L}
     ptr::Ptr{T}
-    @generated function PtrArray{S,T,N,R}(ptr::Ptr{T}) where {S,T,N,R}
-        L = R
-        for i ∈ 2:N
-            L *= S.parameters[i]
-        end
-        :(PtrArray{$S,$T,$N,$R,$L}(ptr))
+end
+@generated function PtrArray{S,T,N,R}(ptr::Ptr{T}) where {S,T,N,R}
+    L = R
+    for i ∈ 2:N
+        L *= S.parameters[i]
     end
-    @generated function PtrArray{S,T}(ptr::Ptr{T}) where {S,T}
-        SV = S.parameters
-        N = length(SV)
-        R, L = calculate_L_from_size(SV)
-        :(PtrArray{$S,$T,$N,$R,$L}(ptr))
-    end
+    :(PtrArray{$S,$T,$N,$R,$L}(ptr))
+end
+@generated function PtrArray{S,T}(ptr::Ptr{T}) where {S,T}
+    N, P, L = calc_NPL(S, T)
+    :(PtrArray{$S,$T,$N,$P,$L}(ptr))
+end
+@generated function PtrArray{S}(ptr::Ptr{T}) where {S,T}
+    N, P, L = calc_NPL(S, T)
+    :(PtrArray{$S,$T,$N,$P,$L}(ptr))
 end
 const PtrVector{N,T,R,L} = PtrArray{Tuple{N},T,1,R,L} # R and L will always be the same...
 const PtrMatrix{M,N,T,R,L} = PtrArray{Tuple{M,N},T,2,R,L}
 
 
-@inline Base.pointer(ptr::PtrMatrix) = ptr.ptr
+@inline Base.pointer(ptr::PtrArray) = ptr.ptr
 @inline Base.pointer(A::AbstractMutableFixedSizePaddedArray{S,T}) where {S,T} = Base.unsafe_convert(Ptr{T}, pointer_from_objref(A))
 @inline Base.pointer(A::AbstractMutableFixedSizePaddedArray{S,NTuple{W,Core.VecElement{T}}}) where {S,T,W} = Base.unsafe_convert(Ptr{T}, pointer_from_objref(A))
 
@@ -260,11 +299,11 @@ end
     @boundscheck i <= full_length(A) || ThrowBoundsError("Index $i > full length $L.")
     SIMDPirates.vload(Vec{W,T}, pointer(A) + sizeof(Vec{W,T}) * (i - 1))
 end
-@inline function Base.getindex(A::AbstractMutableFixedSizePaddedArray{S,Vec{W,T}}, i::Int) where {S,T,L,W}
+@inline function Base.getindex(A::AbstractMutableFixedSizePaddedArray{S,Vec{W,T},N,R,L}, i::Int) where {S,T,L,W,N,R}
     @boundscheck i <= L || ThrowBoundsError("Index $i > full length $L.")
     SIMDPirates.vload(Vec{W,T}, pointer(A) + sizeof(Vec{W,T}) * (i - 1))
 end
-@inline function Base.getindex(A::LinearAlgebra.Adjoint{Union{},<: AbstractMutableFixedSizePaddedArray{S,Vec{W,T}}}, i::Int) where {S,T,L,W}
+@inline function Base.getindex(A::LinearAlgebra.Adjoint{Union{},<: AbstractMutableFixedSizePaddedArray{S,Vec{W,T},N,R,L}}, i::Int) where {S,T,L,W,N,R}
     @boundscheck i <= L || ThrowBoundsError("Index $i > full length $L.")
     SIMDPirates.vload(Vec{W,T}, pointer(A.parent) + sizeof(Vec{W,T}) * (i - 1))
 end

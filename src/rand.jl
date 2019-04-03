@@ -291,6 +291,15 @@ end
 function Random.randexp(::Type{<: MutableFixedSizePaddedArray{S,T}}) where {S,T}
     randexp!(MutableFixedSizePaddedArray{S,T}(undef))
 end
+function Random.rand(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}) where {S,T}
+    rand!(rng, MutableFixedSizePaddedArray{S,T}(undef))
+end
+function Random.randn(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}) where {S,T}
+    randn!(rng, MutableFixedSizePaddedArray{S,T}(undef))
+end
+function Random.randexp(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}) where {S,T}
+    randexp!(rng, MutableFixedSizePaddedArray{S,T}(undef))
+end
 
 
 function rand_expr(expr, R)
