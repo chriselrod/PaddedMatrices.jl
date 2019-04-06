@@ -180,6 +180,22 @@ function Base.copyto!(B::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}, A::Abst
 end
 Base.similar(A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L} = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
 
+function MutableFixedSizePaddedArray(A::AbstractArray{T,N}) where {T,N}
+    mA = MutableFixedSizePaddedArray{Tuple{size(A)...},Float64}(undef)
+    mA .= A
+    mA
+end
+function MutableFixedSizePaddedVector(A::AbstractVector{T}) where {T}
+    mA = MutableFixedSizePaddedVector{length(A),Float64}(undef)
+    mA .= A
+    mA
+end
+function MutableFixedSizePaddedMatrix(A::AbstractMatrix{T}) where {T}
+    M,N = size(A)
+    mA = MutableFixedSizePaddedMatrix{M,N,Float64}(undef)
+    mA .= A
+    mA
+end
 # function Base.fill()
 
 # end

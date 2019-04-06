@@ -27,3 +27,12 @@ end
         out
     end
 end
+
+function Base.cumsum!(A::AbstractMutableFixedSizePaddedVector{M}) where {M}
+    @inbounds for m ∈ 2:M
+        A[m] += A[m-1]
+    end
+    A
+end
+Base.cumsum(A::AbstractMutableFixedSizePaddedVector) = cumsum!(copy(A))
+Base.cumsum(A::AbstractConstantFixedSizePaddedVector) = ConstantFixedSizePaddedVector(cumsum!(MutableFixedSizePaddedVector(A)))

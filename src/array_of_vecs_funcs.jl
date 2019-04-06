@@ -283,3 +283,13 @@ end
         nothing
     end
 end
+
+
+@inline function mask!(A::AbstractMutableFixedSizePaddedMatrix{M,N,NTuple{W,Core.VecElement{T}},M,L}, mask::Unsigned) where {M,N,W,T,L}
+    mask == zero(VectorizationBase.mask_type(T)) && return nothing
+    z = SIMDPirates.vbroadcast(NTuple{W,Core.VecElement{T}}, zero(T))
+    @inbounds for l ∈ 1:L
+        A[l] = SIMDPirates.vifelse(mask, A[l], z)
+    end
+    nothing
+end

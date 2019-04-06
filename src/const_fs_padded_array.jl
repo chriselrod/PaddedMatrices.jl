@@ -88,6 +88,15 @@ end
 #     # ConstantFixedSizePaddedArray{S,T,2,P,L}(A.data)
 # end
 
+# Type unstable convenience method
+function ConstantFixedSizePaddedVector(x::Vector{T}) where {T}
+    @assert isbitstype(T)
+    N = length(x)
+    Wm1 = VectorizationBase.pick_vector_width(N, T) - 1
+    L = (N + Wm1) & ~Wm1
+    ConstantFixedSizePaddedVector{N,T,L,L}(ntuple(i -> i > N ? zero(T) : x[i], L))
+end
+
 @generated function Base.size(::AbstractConstantFixedSizePaddedArray{S,T,N}) where {S,T,N}
     quote
         $(Expr(:meta, :inline))
@@ -168,6 +177,12 @@ end
         push!(q.args, last)
     end
     q
+end
+
+@generated function Base.zero(::Type{<:ConstantFixedSizePaddedVector{L,T}}) where {L,T}
+    Wm1 = VectorizationBase.pick_vector_width(L,T)
+    N = (L + Wm1) & ~Wm1
+    :(ConstantFixedSizePaddedVector{$L,$T,$N,$N}($(Expr(:tuple,zeros(N)...))))
 end
 
 struct vStaticPaddedArray{SPA}

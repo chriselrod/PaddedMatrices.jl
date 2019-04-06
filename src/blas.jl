@@ -760,3 +760,30 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
     end # if P_remain > 0
     q
 end
+
+
+@generated function Base.:*(A::LinearAlgebra.Diagonal{T,<:AbstractFixedSizePaddedVector{M,T,P}}, B::AbstractFixedSizePaddedMatrix{M,N,T,P}) where {M,N,T,P}
+    W, Wshift = VectorizationBase.pick_vector_width_shift(P, T)
+    reps = P >> Wshift
+    V = Vec{W,T}
+    q = quote
+        C = MutableFixedSizePaddedMatrix{$M,$N,$T}(undef)
+        va = VectorizationBase.vectorizable(A.diag)
+        vB = VectorizationBase.vectorizable(B)
+        vC = VectorizationBase.vectorizable(C)
+        Base.Cartesian.@nexprs $reps r -> va_r = SIMDPirates.vload($V, va + $W*(r-1))
+        for n ∈ 0:$(N-1)
+            Base.Cartesian.@nexprs $reps r -> begin
+                prod_r = SIMDPirates.vmul(va_r, SIMDPirates.vload($V, vB + $P*n + $W*(r-1) ))
+                SIMDPirates.vstore!(vC + $P*n + $W*(r-1), prod_r)
+            end
+        end
+        #C
+    end
+    if B <: AbstractConstantFixedSizePaddedMatrix
+        push!(q.args, :(ConstantFixedSizePaddedMatrix(C)))
+    else
+        push!(q.args, :(C))
+    end
+    q
+end
