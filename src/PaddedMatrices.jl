@@ -19,6 +19,7 @@ export @Constant, @Mutable,
 struct Static{N} end
 Base.@pure Static(N) = Static{N}()
 (::Base.Colon)(i::Int64,::Static{N}) where {N} = i:N
+tonumber(::Static{N}) where {N} = N
 
 abstract type AbstractPaddedArray{T,N} <: AbstractArray{T,N} end
 abstract type AbstractFixedSizePaddedArray{S,T,N,P,L} <: AbstractPaddedArray{T,N} end

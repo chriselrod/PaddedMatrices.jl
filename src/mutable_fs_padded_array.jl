@@ -196,9 +196,15 @@ function MutableFixedSizePaddedMatrix(A::AbstractMatrix{T}) where {T}
     mA .= A
     mA
 end
-# function Base.fill()
 
-# end
+mutable_similar(A::AbstractArray) = similar(A)
+mutable_similar(A::AbstractFixedSizePaddedArray{S,T,N,R,L}) where {S,T,N,R,L} = MutableFixedSizePaddedArray{S,T,N,R,L}(undef)
+function Base.fill!(A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}, v::T) where {S,T,N,R,L}
+    @inbounds for l ∈ 1:L
+        A[l] = v
+    end
+    A
+end
 
 """
 This is only meant to make recursive algorithms easiesr to implement.

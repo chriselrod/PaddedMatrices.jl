@@ -184,6 +184,8 @@ end
     N = (L + Wm1) & ~Wm1
     :(ConstantFixedSizePaddedVector{$L,$T,$N,$N}($(Expr(:tuple,zeros(N)...))))
 end
+@inline return_mutable(A::MutableFixedSizePaddedArray) = A
+@inline return_mutable(A::ConstantFixedSizePaddedArray) = MutableFixedSizePaddedArray(A)
 
 struct vStaticPaddedArray{SPA}
     spa::SPA
@@ -231,6 +233,7 @@ end
     v = vload(V, A)
     vifelse(mask, v, vbroadcast(V, zero(T)))
 end
+
 @inline Base.unsafe_load(A::vStaticPaddedArray) = @inbounds A.spa.data[A.offset + 1]
 @inline Base.unsafe_load(A::vStaticPaddedArray, i::Int) = @inbounds A.spa.data[A.offset + i]
 @inline VectorizationBase.load(A::vStaticPaddedArray) = @inbounds A.spa.data[A.offset + 1]
