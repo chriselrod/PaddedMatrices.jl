@@ -101,7 +101,7 @@ function sub2ind_expr(S, P)
     :(i[1] + $P * $ex)
 end
 
-
+function vload! end
 
 
 include("padded_array.jl")

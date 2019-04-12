@@ -164,6 +164,16 @@ end
         ma
     end
 end
+function zero!(A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L}
+    @inbounds for i ∈ 1:L
+        A[i] = zero(T)
+    end
+end
+function zero!(A::AbstractMutableFixedSizePaddedArray{S,Vec{W,T},N,P,L}) where {S,W,T,N,P,L}
+    @inbounds for i ∈ 1:L
+        A[i] = SIMDPirates.vbroadcast(Vec{W,T}, zero(T))
+    end
+end
 
 function Base.copy(A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L}
     B = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
