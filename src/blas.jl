@@ -37,12 +37,21 @@ end
 end
 
 
-@generated function Base.:*(A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR}, X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}) where {M,N,P,T,ADR,XR}
-    quote
-        D = AbstractMutableFixedSizePaddedMatrix{$(Tuple{M,P}),$T,2,$ADR,$(ADR*P)}(undef)
+@generated function Base.:*(
+                A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR},
+                X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}
+            ) where {M,N,P,T,ADR,XR}
+    q = quote
+        D = MutableFixedSizePaddedMatrix{$M,$P,$T,$ADR,$(ADR*P)}(undef)
         $(mulquote(ADR,N,P,ADR,XR,T))
-        ConstantFixedSizePaddedMatrix(D)
+        # ConstantFixedSizePaddedMatrix(D)
     end
+    if M * P > 224
+        push!(q.args, :D)
+    else
+        push!(q.args, :(ConstantFixedSizePaddedMatrix(D)))
+    end
+    q
 end
 
 
@@ -222,6 +231,65 @@ end
     end
     ConstantFixedSizePaddedArray(mv)
 end
+
+
+@generated function Base.sum!(s::AbstractMutableFixedSizePaddedVector{P,T,L,L}, A::AbstractPaddedMatrix{T}) where {T,P,L}
+    stride_bytes = L*sizeof(T)
+    sample_mat_stride = L
+
+    W, Wshift = VectorizationBase.pick_vector_width_shift(P, T)
+
+    WT = W * sizeof(T)
+    V = Vec{W,T}
+
+    # +2, to divide by an additional 4
+    iterations = L >> (Wshift + 2)
+    r = L & ((W << 2) - 1)
+    riter = r >> Wshift
+    remainder_quote = quote
+        Base.Cartesian.@nexprs $riter j -> begin
+            offset_j = $(4WT*iterations) + $WT*(j-1)
+            x_j = SIMDPirates.vbroadcast($V, zero($T))
+        end
+        for n ∈ 0:N-1
+            offset_n = n * $stride_bytes
+            Base.Cartesian.@nexprs $riter j -> begin
+                x_j = SIMDPirates.vadd(x_j, SIMDPirates.vload($V, ptrA + offset_n + offset_j))
+            end
+        end
+        Base.Cartesian.@nexprs $riter j -> SIMDPirates.vstore!(ptrs + offset_j, x_j)
+    end
+
+    quote
+        # x̄ = zero(PaddedMatrices.MutableFixedSizePaddedVector{P,T})
+        # s = PaddedMatrices.MutableFixedSizePaddedVector{$P,$T}(undef)
+        ptrs = pointer(s)
+        ptrA = pointer(A)
+        N = size(A,2)
+        GC.@preserve s A begin
+            for i ∈ 0:$(iterations-1)
+                Base.Cartesian.@nexprs 4 j -> begin
+                    offset_j = $(4WT)*i + $WT*(j-1)
+                    x_j = SIMDPirates.vbroadcast($V, zero($T))
+                end
+                for n ∈ 0:N-1
+                    offset_n = n * $stride_bytes
+                    Base.Cartesian.@nexprs 4 j -> begin
+                        x_j = SIMDPirates.vadd(x_j, SIMDPirates.vload($V, ptrA + offset_n + offset_j))
+                    end
+                end
+                Base.Cartesian.@nexprs 4 j -> SIMDPirates.vstore!(ptrs + offset_j, x_j)
+            end
+            $(riter == 0 ? nothing : remainder_quote)
+        end
+        s
+    end
+end
+# @generated function prodmuls(coefficients::NTuple{N,T}, As::NTuple{N,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}) where {S,T,N,P,L}
+
+
+# end
+
 @inline extract_λ(a) = a
 @inline extract_λ(a::UniformScaling) = a.λ
 @inline function Base.:*(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,P,L}

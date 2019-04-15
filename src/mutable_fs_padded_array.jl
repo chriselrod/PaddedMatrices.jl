@@ -415,7 +415,7 @@ end
 end
 
 @inline Base.unsafe_convert(::Type{Ptr{T}}, A::AbstractMutableFixedSizePaddedArray) where {T} = Base.unsafe_convert(Ptr{T}, pointer_from_objref(A))
-@generated function strides(A::AbstractFixedSizePaddedArray{S,T,N,R,L}) where {S,T,N,R,L}
+@generated function Base.strides(A::AbstractFixedSizePaddedArray{S,T,N,R,L}) where {S,T,N,R,L}
     SV = S.parameters
     N = length(SV)
     N == 1 && return (1,)
@@ -427,6 +427,10 @@ end
     end
     q
 end
+# @inline function Base.stride(A::AbstractFixedSizePaddedArray{S,T,N,R}, n) where {S,T,N,R}
+#     n == 1 && return R
+#     S.parameters[n]
+# end
 
 to_tuple(S) = tuple(S.parameters...)
 @generated Base.size(::AbstractFixedSizePaddedArray{S}) where {S} = to_tuple(S)

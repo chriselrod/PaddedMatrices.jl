@@ -13,7 +13,8 @@ export @Constant, @Mutable,
     ConstantFixedSizePaddedMatrix,
     MutableFixedSizePaddedArray,
     MutableFixedSizePaddedVector,
-    MutableFixedSizePaddedMatrix
+    MutableFixedSizePaddedMatrix,
+    PaddedVector, PaddedMatrix, PaddedArray
 
 
 struct Static{N} end
