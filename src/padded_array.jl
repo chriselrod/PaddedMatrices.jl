@@ -11,13 +11,14 @@ const PaddedMatrix{T} = PaddedArray{T,2}
         W, Wshift = VectorizationBase.pick_vector_width_shift(T)
         TwoN = 2nrow
         if W < TwoN
-            rem = (nrow & (W-1))
-            padded_rows = rem == 0 ? nrow : nrow + W - rem
+            Wm1 = W - 1
+            rem = nrow & Wm1
+            padded_rows = (nrow + Wm1) & ~Wm1
 
             nvector_loads = padded_rows >> Wshift
 
             data = Array{$T,$N}(undef,
-                $(Expr(:tuple, padded_rows, [:(S[$n]) for n ∈ 2:N]...))
+                $(Expr(:tuple, :padded_rows, [:(S[$n]) for n ∈ 2:N]...))
             )
             @nloops $(N-1) i j -> 1:S[j+1] begin
                 @inbounds for i_0 ∈ padded_rows+1-W:padded_rows
@@ -29,14 +30,30 @@ const PaddedMatrix{T} = PaddedArray{T,2}
         while W >= TwoN
             W >>= 1
         end
-        rem = (nrow & (W-1))
-        padded_rows = rem == 0 ? nrow : nrow + W - rem
+        Wm1 = W - 1
+        rem = nrow & Wm1
+        padded_rows = (nrow + Wm1) & ~Wm1
 
-        data = zeros($T, $(Expr(:tuple, padded_rows, [:(S[$n]) for n ∈ 2:N]...)) )
+        data = zeros($T, $(Expr(:tuple, :padded_rows, [:(S[$n]) for n ∈ 2:N]...)) )
         PaddedArray{$T,$N}(data, 1, S)
     end
 end
+function PaddedArray(A::AbstractArray{T,N}) where {T,N}
+    pA = PaddedArray{T}(undef, size(A))
+    @inbounds for i ∈ CartesianIndices(A)
+        pA[i] = A[i]
+    end
+    pA
+end
+# function PaddedArray{T where T,N}(A::AbstractArray{T,N}) where {T,N}
+#     pA = PaddedArray{T}(undef, size(A))
+#     @inbounds for i ∈ CartesianIndices(A)
+#         pA[i] = A[i]
+#     end
+#     pA
+# end
 function Base.zeros(::Type{PaddedArray{T}}, S::NTuple{N}) where {T,N}
+    nrow = S[1]
     W, Wshift = VectorizationBase.pick_vector_width_shift(S[1], T)
     rem = (nrow & (W-1))
     padded_rows = rem == 0 ? nrow : nrow + W - rem
@@ -73,6 +90,7 @@ Base.size(A::PaddedArray) = A.size
 @inline Base.setindex!(A::PaddedArray, v, I...) = Base.setindex!(A.data, v, I...)
 
 @inline Base.pointer(A::PaddedArray) = pointer(A.data)
+@inline Base.unsafe_convert(::Type{Ptr{T}}, A::PaddedArray{T}) where {T} = pointer(A)
 @inline VectorizationBase.vectorizable(A::PaddedArray) = VectorizationBase.vpointer(pointer(A.data))
 
 @inline Base.strides(A::PaddedArray) = strides(A.data)

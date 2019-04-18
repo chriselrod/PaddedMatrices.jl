@@ -242,9 +242,10 @@ const PtrVector{N,T,R,L} = PtrArray{Tuple{N},T,1,R,L} # R and L will always be t
 const PtrMatrix{M,N,T,R,L} = PtrArray{Tuple{M,N},T,2,R,L}
 
 
-@inline Base.pointer(ptr::PtrArray) = ptr.ptr
+@inline Base.pointer(A::PtrArray) = A.ptr
 @inline Base.pointer(A::AbstractMutableFixedSizePaddedArray{S,T}) where {S,T} = Base.unsafe_convert(Ptr{T}, pointer_from_objref(A))
 @inline Base.pointer(A::AbstractMutableFixedSizePaddedArray{S,NTuple{W,Core.VecElement{T}}}) where {S,T,W} = Base.unsafe_convert(Ptr{T}, pointer_from_objref(A))
+@inline Base.pointer(A::PtrArray{S,NTuple{W,Core.VecElement{T}}}) where {S,T,W} = Base.unsafe_convert(Ptr{T}, A.ptr)
 
 
 @inline VectorizationBase.vectorizable(A::AbstractMutableFixedSizePaddedArray) = VectorizationBase.vpointer(pointer(A))
