@@ -38,7 +38,7 @@ function mul_block(V, W, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B
         loop_min = 0
         R3 = gemm
         initialize = quote
-            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout + $(mr + (p-1)*R3))) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
+            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout + $(W*mr + (p-1)*R3))) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
         end
     end
     quote
@@ -71,7 +71,7 @@ function mul_block(V, W, R1, R2, m_rep, N, P, poffset::Symbol, vA = :vA, B = :B,
         loop_min = 0
         R3 = gemm
         initialize = quote
-            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout + $mr + ($(p-1)+$poffset)*$R3)) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
+            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout + $(W*mr) + ($(p-1)+$poffset)*$R3)) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
         end
     end
     quote
@@ -115,7 +115,7 @@ function mul_block_nt(V, W, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B =
         loop_min = 0
         R3 = gemm
         initialize = quote
-            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout + $(mr + (p-1)*R3))) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
+            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout + $(W*mr + (p-1)*R3))) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
         end
     end
     quote
@@ -148,7 +148,7 @@ function mul_block_nt(V, W, R1, R2, m_rep, N, P, poffset::Symbol, vA = :vA, B = 
         loop_min = 0
         R3 = gemm
         initialize = quote
-            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout + $mr + ($(p-1)+$poffset)*$R3)) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
+            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout + $(W*mr) + ($(p-1)+$poffset)*$R3)) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
         end
     end
     quote
