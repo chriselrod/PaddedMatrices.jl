@@ -323,46 +323,57 @@ end
     end
     ConstantFixedSizePaddedArray(mv)
 end
-@generated function SIMDPirates.vmuladd(a::T,
-                x::Union{<:AbstractFixedSizePaddedVector{P1,T,L1},LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{P1,T,L1}}}, y::Union{<:AbstractFixedSizePaddedVector{P2,T,L2},LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{P2,T,L2}}}
-                ) where {T,P1,L1,P2,L2}
-    if x <: LinearAlgebra.Adjoint
-        @assert y <: LinearAlgebra.Adjoint
-    else
-        @assert !( y <: LinearAlgebra.Adjoint )
+@inline function SIMDPirates.vmuladd(a::T,
+                x::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{N,T,L,L}},
+                y::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{N,T,L,L}}
+            ) where {N,T,L}
+    mv = MutableFixedSizePaddedVector{N,T,L,L}(undef)
+    @fastmath @inbounds @simd ivdep for i ∈ 1:L
+        mv[i] = a * x[i] + y[i]
     end
-    if L1 < L2
-        return quote
-            mv = MutableFixedSizePaddedVector{$P2,$T,$L2}(undef)
-            @fastmath @inbounds @simd ivdep for i ∈ 1:$L1
-                mv[i] = a * x[i] + y[i]
-            end
-            @inbounds @simd ivdep for i ∈ $(L1+1):$L2
-                mv[i] = y[i]
-            end
-            $( x <: LinearAlgebra.Adjoint ? :(ConstantFixedSizePaddedArray(mv)') : :(ConstantFixedSizePaddedArray(mv)) )
-        end
-    elseif L1 > L2
-        return quote
-            mv = MutableFixedSizePaddedVector{$P1,$T,$L1}(undef)
-            @fastmath @inbounds @simd ivdep for i ∈ 1:$L2
-                mv[i] = a * x[i] + y[i]
-            end
-            @inbounds @simd ivdep for i ∈ $(L2+1):$L1
-                mv[i] = a * x[i]
-            end
-            $( x <: LinearAlgebra.Adjoint ? :(ConstantFixedSizePaddedArray(mv)') : :(ConstantFixedSizePaddedArray(mv)) )
-        end
-    else
-        return quote
-            mv = MutableFixedSizePaddedVector{$P1,$T,$L1}(undef)
-            @fastmath @inbounds @simd ivdep for i ∈ 1:$L1
-                mv[i] = a * x[i] + y[i]
-            end
-            $( x <: LinearAlgebra.Adjoint ? :(ConstantFixedSizePaddedArray(mv)') : :(ConstantFixedSizePaddedArray(mv)) )
-        end
-    end
+    ConstantFixedSizePaddedArray(mv)
 end
+
+# @generated function SIMDPirates.vmuladd(a::T,
+#                 x::Union{<:AbstractFixedSizePaddedVector{P1,T,L1},LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{P1,T,L1}}}, y::Union{<:AbstractFixedSizePaddedVector{P2,T,L2},LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{P2,T,L2}}}
+#                 ) where {T,P1,L1,P2,L2}
+#     if x <: LinearAlgebra.Adjoint
+#         @assert y <: LinearAlgebra.Adjoint
+#     else
+#         @assert !( y <: LinearAlgebra.Adjoint )
+#     end
+#     if L1 < L2
+#         return quote
+#             mv = MutableFixedSizePaddedVector{$P2,$T,$L2}(undef)
+#             @fastmath @inbounds @simd ivdep for i ∈ 1:$L1
+#                 mv[i] = a * x[i] + y[i]
+#             end
+#             @inbounds @simd ivdep for i ∈ $(L1+1):$L2
+#                 mv[i] = y[i]
+#             end
+#             $( x <: LinearAlgebra.Adjoint ? :(ConstantFixedSizePaddedArray(mv)') : :(ConstantFixedSizePaddedArray(mv)) )
+#         end
+#     elseif L1 > L2
+#         return quote
+#             mv = MutableFixedSizePaddedVector{$P1,$T,$L1}(undef)
+#             @fastmath @inbounds @simd ivdep for i ∈ 1:$L2
+#                 mv[i] = a * x[i] + y[i]
+#             end
+#             @inbounds @simd ivdep for i ∈ $(L2+1):$L1
+#                 mv[i] = a * x[i]
+#             end
+#             $( x <: LinearAlgebra.Adjoint ? :(ConstantFixedSizePaddedArray(mv)') : :(ConstantFixedSizePaddedArray(mv)) )
+#         end
+#     else
+#         return quote
+#             mv = MutableFixedSizePaddedVector{$P1,$T,$L1}(undef)
+#             @fastmath @inbounds @simd ivdep for i ∈ 1:$L1
+#                 mv[i] = a * x[i] + y[i]
+#             end
+#             $( x <: LinearAlgebra.Adjoint ? :(ConstantFixedSizePaddedArray(mv)') : :(ConstantFixedSizePaddedArray(mv)) )
+#         end
+#     end
+# end
 @inline function SIMDPirates.vfnmadd(a::T, x::AbstractFixedSizePaddedArray{S,T,N,P,L}, y::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
     mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
     @fastmath @inbounds @simd ivdep for i ∈ 1:L
