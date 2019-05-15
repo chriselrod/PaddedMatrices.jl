@@ -14,11 +14,13 @@ export @Constant, @Mutable,
     MutableFixedSizePaddedArray,
     MutableFixedSizePaddedVector,
     MutableFixedSizePaddedMatrix,
-    PaddedVector, PaddedMatrix, PaddedArray
+    PaddedVector, PaddedMatrix, PaddedArray, ×
 
 
 struct Static{N} end
 Base.@pure Static(N) = Static{N}()
+static_type(::Static{N}) where {N} = N
+static_type(::Type{Static{N}}) where {N} = N
 (::Base.Colon)(i::Int64,::Static{N}) where {N} = i:N
 tonumber(::Static{N}) where {N} = N
 
@@ -26,6 +28,8 @@ abstract type AbstractPaddedArray{T,N} <: AbstractArray{T,N} end
 abstract type AbstractFixedSizePaddedArray{S,T,N,P,L} <: AbstractPaddedArray{T,N} end
 abstract type AbstractMutableFixedSizePaddedArray{S,T,N,P,L} <: AbstractFixedSizePaddedArray{S,T,N,P,L} end
 abstract type AbstractConstantFixedSizePaddedArray{S,T,N,P,L} <: AbstractFixedSizePaddedArray{S,T,N,P,L} end
+
+const AbstractPaddedArrayOrAdjoint{T,N} = Union{AbstractPaddedArray{T,N},<:Adjoint{T,<:AbstractPaddedArray{T,N}}}
 
 const AbstractPaddedVector{T} = AbstractPaddedArray{T,1}
 const AbstractPaddedMatrix{T} = AbstractPaddedArray{T,2}
@@ -115,5 +119,6 @@ include("linear_algebra.jl")
 include("rand.jl")
 include("utilities.jl")
 include("seed_increments.jl")
+include("broadcast.jl")
 
 end # module

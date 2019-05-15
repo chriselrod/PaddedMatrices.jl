@@ -5,7 +5,7 @@ struct PaddedArray{T,N} <: AbstractPaddedArray{T,N}
 end
 const PaddedVector{T} = PaddedArray{T,1}
 const PaddedMatrix{T} = PaddedArray{T,2}
-@generated function PaddedArray{T}(::UndefInitializer, S::NTuple{N}) where {T,N}
+@generated function PaddedArray{T}(::UndefInitializer, S::NTuple{N}, ::Val{Z} = Val(true)) where {T,N,Z}
     quote
         nrow = S[1]
         W, Wshift = VectorizationBase.pick_vector_width_shift(T)
@@ -20,9 +20,11 @@ const PaddedMatrix{T} = PaddedArray{T,2}
             data = Array{$T,$N}(undef,
                 $(Expr(:tuple, :padded_rows, [:(S[$n]) for n ∈ 2:N]...))
             )
-            @nloops $(N-1) i j -> 1:S[j+1] begin
-                @inbounds for i_0 ∈ padded_rows+1-W:padded_rows
-                    ( @nref $N data n -> i_{n-1} ) = $(zero(T))
+            if $Z
+                @nloops $(N-1) i j -> 1:S[j+1] begin
+                    @inbounds for i_0 ∈ padded_rows+1-W:padded_rows
+                        ( @nref $N data n -> i_{n-1} ) = $(zero(T))
+                    end
                 end
             end
             return PaddedArray{$T,$N}(data, nvector_loads, S)
@@ -96,6 +98,11 @@ Base.size(A::PaddedArray) = A.size
 @inline Base.strides(A::PaddedArray) = strides(A.data)
 @inline Base.stride(A::PaddedArray, n::Integer) = stride(A.data, n)
 
+@inline function Base.copy(A::PaddedArray{T,N}) where {T,N}
+    PaddedArray(
+        copy(A.data), A.nvector_loads, A.size
+    )
+end
 
 @generated function muladd!(D::PaddedMatrix{T}, a::PaddedVector{T}, B::PaddedMatrix{T}, c::PaddedVector{T}) where {T}
     W, Wshift = VectorizationBase.pick_vector_width_shift(T)

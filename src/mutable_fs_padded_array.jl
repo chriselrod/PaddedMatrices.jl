@@ -439,3 +439,53 @@ to_tuple(S) = tuple(S.parameters...)
 
 # Do we want this, or L?
 @generated Base.length(::AbstractFixedSizePaddedArray{S}) where {S} = prod(to_tuple(S))
+
+
+staticrangelength(::Type{Static{R}}) where R = 1 + last(R) - first(R)
+"""
+Note that the stride will currently only be correct when N <= 2.
+Perhaps R should be made into a stride-tuple?
+"""
+@generated function sview(A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}, inds...) where {S,T,N,P,L}
+    @assert length(inds) == N
+    SV = S.parameters
+    s2 = Vector{Int}(undef, N)
+    local offset
+    for n ∈ 1:N
+        # @show inds[n], n
+        if inds[n] == Colon
+            s2[n] = SV[n]
+            if n == 1
+                offset = 0
+            end
+        else
+            @assert inds[n] <: Static
+            s2[n] = staticrangelength(inds[n])
+            if n == 1
+                offset = sizeof(T) * (first(static_type(inds[n]))-1)
+            end
+        end
+    end
+    S2 = Tuple{s2...}
+    quote
+        $(Expr(:meta,:inline))
+        PtrArray{$S2,$T,$N,$P,$(prod(s2))}(pointer(A) + $offset)
+    end
+end
+
+
+macro sview(expr)
+    @assert expr.head == :ref
+    q = Expr(:call, :(PaddedMatrices.sview), expr.args[1])
+    for n ∈ 2:length(expr.args)
+        original_ind = expr.args[n]
+        if original_ind isa Expr && original_ind.args[1] == :(:)
+            new_ind = :(PaddedMatrices.Static{$original_ind}())
+        else
+            new_ind = original_ind
+        end
+        push!(q.args, new_ind)
+    end
+    esc(q)
+end
+

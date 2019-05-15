@@ -42,11 +42,16 @@ end
                 X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}
             ) where {M,N,P,T,ADR,XR}
     q = quote
+        $(Expr(:meta,:inline))
         D = MutableFixedSizePaddedMatrix{$M,$P,$T,$ADR,$(ADR*P)}(undef)
+        pD = pointer(D)
+        pA = pointer(A)
+        pX = pointer(X)
         $(mulquote(ADR,N,P,ADR,XR,T))
         # ConstantFixedSizePaddedMatrix(D)
     end
-    if M * P > 224
+    # if M * P > 224
+    if M * P > 64
         push!(q.args, :D)
     else
         push!(q.args, :(ConstantFixedSizePaddedMatrix(D)))
@@ -78,6 +83,9 @@ end
                             X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}) where {M,N,P,T,ADR,XR}
     quote
         $(Expr(:meta,:inline))
+        pD = pointer(D)
+        pA = pointer(A)
+        pX = pointer(X)
         $(mulquote(ADR,N,P,ADR,XR,T))
     end
 end
@@ -443,6 +451,16 @@ D += A*X
 
     mulquote(ADR,N,P,ADR,XR,T,:kernel!)
 end
+
+function gemm(
+            D::AbstractMutableFixedSizePaddedMatrix{M,P,T,ADR},
+            A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR},
+            X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}
+        ) where {M,N,P,T,ADR,XR}
+    C = copy(D)
+    gemm!(C, A, X)
+    C
+end
 # @generated function gemm!(D::PtrMatrix{M,P,T,ADR},
 #                             A::PtrMatrix{M,N,T,ADR},
 #                             X::PtrMatrix{N,P,T,XR},
@@ -463,7 +481,8 @@ function mulquote(M,N,P,ADR,XR,T,init=:initkernel!,prefetchAX=nothing)
         if init == :kernel! || M*N*P > 14^3
             return cache_mulquote(M,N,P,ADR,XR,L1S,T,init,prefetchAX)
         else
-            return kernel_quote(M,N,P,ADR,XR,T,true,true)
+            # M, P, strideA, strideX, N, T
+            return kernel_quote(M,P,ADR,XR,N,T,true,true)
         end
         # return base_mulquote(M,N,P,ADR,XR,T)
     elseif num == 1
