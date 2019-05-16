@@ -94,8 +94,13 @@ end
 @generated function LinearAlgebra.mul!(D::AbstractMutableFixedSizePaddedVector{M,T,CDR},
                             A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR},
                             X::AbstractMutableFixedSizePaddedVector{N,T,XR}) where {M,N,P,T,ADR,XR,CDR}
-
-    mulquote(ADR,N,1,ADR,XR,T,:initkernel!,nothing,CDR)
+    quote
+        $(Expr(:meta,:inline))
+        pD = pointer(D)
+        pA = pointer(A)
+        pX = pointer(X)
+        $(mulquote(ADR,N,1,ADR,XR,T,:initkernel!,nothing,CDR))
+    end
 end
 # @generated function LinearAlgebra.mul!(D::PtrMatrix{M,P,T,ADR},
 #                             A::PtrMatrix{M,N,T,ADR},
