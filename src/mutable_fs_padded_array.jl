@@ -117,7 +117,7 @@ const MutableFixedSizePaddedMatrix{M,N,T,P,L} = MutableFixedSizePaddedArray{Tupl
 
 @generated function MutableFixedSizePaddedArray(::UndefInitializer, ::Val{S}, ::Type{T1}=Float64) where {S,T1}
     SD = Tuple{S...}
-    init_mutable_fs_padded_array_quote(SD, T)
+    init_mutable_fs_padded_array_quote(SD, T1)
 end
 @generated function MutableFixedSizePaddedArray{S,T,N,P}(::UndefInitializer) where {S,T,N,P}
     L = P
@@ -190,6 +190,7 @@ function Base.copyto!(B::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}, A::Abst
     B
 end
 Base.similar(A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L} = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
+Base.similar(A::AbstractMutableFixedSizePaddedArray{S,T1,N,P,L},T2) where {S,T1,T2,N,P,L} = MutableFixedSizePaddedArray{S,T2,N}(undef)
 
 function MutableFixedSizePaddedArray(A::AbstractArray{T,N}) where {T,N}
     mA = MutableFixedSizePaddedArray{Tuple{size(A)...},Float64}(undef)
