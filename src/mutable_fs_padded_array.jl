@@ -9,10 +9,11 @@ function calc_padding(nrow, T)
     # rem = nrow & Wm1
     (nrow + Wm1) & ~Wm1
 end
+calc_NPL(S::DataType, T) = calc_NPL(S.parameters, T)
 
-function calc_NPL(S, T)
+function calc_NPL(SV, T)
     # N, padded_rows, L = calc_NPL(S, T)
-    SV = S.parameters
+    # SV = S.parameters
     N = length(SV)
 
     nrow = SV[1]

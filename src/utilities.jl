@@ -36,3 +36,29 @@ function Base.cumsum!(A::AbstractMutableFixedSizePaddedVector{M}) where {M}
 end
 Base.cumsum(A::AbstractMutableFixedSizePaddedVector) = cumsum!(copy(A))
 Base.cumsum(A::AbstractConstantFixedSizePaddedVector) = ConstantFixedSizePaddedVector(cumsum!(MutableFixedSizePaddedVector(A)))
+
+@generated function Base.maximum(A::AbstractFixedSizePaddedArray{S,T,P,L}) where {S,T,P,L}
+    W, Wshift = VectorizationBase.pick_vector_width_shift(L, T)
+    quote
+        m = SIMDPirates.vbroadcast(Vec{$W, $T}, -Inf)
+        @vectorize $T for l ∈ 1:$L
+            a = A[l]
+            m = SIMDPirates.vmax(a, m)
+        end
+        SIMDPirates.maximum(m)
+    end
+end
+
+@generated function Base.maximum(::typeof(abs), A::AbstractFixedSizePaddedArray{S,T,P,L}) where {S,T,P,L}
+    W, Wshift = VectorizationBase.pick_vector_width_shift(L, T)
+    quote
+        m = SIMDPirates.vbroadcast(Vec{$W, $T}, -Inf)
+        @vectorize $T for l ∈ 1:$L
+            a = SIMDPirates.vabs(A[l])
+            m = SIMDPirates.vmax(a, m)
+        end
+        SIMDPirates.maximum(m)
+    end
+end
+
+@inline Base.pointer(x::Symmetric{T,MutableFixedSizePaddedMatrix{P,P,T,R,L}}) where {P,T,R,L} = pointer(x.data)
