@@ -123,7 +123,7 @@ end
         end
         if rrem > 0
             u_sym = gensym(:u_rem)
-            push!(u_exprs.args, :($u_sym = randn(rng, Vec{$rrem,$T}) ))
+            push!(q.args, :($u_sym = randn(rng, Vec{$rrem,$T}) ))
             push!(q.args, :(vstore!(ptr_A, $u_sym, $(L - rrem + 1))))
         end
     end

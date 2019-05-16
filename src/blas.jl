@@ -78,23 +78,24 @@ end
     @uviews Bdata mul!(C.data, A.data, @view(B.data[1:B.nrow,:]))
 end
 
-@generated function LinearAlgebra.mul!(D::AbstractMutableFixedSizePaddedMatrix{M,P,T,ADR},
+@generated function LinearAlgebra.mul!(D::AbstractMutableFixedSizePaddedMatrix{M,P,T,CDR},
                             A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR},
-                            X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}) where {M,N,P,T,ADR,XR}
+                            X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}) where {M,N,P,T,ADR,XR,CDR}
     quote
         $(Expr(:meta,:inline))
         pD = pointer(D)
         pA = pointer(A)
         pX = pointer(X)
-        $(mulquote(ADR,N,P,ADR,XR,T))
+        $(mulquote(ADR,N,P,ADR,XR,T,:initkernel!,nothing,CDR))
     end
 end
 
-@generated function LinearAlgebra.mul!(D::AbstractMutableFixedSizePaddedVector{M,T,ADR},
-                            A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR},
-                            X::AbstractMutableFixedSizePaddedVector{N,T,XR}) where {M,N,P,T,ADR,XR}
 
-    mulquote(ADR,N,1,ADR,XR,T)
+@generated function LinearAlgebra.mul!(D::AbstractMutableFixedSizePaddedVector{M,T,CDR},
+                            A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR},
+                            X::AbstractMutableFixedSizePaddedVector{N,T,XR}) where {M,N,P,T,ADR,XR,CDR}
+
+    mulquote(ADR,N,1,ADR,XR,T,:initkernel!,nothing,CDR)
 end
 # @generated function LinearAlgebra.mul!(D::PtrMatrix{M,P,T,ADR},
 #                             A::PtrMatrix{M,N,T,ADR},
@@ -475,14 +476,14 @@ function mulquote(D::AbstractMutableFixedSizePaddedMatrix{M,P,T,ADR},
 
     mulquote(ADR,N,P,ADR,XR,T,init)
 end
-function mulquote(M,N,P,ADR,XR,T,init=:initkernel!,prefetchAX=nothing)
+function mulquote(M,N,P,ADR,XR,T,init=:initkernel!,prefetchAX=nothing,CDR=ADR)
     (L1S, L2S, L3S), num = blocking_structure(M, N, P, T)
     if num == 0
         if init == :kernel! || M*N*P > 14^3
             return cache_mulquote(M,N,P,ADR,XR,L1S,T,init,prefetchAX)
         else
             # M, P, strideA, strideX, N, T
-            return kernel_quote(M,P,ADR,XR,N,T,true,true)
+            return kernel_quote(M,P,ADR,XR,N,T,true,true,CDR)
         end
         # return base_mulquote(M,N,P,ADR,XR,T)
     elseif num == 1
