@@ -78,28 +78,28 @@ end
     @uviews Bdata mul!(C.data, A.data, @view(B.data[1:B.nrow,:]))
 end
 
-@generated function LinearAlgebra.mul!(D::AbstractMutableFixedSizePaddedMatrix{M,P,T,CDR},
-                            A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR},
-                            X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}) where {M,N,P,T,ADR,XR,CDR}
+@generated function LinearAlgebra.mul!(D::AbstractMutableFixedSizePaddedMatrix{M,P,T,DR},
+                            A::AbstractMutableFixedSizePaddedMatrix{M,N,T,AR},
+                            X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}) where {M,N,P,T,AR,XR,DR}
     quote
         $(Expr(:meta,:inline))
         pD = pointer(D)
         pA = pointer(A)
         pX = pointer(X)
-        $(mulquote(ADR,N,P,ADR,XR,T,:initkernel!,nothing,CDR))
+        $(mulquote(AR,N,P,AR,XR,T,:initkernel!,nothing,DR))
     end
 end
 
 
-@generated function LinearAlgebra.mul!(D::AbstractMutableFixedSizePaddedVector{M,T,CDR},
-                            A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR},
-                            X::AbstractMutableFixedSizePaddedVector{N,T,XR}) where {M,N,P,T,ADR,XR,CDR}
+@generated function LinearAlgebra.mul!(D::AbstractMutableFixedSizePaddedVector{M,T,DR},
+                            A::AbstractMutableFixedSizePaddedMatrix{M,N,T,AR},
+                            X::AbstractMutableFixedSizePaddedVector{N,T,XR}) where {M,N,T,AR,XR,DR}
     quote
         $(Expr(:meta,:inline))
         pD = pointer(D)
         pA = pointer(A)
         pX = pointer(X)
-        $(mulquote(ADR,N,1,ADR,XR,T,:initkernel!,nothing,CDR))
+        $(mulquote(AR,N,1,AR,XR,T,:initkernel!,nothing,DR))
     end
 end
 # @generated function LinearAlgebra.mul!(D::PtrMatrix{M,P,T,ADR},

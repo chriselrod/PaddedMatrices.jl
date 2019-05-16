@@ -229,15 +229,24 @@ end
     for i ∈ 2:N
         L *= S.parameters[i]
     end
-    :(PtrArray{$S,$T,$N,$R,$L}(ptr))
+    quote
+        $(Expr(:meta,:inline))
+        PtrArray{$S,$T,$N,$R,$L}(ptr)
+    end
 end
 @generated function PtrArray{S,T}(ptr::Ptr{T}) where {S,T}
     N, P, L = calc_NPL(S, T)
-    :(PtrArray{$S,$T,$N,$P,$L}(ptr))
+    quote
+        $(Expr(:meta,:inline))
+        PtrArray{$S,$T,$N,$P,$L}(ptr)
+    end
 end
 @generated function PtrArray{S}(ptr::Ptr{T}) where {S,T}
     N, P, L = calc_NPL(S, T)
-    :(PtrArray{$S,$T,$N,$P,$L}(ptr))
+    quote
+        $(Expr(:meta,:inline))
+        PtrArray{$S,$T,$N,$P,$L}(ptr)
+    end
 end
 const PtrVector{N,T,R,L} = PtrArray{Tuple{N},T,1,R,L} # R and L will always be the same...
 const PtrMatrix{M,N,T,R,L} = PtrArray{Tuple{M,N},T,2,R,L}
