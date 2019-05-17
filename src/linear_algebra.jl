@@ -52,6 +52,29 @@ function invchol_L_core_quote!(qa, P, output = :L, input = :S, ::Type{T} = Float
         end
     end
 end
+function invcholdet_L_core_quote!(qa, P, output = :L, input = :S, ::Type{T} = Float64) where T
+    push!(qa, :(det = one($T)))
+    for c ∈ 1:P
+        for cr ∈ 1:c-1, r ∈ c:P
+            push!(qa, :( $(sym(input, r, c)) -= $(sym(input, r, cr)) * $(sym(input, c, cr))  ) )
+        end
+        push!(qa, :( $(sym(input, c, c)) = sqrt( $(sym(input, c, c)) ) ) )
+        push!(qa, :( $(sym(output, c, c)) = $(one(T)) / $(sym(input, c, c)) ))
+        push!(qa, :( det *=  $(sym(output, c, c)) ))
+        for r ∈ c+1:P
+            push!(qa, :( $(sym(input, r, c)) *= $(sym(output, c, c))  ) )
+        end
+    end
+    for c ∈ 1:P
+        for r ∈ c+1:P
+            push!(qa, :( $(sym(output, r, c)) = $(sym(input, r, c)) * $(sym(output, c, c)) ))
+            for cr ∈ c+1:r-1
+                push!(qa, :( $(sym(output, r, c)) += $(sym(input, r, cr)) * $(sym(output, cr, c)) ))
+            end
+            push!(qa, :( $(sym(output, r, c)) *=  -$(sym(output, r, r)) ) )
+        end
+    end
+end
 function chol_L_core_quote!(qa, P, input = :S, ::Type{T} = Float64, symout = sym, symin = sym) where T
     for c ∈ 1:P
         for cr ∈ 1:c-1, r ∈ c:P
@@ -136,6 +159,43 @@ Uses the lower triangle of the input matrix S, and returns the upper triangle of
         end
     end
     # q
+end
+###
+### invcholdet, LLi
+### for Lower of S, Lower triangle out, and det is of the inverse
+###
+@generated function invcholdetLLi!(L::AbstractMutableFixedSizePaddedMatrix{P,P,T,R}, S::AbstractFixedSizePaddedMatrix{P,P,T,R}) where {P,T,R}
+    # q = quote @fastmath @inbounds begin end end
+    # qa = q.args[2].args[3].args[3].args
+    q = quote end
+    qa = q.args
+    load_L_quote!(qa, P, R, :S, :S)
+    invcholdet_L_core_quote!(qa, P, :L, :S, T)
+    # store_L_quote!(qa, P, R, :L, T, false)
+    storeq = quote end
+    ind = 0
+    for c ∈ 1:P
+        for r ∈ 1:c-1
+            ind += 1
+            push!(storeq.args, :( L[$ind] = zero(T)) )
+        end
+        for r ∈ c:P
+            ind += 1
+            push!(storeq.args, :( L[$ind] = $(sym(:L, r, c))))
+        end
+        for r ∈ P+1:R
+            ind += 1
+            push!(storeq.args, :( L[$ind] = zero(T)) )
+        end
+    end
+    quote
+        $(Expr(:meta,:inline))
+        @fastmath @inbounds begin
+            $q
+            $storeq
+            det
+        end
+    end
 end
 """
 Assumes the input matrix is positive definite (no checking is done; will return NaNs if not PD).
