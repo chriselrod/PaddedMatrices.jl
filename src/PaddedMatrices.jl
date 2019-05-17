@@ -1,7 +1,5 @@
 module PaddedMatrices
 
-set_zero_subnormals(true)
-
 using VectorizationBase, SIMDPirates,
         Base.Cartesian, UnsafeArrays,
         SLEEFPirates, VectorizedRNG,
@@ -43,6 +41,7 @@ const AbstractConstantFixedSizePaddedMatrix{M,N,T,P,L} = AbstractConstantFixedSi
 @inline LoopVectorization.stride_row(::AbstractFixedSizePaddedMatrix{M,N,T,P}) where {M,N,T,P} = P
 
 Base.IndexStyle(::AbstractPaddedArray) = IndexCartesian()
+Base.IndexStyle(::AbstractPaddedVector) = IndexLinear()
 @noinline ThrowBoundsError() = throw(BoundsError())
 @noinline ThrowBoundsError(str) = throw(BoundsError(str))
 
@@ -108,6 +107,9 @@ end
 
 function vload! end
 
+function __init__()
+    set_zero_subnormals(true)
+end
 
 include("padded_array.jl")
 include("mutable_fs_padded_array.jl")
