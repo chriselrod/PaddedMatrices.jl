@@ -220,12 +220,13 @@ end
         end
     end
 end
-@generated function invcholdetLLc!(L::AbstractMutableFixedSizePaddedMatrix{P,P,T,R}, S::AbstractFixedSizePaddedMatrix{P,P,T,R}) where {P,T,R}
+@generated function invcholdetLLc!(L::AbstractMutableFixedSizePaddedMatrix{P2,P1,T,R1}, S::AbstractFixedSizePaddedMatrix{P3,P3,T,R2}) where {P1,P2,P3,T,R1,R2}
     # q = quote @fastmath @inbounds begin end end
     # qa = q.args[2].args[3].args[3].args
     q = quote end
     qa = q.args
-    load_L_quote!(qa, P, R, :S, :S)
+    P = min(P1,P3)
+    load_L_quote!(qa, P, R1, :S, :S)
     invcholdetc_L_core_quote!(qa, P, :L, :S, T)
     # store_L_quote!(qa, P, R, :L, T, false)
     storeq = quote end
