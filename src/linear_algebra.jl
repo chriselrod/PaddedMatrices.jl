@@ -240,7 +240,7 @@ end
             ind += 1
             push!(storeq.args, :( L[$ind] = $(sym(:L, r, c))))
         end
-        for r ∈ P+1:R
+        for r ∈ P+1:R1
             ind += 1
             push!(storeq.args, :( L[$ind] = zero(T)) )
         end
