@@ -102,22 +102,28 @@ end
         $(mulquote(AR,N,1,AR,XR,T,:initkernel!,nothing,DR))
     end
 end
-# @generated function LinearAlgebra.mul!(D::PtrMatrix{M,P,T,ADR},
-#                             A::PtrMatrix{M,N,T,ADR},
-#                             X::PtrMatrix{N,P,T,XR},
-#                             prefetchAX = nothing) where {M,N,P,T,ADR,XR}
-#     # The hack here for ADR vs M in the first slot is this:
-#     # When called on actual matrices, M gives the "pretend size"
-#     # While ADR gives this actual number of rows, so we pass on that.
-#     # While for PtrMatrices, M reflects the true size of the submatrix.
-#     # That is because it is partitioned along the blocks created by
-#     # jBLAS.blocking_structure(M, N, P, T)
-#     # which are always given an appropriate size, because it's only
-#     # called after going through out filtering here. For PtrMatrices
-#     # the stride can be far larger than the size of these submatrices,
-#     # so we pass along M as the correct number of rows.
-#     mulquote(M,N,P,ADR,XR,T,prefetchAX)
-# end
+@generated function LinearAlgebra.mul!(D::PtrMatrix{M,P,T,DR},
+                            A::PtrMatrix{M,N,T,AR},
+                            X::PtrMatrix{N,P,T,XR}) where {M,N,P,T,AR,XR,DR}
+    quote
+        $(Expr(:meta,:inline))
+        pD = pointer(D)
+        pA = pointer(A)
+        pX = pointer(X)
+        $(mulquote(M,N,P,AR,XR,T,:initkernel!,nothing,DR))
+    end
+end
+@generated function LinearAlgebra.mul!(D::PtrVector{M,T,DR},
+                            A::PtrMatrix{M,N,T,AR},
+                            X::PtrVector{N,T,XR}) where {M,N,T,AR,XR,DR}
+    quote
+        $(Expr(:meta,:inline))
+        pD = pointer(D)
+        pA = pointer(A)
+        pX = pointer(X)
+        $(mulquote(M,N,1,AR,XR,T,:initkernel!,nothing,DR))
+    end
+end
 
 
 function elementwise_product_quote(N,T,P)
@@ -493,7 +499,7 @@ function mulquote(M,N,P,ADR,XR,T,init=:initkernel!,prefetchAX=nothing,CDR=ADR)
         # return base_mulquote(M,N,P,ADR,XR,T)
     elseif num == 1
         # Loop over L1 cache blocks
-        return cache_mulquote(M,N,P,ADR,XR,L1S,T,init,prefetchAX)
+        return cache_mulquote(M,N,P,ADR,XR,L1S,T,init)#,prefetchAX)
     elseif num == 2
         # Loop over L2 cache blocks
         return cache_mulquote(M,N,P,ADR,XR,L1S,L2S,T,init,prefetchAX)
@@ -648,8 +654,9 @@ function block_loop_quote(L1M,L1N,L1P,stride_AD,stride_X,M_iter,M_remain,P_iter,
     q
 end
 
-function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),::Type{T}, init = :initkernel!, primary = :kernel!) where T
+function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),::Type{T}, init = :initkernel!) where T
 
+    primary = :kernel!
     M_iter, M_remain = divrem(M, L1M)
     N_iter, N_remain = divrem(N, L1N)
     P_iter, P_remain = divrem(P, L1P)
@@ -703,6 +710,7 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
     N_iter, N_remain = divrem(N, L2N)
     P_iter, P_remain = divrem(P, L2P)
     T_size = sizeof(T)
+    prefetch_ = prefetchAX != nothing
     initmul = ifelse(init == :initkernel!, :mul!, :gemm!)
 
     q = quote

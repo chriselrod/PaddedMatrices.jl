@@ -517,9 +517,18 @@ function kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,init,inline = true, pf = n
         end
 
         D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $A_stride*(p-1), Dx_p_q))
-        D_store2 = quote
-            @nexprs $(Q-1) q -> vstore!(pD + $WT*(q-1) + $(A_stride*(Pₖ-1)), $(Symbol(:Dx_,Pₖ,:_q)))
-            vstore!(pD + $(WT*(Q-1) + D_stride*(Pₖ-1)), $(Symbol(:Dx_, Pₖ, :_, Q)), $mask)
+        if stride_D == Mₖ
+            # if stride_D == Mₖ, successive stores will overwrite the trailing elements from previous
+            # stores. Therefore, we only have to mask the last store.
+            D_store2 = quote
+                @nexprs $(Q-1) q -> vstore!(pD + $WT*(q-1) + $(A_stride*(Pₖ-1)), $(Symbol(:Dx_,Pₖ,:_q)))
+                vstore!(pD + $(WT*(Q-1) + D_stride*(Pₖ-1)), $(Symbol(:Dx_, Pₖ, :_, Q)), $mask)
+            end
+        else
+            # Otherwise, we mask every store.
+            D_store2 = quote
+                @nexprs $Q q -> vstore!(pD + $WT*(q-1) + $(A_stride*(Pₖ-1)), $(Symbol(:Dx_,Pₖ,:_q)), $mask)
+            end
         end
     end
     C = min(VectorizationBase.CACHELINE_SIZE ÷ T_size,N)
@@ -976,6 +985,11 @@ function blocking_structure(M, N, P, ::Type{T} = Float64;
 
     (Base.Cartesian.@ntuple 3 i -> (m_i, n_i, p_i)),3
 
+end
+
+function round_x_to_nearest_y(x::T, y::T) where {T}
+    z = x/y
+    round(T, z) * y
 end
 
 function divide_into_rough_square(L, M, P, n, mbase, pbase)
