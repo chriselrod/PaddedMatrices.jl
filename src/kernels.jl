@@ -385,7 +385,7 @@ function mulinit(V, WT, Q, Pₖ, X_stride, r, mask_expr, inline_expr, pfA_1, X_t
         $q_load_expr
         @nexprs $Pₖ p -> begin
             vX = vbroadcast($V, VectorizationBase.load($X_load_expr))
-            @nexprs $Q q -> Dx_p_q = SIMDPirates.vmul(vA_q, vX)
+            @nexprs $Q q -> Dx_q_p = SIMDPirates.vmul(vA_q, vX)
         end
     end
     inline_expr == :nothing || pushfirst!(q.args, inline_expr)
@@ -395,20 +395,20 @@ function mulinit(V, WT, Q, Pₖ, X_stride, r, mask_expr, inline_expr, pfA_1, X_t
 end
 function gemminit(V, WT, Q, Pₖ, AD_stride, r, mask_expr, inline_expr, X_transposed = false)
     if r == 0
-        q = quote
-            @nexprs $Pₖ p -> @nexprs $Q q -> Dx_p_q = vload($V, pD + $WT*(q-1) + $AD_stride*(p-1))
+        expr = quote
+            @nexprs $Pₖ p -> @nexprs $Q q -> Dx_q_p = vload($V, pD + $WT*(q-1) + $AD_stride*(p-1))
         end
     else
-        q = quote
-            @nexprs $(Pₖ-1) p -> @nexprs $Q q -> Dx_p_q = vload($V, pD + $WT*(q-1) + $AD_stride*(p-1))
+        expr = quote
+            @nexprs $(Pₖ-1) p -> @nexprs $Q q -> Dx_q_p = vload($V, pD + $WT*(q-1) + $AD_stride*(p-1))
         end
         for q ∈ 1:Q-1
-            push!(q.args, :($(Symbol(:Dx_,Pₖ,:_,q)) = vload($V, pD + $(WT*(q-1) + AD_stride*(Pₖ-1)))))
+            push!(expr.args, :($(Symbol(:Dx_,q,:_,Pₖ)) = vload($V, pD + $(WT*(q-1) + AD_stride*(Pₖ-1)))))
         end
-        push!(q.args, :($(Symbol(:Dx_,Pₖ,:_,Q)) = vload($V, pD + $(WT*(Q-1) + AD_stride*(Pₖ-1)),$mask_expr)))
+        push!(expr.args, :($(Symbol(:Dx_,Q,:_,Pₖ)) = vload($V, pD + $(WT*(Q-1) + AD_stride*(Pₖ-1)),$mask_expr)))
     end
-    inline_expr == :nothing || pushfirst!(q.args, inline_expr)
-    q
+    inline_expr == :nothing || pushfirst!(expr.args, inline_expr)
+    expr
 end
 function create_mask(W, r)
     if W <= 8
@@ -501,8 +501,8 @@ function kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,init,inline = true, pf = n
     if r == 0
         mask = create_mask(W, 0)
         A_load_expr = :(@nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1)))
-        D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $D_stride*(p-1), Dx_p_q))
-        D_store2 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $(D_stride*(Pₖ-1)),$(Symbol(:Dx_,Pₖ,:_q))))
+        D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $D_stride*(p-1), Dx_q_p))
+        D_store2 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $(D_stride*(Pₖ-1)),$(Symbol(:Dx_q,:_,Pₖ))))
     else
         mask = create_mask(W, r)
         if Q == 0
@@ -516,20 +516,25 @@ function kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,init,inline = true, pf = n
             push!(A_load_expr.args, :($(Symbol(:vA_, Q)) = vload($V, pA + $((N-1)*A_stride) + $(WT*(Q-1)), $mask)))
         end
 
-        D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $A_stride*(p-1), Dx_p_q))
-        if stride_D == Mₖ
+        # D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $A_stride*(p-1), Dx_q_p))
+        D_store1 = quote
+            @nexprs $(Q-1) q -> vstore!(pD + $WT*(q-1) + $A_stride*(p-1), Dx_q_p)
+            vstore!(pD + $(WT*(Q-1)) + $D_stride*(p-1), $(Symbol(:Dx_, Q, :_p)), $mask)
+        end
+        
+        # if stride_D == Mₖ
             # if stride_D == Mₖ, successive stores will overwrite the trailing elements from previous
             # stores. Therefore, we only have to mask the last store.
-            D_store2 = quote
-                @nexprs $(Q-1) q -> vstore!(pD + $WT*(q-1) + $(A_stride*(Pₖ-1)), $(Symbol(:Dx_,Pₖ,:_q)))
-                vstore!(pD + $(WT*(Q-1) + D_stride*(Pₖ-1)), $(Symbol(:Dx_, Pₖ, :_, Q)), $mask)
-            end
-        else
-            # Otherwise, we mask every store.
-            D_store2 = quote
-                @nexprs $Q q -> vstore!(pD + $WT*(q-1) + $(A_stride*(Pₖ-1)), $(Symbol(:Dx_,Pₖ,:_q)), $mask)
-            end
+        D_store2 = quote
+            @nexprs $(Q-1) q -> vstore!(pD + $WT*(q-1) + $(A_stride*(Pₖ-1)), $(Symbol(:Dx_q_,Pₖ)))
+            vstore!(pD + $(WT*(Q-1) + D_stride*(Pₖ-1)), $(Symbol(:Dx_, Q, :_, Pₖ)), $mask)
         end
+        # else
+        #     # Otherwise, we mask every store.
+        #     D_store2 = quote
+        #         @nexprs $Q q -> vstore!(pD + $WT*(q-1) + $(A_stride*(Pₖ-1)), $(Symbol(:Dx_q_,Pₖ)), $mask)
+        #     end
+        # end
     end
     C = min(VectorizationBase.CACHELINE_SIZE ÷ T_size,N)
     Qₚ = cld(Mₖ, C)
@@ -550,7 +555,7 @@ function kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,init,inline = true, pf = n
                 @nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1))
                 @nexprs $Pₖ p -> begin
                     vX = vbroadcast($V, VectorizationBase.load(pX + n*$T_size + (p-1)*$X_stride))
-                    @nexprs $Q q -> Dx_p_q = vmuladd(vA_q, vX, Dx_p_q)
+                    @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
                 end
                 $pfA_2
                 # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$A_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
@@ -562,11 +567,12 @@ function kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,init,inline = true, pf = n
                 $A_load_expr
                 @nexprs $Pₖ p -> begin
                     vX = vbroadcast($V, VectorizationBase.load(pX + $((N-1)*T_size) + (p-1)*$X_stride))
-                    @nexprs $Q q -> Dx_p_q = vmuladd(vA_q, vX, Dx_p_q)
+                    @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
                 end
                 $pfA_3
                 @nexprs $(Pₖ-1) p -> $D_store1
                 $D_store2
+                # @nexprs $(Pₖ-1) p -> $D_store2
                 nothing
             end )
         else
@@ -584,7 +590,7 @@ function kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,init,inline = true, pf = n
                 @nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1))
                 @nexprs $Pₖ p -> begin
                     vX = vbroadcast($V, VectorizationBase.load(pX + n*$T_size + (p-1)*$X_stride))
-                    @nexprs $Q q -> Dx_p_q = vmuladd(vA_q, vX, Dx_p_q)
+                    @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
                 end
                 $pfA_2
                 # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$A_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
@@ -608,7 +614,7 @@ function kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,init,inline = true, pf = n
                     @nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1))
                     @nexprs $Pₖ p -> begin
                         vX = vbroadcast($V, VectorizationBase.load(pX + n*$T_size + (p-1)*$X_stride))
-                        @nexprs $Q q -> Dx_p_q = vmuladd(vA_q, vX, Dx_p_q)
+                        @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
                     end
                     $pfA_2
                     # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$A_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
@@ -624,7 +630,7 @@ function kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,init,inline = true, pf = n
                     @nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1))
                     @nexprs $Pₖ p -> begin
                         vX = vbroadcast($V, VectorizationBase.load(pX + n*$T_size + (p-1)*$X_stride))
-                        @nexprs $Q q -> Dx_p_q = vmuladd(vA_q, vX, Dx_p_q)
+                        @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
                     end
                     $pfA_2
                     # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$A_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
@@ -637,7 +643,7 @@ function kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,init,inline = true, pf = n
                 $A_load_expr
                 @nexprs $Pₖ p -> begin
                     vX = vbroadcast($V, VectorizationBase.load(pX + $((N-1)*T_size) + (p-1)*$X_stride))
-                    @nexprs $Q q -> Dx_p_q = vmuladd(vA_q, vX, Dx_p_q)
+                    @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
                 end
                 $pfA_3
             end )
@@ -649,6 +655,7 @@ function kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,init,inline = true, pf = n
                 # prefetch(pX + pf.X + $(N*T_size) + (p-1)*$X_stride, Val(3), Val(0))
                 $pfX_3
                 $D_store1
+                # $D_store2
             end
             $pfX_4
             $D_store2
@@ -686,8 +693,8 @@ function kernel_nt_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, p
     if r == 0
         mask = create_mask(W, 0)
         A_load_expr = :(@nexprs $Q q -> vA_q = vload($V, pA + n*$AD_stride + $WT*(q-1)))
-        D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $AD_stride*(p-1), Dx_p_q))
-        D_store2 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $(AD_stride*(Pₖ-1)),$(Symbol(:Dx_,Pₖ,:_q))))
+        D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $AD_stride*(p-1), Dx_q_p))
+        D_store2 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $(AD_stride*(Pₖ-1)),$(Symbol(:Dx_q_,Pₖ))))
     else
         mask = create_mask(W, r)
         if Q == 0
@@ -701,10 +708,10 @@ function kernel_nt_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, p
             push!(A_load_expr.args, :($(Symbol(:vA_, Q)) = vload($V, pA + $((N-1)*AD_stride) + $(WT*(Q-1)), $mask)))
         end
 
-        D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $AD_stride*(p-1), Dx_p_q))
+        D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $AD_stride*(p-1), Dx_q_p))
         D_store2 = quote
-            @nexprs $(Q-1) q -> vstore!(pD + $WT*(q-1) + $(AD_stride*(Pₖ-1)), $(Symbol(:Dx_,Pₖ,:_q)))
-            vstore!(pD + $(WT*(Q-1) + AD_stride*(Pₖ-1)), $(Symbol(:Dx_, Pₖ, :_, Q)), $mask)
+            @nexprs $(Q-1) q -> vstore!(pD + $WT*(q-1) + $(AD_stride*(Pₖ-1)), $(Symbol(:Dx_q_,Pₖ)))
+            vstore!(pD + $(WT*(Q-1) + AD_stride*(Pₖ-1)), $(Symbol(:Dx_, Q, :_, Pₖ)), $mask)
         end
     end
     C = min(VectorizationBase.CACHELINE_SIZE ÷ T_size,N)
@@ -726,7 +733,7 @@ function kernel_nt_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, p
                 @nexprs $Q q -> vA_q = vload($V, pA + n*$AD_stride + $WT*(q-1))
                 @nexprs $Pₖ p -> begin
                     vX = vbroadcast($V, VectorizationBase.load(pX + n*$X_stride + (p-1)*$T_size))
-                    @nexprs $Q q -> Dx_p_q = vmuladd(vA_q, vX, Dx_p_q)
+                    @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
                 end
                 $pfA_2
                 # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
@@ -738,7 +745,7 @@ function kernel_nt_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, p
                 $A_load_expr
                 @nexprs $Pₖ p -> begin
                     vX = vbroadcast($V, VectorizationBase.load(pX + $((N-1)*X_stride) + (p-1)*$T_size))
-                    @nexprs $Q q -> Dx_p_q = vmuladd(vA_q, vX, Dx_p_q)
+                    @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
                 end
                 $pfA_3
                 @nexprs $Pₖ p -> $D_store1
@@ -760,7 +767,7 @@ function kernel_nt_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, p
                 @nexprs $Q q -> vA_q = vload($V, pA + n*$AD_stride + $WT*(q-1))
                 @nexprs $Pₖ p -> begin
                     vX = vbroadcast($V, VectorizationBase.load(pX + n*$X_stride + (p-1)*$T_size))
-                    @nexprs $Q q -> Dx_p_q = vmuladd(vA_q, vX, Dx_p_q)
+                    @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
                 end
                 $pfA_2
                 # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
@@ -784,7 +791,7 @@ function kernel_nt_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, p
                     @nexprs $Q q -> vA_q = vload($V, pA + n*$AD_stride + $WT*(q-1))
                     @nexprs $Pₖ p -> begin
                         vX = vbroadcast($V, VectorizationBase.load(pX + n*$X_stride + (p-1)*$T_size))
-                        @nexprs $Q q -> Dx_p_q = vmuladd(vA_q, vX, Dx_p_q)
+                        @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
                     end
                     $pfA_2
                     # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
@@ -800,7 +807,7 @@ function kernel_nt_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, p
                     @nexprs $Q q -> vA_q = vload($V, pA + n*$AD_stride + $WT*(q-1))
                     @nexprs $Pₖ p -> begin
                         vX = vbroadcast($V, VectorizationBase.load(pX + n*$X_stride + (p-1)*$T_size))
-                        @nexprs $Q q -> Dx_p_q = vmuladd(vA_q, vX, Dx_p_q)
+                        @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
                     end
                     $pfA_2
                     # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
@@ -813,7 +820,7 @@ function kernel_nt_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, p
                 $A_load_expr
                 @nexprs $Pₖ p -> begin
                     vX = vbroadcast($V, VectorizationBase.load(pX + $((N-1)*X_stride) + (p-1)*$T_size))
-                    @nexprs $Q q -> Dx_p_q = vmuladd(vA_q, vX, Dx_p_q)
+                    @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
                 end
                 $pfA_3
             end )
