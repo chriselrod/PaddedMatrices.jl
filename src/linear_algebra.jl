@@ -332,3 +332,37 @@ Assumes the input matrix is lower triangular.
     end
     # q
 end
+
+
+function safecholdet_L_core_quote!(qa, P, output = :L, ::Type{T} = Float64) where T
+    push!(qa, :(det = $(one(T))))
+    for c ∈ 1:P
+        for cr ∈ 1:c-1, r ∈ c:P
+            push!(qa, :( $(sym(output, r, c)) -= $(sym(output, r, cr)) * $(sym(output, c, cr))  ) )
+        end
+        push!(qa, :( $(sym(output, c, c)) > $(zero(T)) || return ($(-T(Inf)), false) ))
+        push!(qa, :( $(sym(output, c, c)) = sqrt( $(sym(output, c, c)) ) ) )
+        push!(qa, :(det *= $(sym(output, c, c)) ))
+        push!(qa, :( $(symi(output, c, c)) = $(one(T)) / $(sym(output, c, c)) ))
+        for r ∈ c+1:P
+            push!(qa, :( $(sym(output, r, c)) *= $(symi(output, c, c))  ) )
+        end
+    end
+end
+@generated function safecholdet!(L::AbstractMutableFixedSizePaddedMatrix{P,P,T,R}) where {P,T,R}
+    q = quote @fastmath @inbounds begin end end
+    qa = q.args[2].args[3].args[3].args
+    load_L_quote!(qa, P, R, :L, :L)
+    safecholdet_L_core_quote!(qa, P, :L, T)
+    for c ∈ 1:P
+        for r ∈ 1:c-1
+            push!(qa, zero(T))
+        end
+        for r ∈ c:P
+            push!(qa, sym(:L, r, c))
+        end
+    end
+    # store_L_quote!(qa, P, R, :L)
+    push!(qa, :(det, true))
+    q
+end

@@ -489,7 +489,7 @@ function mulquote(D::AbstractMutableFixedSizePaddedMatrix{M,P,T,ADR},
 end
 function mulquote(M,N,P,AR,XR,T,init=:initkernel!,prefetchAX=nothing,DR=AR)
     (L1S, L2S, L3S), num = blocking_structure(M, N, P, T)
-    if num <= 1
+    if num == 0
         # if init == :kernel! || M*P > 14*16
             return cache_mulquote(M,N,P,AR,XR,L1S,T,init)
         # else
@@ -503,6 +503,8 @@ function mulquote(M,N,P,AR,XR,T,init=:initkernel!,prefetchAX=nothing,DR=AR)
     elseif T <: LinearAlgebra.BlasFloat
         # blas_gemm_quote(M,N,P,DR,AR,XR,T,init)
         :(BLAS.gemm!('N','N',one($T),A,X,$(init==:initkernel! ? zero(T) : one(T)),D))
+    elseif num == 1
+        return cache_mulquote(M,N,P,AR,XR,L1S,T,init)
     elseif num == 2
         # Loop over L2 cache blocks
         return cache_mulquote(M,N,P,AR,XR,L1S,L2S,T,init,prefetchAX)

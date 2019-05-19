@@ -869,7 +869,7 @@ end
 # """
 function pick_kernel_size(
             ::Type{T}, row_max = typemax(Int), col_max = typemax(Int);
-            D_count = 1, A_count = 1, X_count = 1) where T
+            D_count = 1, A_count = 1, X_count = 1) where {T}
     T_size = sizeof(T)
     W = VectorizationBase.REGISTER_SIZE ÷ T_size
     # cache_line = W
@@ -880,7 +880,6 @@ function pick_kernel_size(
     prev_ratio = -Inf
     for a_loads ∈ 1:4
         num_rows = a_loads * W
-        num_rows > row_max && break
         num_cols = (VectorizationBase.REGISTER_COUNT - a_loads - 1) ÷ a_loads # assumes we need only a single B
         num_cols = min(num_cols, col_max)
         length_D = num_rows * num_cols
@@ -892,6 +891,7 @@ function pick_kernel_size(
             prev_ratio = next_ratio
             prev_num_rows, prev_num_cols = num_rows, num_cols
         end
+        num_rows >= row_max && break
     end
     W, prev_num_rows, prev_num_cols
 end
