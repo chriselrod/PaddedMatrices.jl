@@ -487,11 +487,11 @@ function mulquote(D::AbstractMutableFixedSizePaddedMatrix{M,P,T,ADR},
 
     mulquote(ADR,N,P,ADR,XR,T,init)
 end
-function mulquote(M,N,P,ADR,XR,T,init=:initkernel!,prefetchAX=nothing,CDR=ADR)
+function mulquote(M,N,P,AR,XR,T,init=:initkernel!,prefetchAX=nothing,DR=AR)
     (L1S, L2S, L3S), num = blocking_structure(M, N, P, T)
     if num <= 1
         # if init == :kernel! || M*P > 14*16
-            return cache_mulquote(M,N,P,ADR,XR,L1S,T,init)
+            return cache_mulquote(M,N,P,AR,XR,L1S,T,init)
         # else
             # M, P, strideA, strideX, N, T
             # return kernel_quote(M,P,ADR,XR,N,T,true,true,CDR)
@@ -500,16 +500,25 @@ function mulquote(M,N,P,ADR,XR,T,init=:initkernel!,prefetchAX=nothing,CDR=ADR)
     # elseif num == 1
     #     # Loop over L1 cache blocks
     #     return cache_mulquote(M,N,P,ADR,XR,L1S,T,init)#,prefetchAX)
+    elseif T <: LinearAlgebra.BlasFloat
+        # blas_gemm_quote(M,N,P,DR,AR,XR,T,init)
+        :(BLAS.gemm!('N','N',one($T),A,X,$(init==:initkernel! ? zero(T) : one(T)),D))
     elseif num == 2
         # Loop over L2 cache blocks
-        return cache_mulquote(M,N,P,ADR,XR,L1S,L2S,T,init,prefetchAX)
+        return cache_mulquote(M,N,P,AR,XR,L1S,L2S,T,init,prefetchAX)
     else #num == 3
         # Loop over L3 cache blocks.
         # return cache_mulquote(ADR,N,P,ADR,XR,L1S,L2S,L3S,T,init)
         # Except that they are fused, so we aren't doing anything special.
-        return cache_mulquote(M,N,P,ADR,XR,L1S,L3S,T,init,prefetchAX) # should recurse calling mul and gemm!
+        return cache_mulquote(M,N,P,AR,XR,L1S,L3S,T,init,prefetchAX) # should recurse calling mul and gemm!
     end
 end
+
+# function blas_gemm_quote(M,N,P,DR,AR,XR,T,init)
+#     quote
+#         ccall((@blasfunc))
+#     end
+# end
 
 function initkernel_quote(D::AbstractMutableFixedSizePaddedMatrix{M,Pₖ,T,stride_AD},
                             A::AbstractMutableFixedSizePaddedMatrix{M,N,T,stride_AD},

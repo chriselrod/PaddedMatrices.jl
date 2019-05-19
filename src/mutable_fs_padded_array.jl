@@ -211,6 +211,8 @@ end
 
 mutable_similar(A::AbstractArray) = similar(A)
 mutable_similar(A::AbstractFixedSizePaddedArray{S,T,N,R,L}) where {S,T,N,R,L} = MutableFixedSizePaddedArray{S,T,N,R,L}(undef)
+mutable_similar(A::AbstractArray, T) = similar(A, T)
+mutable_similar(A::AbstractFixedSizePaddedArray{S,T1,N,R,L}, ::Type{T2}) where {S,T1,T2,N,R,L} = MutableFixedSizePaddedArray{S,T2,R,L}(undef)
 function Base.fill!(A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}, v::T) where {S,T,N,R,L}
     @inbounds for l ∈ 1:L
         A[l] = v
@@ -286,6 +288,7 @@ end
         ex = sub2ind_expr(dims, R)
     end
     quote
+        
         $(Expr(:meta, :inline))
         @boundscheck begin
             Base.Cartesian.@nif $(N+1) d->( d == 1 ? i[d] > $R : i[d] > $dims[d]) d-> ThrowBoundsError("Dimension $d out of bounds $(i[d]) > $R") d -> nothing
@@ -439,10 +442,11 @@ end
     end
     q
 end
-# @inline function Base.stride(A::AbstractFixedSizePaddedArray{S,T,N,R}, n) where {S,T,N,R}
-#     n == 1 && return R
-#     S.parameters[n]
-# end
+@inline function Base.stride(A::AbstractFixedSizePaddedArray{S,T,N,R}, n::Integer) where {S,T,N,R}
+    n == 1 && return 1
+    n == 2 && return R
+    S.parameters[n-1]
+end
 
 to_tuple(S) = tuple(S.parameters...)
 @generated Base.size(::AbstractFixedSizePaddedArray{S}) where {S} = to_tuple(S)
