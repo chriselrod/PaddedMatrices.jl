@@ -664,6 +664,11 @@ function cache_mulquote(M,N,P,stride_A,stride_X,(L1M,L1N,L1P),::Type{T}, init = 
     if M_iter == P_iter == 1
         return kernel_quote(M,P,stride_A,stride_X,N,T,true,true,stride_D)
     end
+    if stride_A == stride_D
+        stride_AD = stride_A
+    else
+        throw("Stride of A == $stride_A != stride of D == $stride_D")
+    end
 
     q = quote
         pD, pA, pX = pointer(D), pointer(A), pointer(X)
