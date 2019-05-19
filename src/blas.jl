@@ -489,17 +489,17 @@ function mulquote(D::AbstractMutableFixedSizePaddedMatrix{M,P,T,ADR},
 end
 function mulquote(M,N,P,ADR,XR,T,init=:initkernel!,prefetchAX=nothing,CDR=ADR)
     (L1S, L2S, L3S), num = blocking_structure(M, N, P, T)
-    if num == 0
+    if num <= 1
         # if init == :kernel! || M*P > 14*16
-        #     return cache_mulquote(M,N,P,ADR,XR,L1S,T,init)
+            return cache_mulquote(M,N,P,ADR,XR,L1S,T,init)
         # else
             # M, P, strideA, strideX, N, T
-            return kernel_quote(M,P,ADR,XR,N,T,true,true,CDR)
+            # return kernel_quote(M,P,ADR,XR,N,T,true,true,CDR)
         # end
         # return base_mulquote(M,N,P,ADR,XR,T)
-    elseif num == 1
-        # Loop over L1 cache blocks
-        return cache_mulquote(M,N,P,ADR,XR,L1S,T,init)#,prefetchAX)
+    # elseif num == 1
+    #     # Loop over L1 cache blocks
+    #     return cache_mulquote(M,N,P,ADR,XR,L1S,T,init)#,prefetchAX)
     elseif num == 2
         # Loop over L2 cache blocks
         return cache_mulquote(M,N,P,ADR,XR,L1S,L2S,T,init,prefetchAX)
@@ -654,13 +654,16 @@ function block_loop_quote(L1M,L1N,L1P,stride_AD,stride_X,M_iter,M_remain,P_iter,
     q
 end
 
-function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),::Type{T}, init = :initkernel!) where T
+function cache_mulquote(M,N,P,stride_A,stride_X,(L1M,L1N,L1P),::Type{T}, init = :initkernel!, stride_D::Integer = stride_A) where {T}
 
     primary = :kernel!
     M_iter, M_remain = divrem(M, L1M)
     N_iter, N_remain = divrem(N, L1N)
     P_iter, P_remain = divrem(P, L1P)
     T_size = sizeof(T)
+    if M_iter == P_iter == 1
+        return kernel_quote(M,P,stride_A,stride_X,N,T,true,true,stride_D)
+    end
 
     q = quote
         pD, pA, pX = pointer(D), pointer(A), pointer(X)
