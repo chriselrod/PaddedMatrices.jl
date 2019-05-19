@@ -490,12 +490,12 @@ end
 function mulquote(M,N,P,ADR,XR,T,init=:initkernel!,prefetchAX=nothing,CDR=ADR)
     (L1S, L2S, L3S), num = blocking_structure(M, N, P, T)
     if num == 0
-        if init == :kernel! || M*N*P > 14^3
-            return cache_mulquote(M,N,P,ADR,XR,L1S,T,init,prefetchAX)
-        else
+        # if init == :kernel! || M*P > 14*16
+        #     return cache_mulquote(M,N,P,ADR,XR,L1S,T,init)
+        # else
             # M, P, strideA, strideX, N, T
             return kernel_quote(M,P,ADR,XR,N,T,true,true,CDR)
-        end
+        # end
         # return base_mulquote(M,N,P,ADR,XR,T)
     elseif num == 1
         # Loop over L1 cache blocks
