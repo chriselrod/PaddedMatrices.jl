@@ -121,6 +121,6 @@ include("linear_algebra.jl")
 include("rand.jl")
 include("utilities.jl")
 include("seed_increments.jl")
-#include("broadcast.jl")
+include("broadcast.jl")
 
 end # module
