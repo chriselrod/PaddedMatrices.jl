@@ -224,35 +224,43 @@ end
 This is only meant to make recursive algorithms easiesr to implement.
 Wraps a pointer, while passing info on the size of the block and stride.
 """
-struct PtrArray{S,T,N,R,L} <: AbstractMutableFixedSizePaddedArray{S,T,N,R,L}
+struct PtrArray{S,T,N,R,L,P} <: AbstractMutableFixedSizePaddedArray{S,T,N,R,L}
     ptr::Ptr{T}
 end
-@generated function PtrArray{S,T,N,R}(ptr::Ptr{T}) where {S,T,N,R}
+@generated function PtrArray{S,T,N,R}(ptr::Ptr{T},::Val{P}=Val{true}()) where {S,T,N,R,P}
     L = R
     for i ∈ 2:N
         L *= S.parameters[i]
     end
     quote
         $(Expr(:meta,:inline))
-        PtrArray{$S,$T,$N,$R,$L}(ptr)
+        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
 end
-@generated function PtrArray{S,T}(ptr::Ptr{T}) where {S,T}
-    N, P, L = calc_NPL(S, T)
+@generated function PtrArray{S,T}(ptr::Ptr{T}, ::Val{P} = Val{true}()) where {S,T,P}
+    N, R, L = calc_NPL(S, T)
     quote
         $(Expr(:meta,:inline))
-        PtrArray{$S,$T,$N,$P,$L}(ptr)
+        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
 end
 @generated function PtrArray{S}(ptr::Ptr{T}) where {S,T}
     N, P, L = calc_NPL(S, T)
     quote
         $(Expr(:meta,:inline))
-        PtrArray{$S,$T,$N,$P,$L}(ptr)
+        PtrArray{$S,$T,$N,$P,$L,true}(ptr)
     end
 end
-const PtrVector{N,T,R,L} = PtrArray{Tuple{N},T,1,R,L} # R and L will always be the same...
-const PtrMatrix{M,N,T,R,L} = PtrArray{Tuple{M,N},T,2,R,L}
+@generated function PtrArray{S}(ptr::Ptr{T}, ::Val{P}) where {S,T,P}
+    N,R,L = calc_NPL(S,T)
+    quote
+        $(Expr(:meta,:inline))
+        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
+    end
+end
+
+const PtrVector{N,T,R,L,P} = PtrArray{Tuple{N},T,1,R,L,P} # R and L will always be the same...
+const PtrMatrix{M,N,T,R,L,P} = PtrArray{Tuple{M,N},T,2,R,L,P}
 
 
 @inline Base.pointer(A::PtrArray) = A.ptr

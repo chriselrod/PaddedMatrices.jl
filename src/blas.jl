@@ -102,26 +102,37 @@ end
         $(mulquote(AR,N,1,AR,XR,T,:initkernel!,nothing,DR))
     end
 end
-@generated function LinearAlgebra.mul!(D::PtrMatrix{M,P,T,DR},
-                            A::PtrMatrix{M,N,T,AR},
-                            X::PtrMatrix{N,P,T,XR}) where {M,N,P,T,AR,XR,DR}
+@generated function LinearAlgebra.mul!(D::PtrMatrix{M,P,T,DR,LD,PD},
+                            A::PtrMatrix{M,N,T,AR,LA,PA},
+                            X::PtrMatrix{N,P,T,XR}) where {M,N,P,T,AR,XR,DR,LA,PA,LD,PD}
+    if PD && PA && (LD == LA)
+        Meffective = LD
+    else
+        Meffective = M
+    end
     quote
         $(Expr(:meta,:inline))
         pD = pointer(D)
         pA = pointer(A)
         pX = pointer(X)
-        $(mulquote(M,N,P,AR,XR,T,:initkernel!,nothing,DR))
+        $(mulquote(Meffective,N,P,AR,XR,T,:initkernel!,nothing,DR))
     end
 end
-@generated function LinearAlgebra.mul!(D::PtrVector{M,T,DR},
-                            A::PtrMatrix{M,N,T,AR},
-                            X::PtrVector{N,T,XR}) where {M,N,T,AR,XR,DR}
+@generated function LinearAlgebra.mul!(D::PtrVector{M,T,DR,LD,PD},
+                            A::PtrMatrix{M,N,T,AR,LA,PA},
+                                       X::PtrVector{N,T,XR}) where {M,N,T,AR,XR,DR,LD,PD,LA,PA}
+    if PD && PA && (LD == LA)
+        Meffective = LD
+    else
+        Meffective = M
+    end
+    
     quote
         $(Expr(:meta,:inline))
         pD = pointer(D)
         pA = pointer(A)
         pX = pointer(X)
-        $(mulquote(M,N,1,AR,XR,T,:initkernel!,nothing,DR))
+        $(mulquote(Meffective,N,1,AR,XR,T,:initkernel!,nothing,DR))
     end
 end
 
@@ -489,7 +500,7 @@ function mulquote(D::AbstractMutableFixedSizePaddedMatrix{M,P,T,ADR},
 end
 function mulquote(M,N,P,AR,XR,T,init=:initkernel!,prefetchAX=nothing,DR=AR)
     (L1S, L2S, L3S), num = blocking_structure(M, N, P, T)
-    if num == 0
+    if num == 0 || (M*N*P < 104^3)
         # if init == :kernel! || M*P > 14*16
             return cache_mulquote(M,N,P,AR,XR,L1S,T,init)
         # else
@@ -741,9 +752,9 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
             px_off = pᵢ*$(L2P*stride_X*T_size)
             for mᵢ ∈ 0:$(M_iter-1)
                 m_off = mᵢ*$(L2M*T_size)
-                pD_temp = PtrMatrix{$L2M,$L2P,$T,$stride_AD}(pD + m_off + pd_off)
-                pA_temp = PtrMatrix{$L2M,$L2N,$T,$stride_AD}(pA + m_off)
-                pX_temp = PtrMatrix{$L2N,$L2P,$T,$stride_X}(pX + px_off)
+                pD_temp = PtrMatrix{$L2M,$L2P,$T,$stride_AD,$(stride_AD*L2P),false}(pD + m_off + pd_off)
+                pA_temp = PtrMatrix{$L2M,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + m_off)
+                pX_temp = PtrMatrix{$L2N,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + px_off)
                 $(prefetch_ ? quote
                     prefetch(pD_temp, Val(1))
                     prefetch(pA_temp, Val(0))
@@ -753,8 +764,8 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
                      pA_temp,
                      pX_temp)
                 for nᵢ ∈ 1:$(N_iter-1)
-                    pA_temp = PtrMatrix{$L2M,$L2N,$T,$stride_AD}(pA + m_off + nᵢ*$(L2N*stride_AD*T_size))
-                    pX_temp = PtrMatrix{$L2N,$L2P,$T,$stride_X}(pX + nᵢ*$(L2N*T_size) + px_off)
+                    pA_temp = PtrMatrix{$L2M,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + m_off + nᵢ*$(L2N*stride_AD*T_size))
+                    pX_temp = PtrMatrix{$L2N,$L2P,$T,$stride_X,$(stride_X*L2p),false}(pX + nᵢ*$(L2N*T_size) + px_off)
                     $(prefetch_ ? quote
                         prefetch(pA_temp, Val(0))
                         prefetch(pX_temp, Val(0))
@@ -764,8 +775,8 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
                          pX_temp)
                 end
                 $(N_remain == 0 ? nothing : quote
-                    pA_temp = PtrMatrix{$L2M,$N_remain,$T,$stride_AD}(pA + m_off + $(N_iter*L2N*stride_AD*T_size))
-                    pX_temp = PtrMatrix{$N_remain,$L2P,$T,$stride_X}(pX + $(N_iter*L2N*T_size) + px_off)
+                    pA_temp = PtrMatrix{$L2M,$N_remain,$T,$stride_AD,$(stride_AD*N_remain),false}(pA + m_off + $(N_iter*L2N*stride_AD*T_size))
+                    pX_temp = PtrMatrix{$N_remain,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + $(N_iter*L2N*T_size) + px_off)
                     $(prefetch_ ? quote
                         prefetch(pA_temp, Val(0))
                         prefetch(pX_temp, Val(0))
@@ -775,9 +786,9 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
             end
             ### Check if we need to add an expression for a remainder of M.
             $(M_remain == 0 ? nothing : quote
-                pD_temp = PtrMatrix{$M_remain,$L2P,$T,$stride_AD}(pD + $(M_iter*L2M*T_size) + pd_off)
-                pA_temp = PtrMatrix{$M_remain,$L2N,$T,$stride_AD}(pA + $(M_iter*L2M*T_size))
-                pX_temp = PtrMatrix{$L2N,$L2P,$T,$stride_X}(pX + px_off)
+                pD_temp = PtrMatrix{$M_remain,$L2P,$T,$stride_AD,$(stride_AD*L2P),false}(pD + $(M_iter*L2M*T_size) + pd_off)
+                pA_temp = PtrMatrix{$M_remain,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + $(M_iter*L2M*T_size))
+                pX_temp = PtrMatrix{$L2N,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + px_off)
                 $(prefetch_ ? quote
                     prefetch(pD_temp, Val(1))
                     prefetch(pA_temp, Val(0))
@@ -787,8 +798,8 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
                      pA_temp,
                      pX_temp)
                 for nᵢ ∈ 1:$(N_iter-1)
-                    pA_temp = PtrMatrix{$M_remain,$L2N,$T,$stride_AD}(pA + $(M_iter*L2M*T_size) + nᵢ*$(L2N*stride_AD*T_size))
-                    pX_temp = PtrMatrix{$L2N,$L2P,$T,$stride_X}(pX + nᵢ*$(L2N*T_size) + px_off)
+                    pA_temp = PtrMatrix{$M_remain,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + $(M_iter*L2M*T_size) + nᵢ*$(L2N*stride_AD*T_size))
+                    pX_temp = PtrMatrix{$L2N,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + nᵢ*$(L2N*T_size) + px_off)
                     $(prefetch_ ? quote
                         prefetch(pA_temp, Val(0))
                         prefetch(pX_temp, Val(0))
@@ -798,8 +809,8 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
                          pX_temp)
                 end
                 $(N_remain == 0 ? nothing : quote
-                    pA_temp = PtrMatrix{$M_remain,$N_remain,$T,$stride_AD}(pA + $(M_iter*L2M*T_size + N_iter*L2N*stride_AD*T_size))
-                    pX_temp = PtrMatrix{$N_remain,$L2P,$T,$stride_X}(pX + $(N_iter*L2N*T_size) + px_off)
+                    pA_temp = PtrMatrix{$M_remain,$N_remain,$T,$stride_AD,$(stride_AD*N_remain),false}(pA + $(M_iter*L2M*T_size + N_iter*L2N*stride_AD*T_size))
+                    pX_temp = PtrMatrix{$N_remain,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + $(N_iter*L2N*T_size) + px_off)
                     $(prefetch_ ? quote
                         prefetch(pA_temp, Val(0))
                         prefetch(pX_temp, Val(0))
@@ -817,9 +828,9 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
             quote
                 for mᵢ ∈ 0:$(M_iter-1)
                     m_off = mᵢ*$(L2M*T_size)
-                    pD_temp = PtrMatrix{$L2M,$P_remain,$T,$stride_AD}(pD + m_off + $(P_iter*L2P*stride_AD*T_size))
-                    pA_temp = PtrMatrix{$L2M,$L2N,$T,$stride_AD}(pA + m_off)
-                    pX_temp = PtrMatrix{$L2N,$P_remain,$T,$stride_X}(pX + $(P_iter*L2P*stride_X*T_size))
+                    pD_temp = PtrMatrix{$L2M,$P_remain,$T,$stride_AD,$(stride_AD*P_remain),false}(pD + m_off + $(P_iter*L2P*stride_AD*T_size))
+                    pA_temp = PtrMatrix{$L2M,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + m_off)
+                    pX_temp = PtrMatrix{$L2N,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + $(P_iter*L2P*stride_X*T_size))
                     $(prefetch_ ? quote
                         prefetch(pD_temp, Val(1))
                         prefetch(pA_temp, Val(0))
@@ -829,8 +840,8 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
                          pA_temp,
                          pX_temp)
                     for nᵢ ∈ 1:$(N_iter-1)
-                        pA_temp = PtrMatrix{$L2M,$L2N,$T,$stride_AD}(pA + m_off + nᵢ*$(L2N*stride_AD*T_size))
-                        pX_temp = PtrMatrix{$L2N,$P_remain,$T,$stride_X}(pX + nᵢ*$(L2N*T_size) + $(P_iter*L2P*stride_X*T_size))
+                        pA_temp = PtrMatrix{$L2M,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + m_off + nᵢ*$(L2N*stride_AD*T_size))
+                        pX_temp = PtrMatrix{$L2N,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + nᵢ*$(L2N*T_size) + $(P_iter*L2P*stride_X*T_size))
                         $(prefetch_ ? quote
                             prefetch(pA_temp, Val(0))
                             prefetch(pX_temp, Val(0))
@@ -840,8 +851,8 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
                              pX_temp)
                     end
                     $(N_remain == 0 ? nothing : quote
-                        pA_temp = PtrMatrix{$L2M,$N_remain,$T,$stride_AD}(pA + m_off + $(N_iter*L2N*stride_AD*T_size))
-                        pX_temp = PtrMatrix{$N_remain,$P_remain,$T,$stride_X}(pX + $(N_iter*L2N*T_size + P_iter*L2P*stride_X*T_size))
+                        pA_temp = PtrMatrix{$L2M,$N_remain,$T,$stride_AD,$(stride_AD*N_remain),false}(pA + m_off + $(N_iter*L2N*stride_AD*T_size))
+                        pX_temp = PtrMatrix{$N_remain,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + $(N_iter*L2N*T_size + P_iter*L2P*stride_X*T_size))
                         $(prefetch_ ? quote
                             prefetch(pA_temp, Val(0))
                             prefetch(pX_temp, Val(0))
@@ -853,9 +864,9 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
                 end
                 ### Check if we need to add an expression for a remainder of M.
                 $(M_remain == 0 ? nothing : quote
-                    pD_temp = PtrMatrix{$M_remain,$P_remain,$T,$stride_AD}(pD + $(M_iter*L2M*T_size + P_iter*L2P*stride_AD*T_size))
-                    pA_temp = PtrMatrix{$M_remain,$L2N,$T,$stride_AD}(pA + $(M_iter*L2M*T_size))
-                    pX_temp = PtrMatrix{$L2N,$P_remain,$T,$stride_X}(pX + $(P_iter*L2P*stride_X*T_size))
+                    pD_temp = PtrMatrix{$M_remain,$P_remain,$T,$stride_AD,$(stride_AD*P_remain),false}(pD + $(M_iter*L2M*T_size + P_iter*L2P*stride_AD*T_size))
+                    pA_temp = PtrMatrix{$M_remain,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + $(M_iter*L2M*T_size))
+                    pX_temp = PtrMatrix{$L2N,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + $(P_iter*L2P*stride_X*T_size))
                     $(prefetch_ ? quote
                         prefetch(pD_temp, Val(1))
                         prefetch(pA_temp, Val(0))
@@ -865,8 +876,8 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
                          pA_temp,
                          pX_temp)
                     for nᵢ ∈ 1:$(N_iter-1)
-                        pA_temp = PtrMatrix{$M_remain,$L2N,$T,$stride_AD}(pA + $(M_iter*L2M*T_size) + nᵢ*$(L2N*stride_AD*T_size))
-                        pX_temp = PtrMatrix{$L2N,$P_remain,$T,$stride_X}(pX + nᵢ*$(L2N*T_size) + $(P_iter*L2P*stride_X*T_size))
+                        pA_temp = PtrMatrix{$M_remain,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + $(M_iter*L2M*T_size) + nᵢ*$(L2N*stride_AD*T_size))
+                        pX_temp = PtrMatrix{$L2N,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + nᵢ*$(L2N*T_size) + $(P_iter*L2P*stride_X*T_size))
                         $(prefetch_ ? quote
                             prefetch(pA_temp, Val(0))
                             prefetch(pX_temp, Val(0))
@@ -876,8 +887,8 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
                              pX_temp)
                     end
                     $(N_remain == 0 ? nothing : quote
-                        pA_temp = PtrMatrix{$M_remain,$N_remain,$T,$stride_AD}(pA + $(M_iter*L2M*T_size + N_iter*L2N*stride_AD*T_size))
-                        pX_temp = PtrMatrix{$N_remain,$P_remain,$T,$stride_X}(pX + $(N_iter*L2N*T_size + P_iter*L2P*stride_X*T_size))
+                        pA_temp = PtrMatrix{$M_remain,$N_remain,$T,$stride_AD,$(stride_AD*N_remain),false}(pA + $(M_iter*L2M*T_size + N_iter*L2N*stride_AD*T_size))
+                        pX_temp = PtrMatrix{$N_remain,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + $(N_iter*L2N*T_size + P_iter*L2P*stride_X*T_size))
                         $(prefetch_ ? quote
                             prefetch(pA_temp, Val(0))
                             prefetch(pX_temp, Val(0))
@@ -895,7 +906,7 @@ end
 
 @generated function Base.:*(A::LinearAlgebra.Diagonal{T,<:AbstractFixedSizePaddedVector{M,T,P}}, B::AbstractFixedSizePaddedMatrix{M,N,T,P}) where {M,N,T,P}
     W, Wshift = VectorizationBase.pick_vector_width_shift(P, T)
-    reps = P >> Wshift
+    reps = P >> Wshiftp
     V = Vec{W,T}
     q = quote
         C = MutableFixedSizePaddedMatrix{$M,$N,$T}(undef)
