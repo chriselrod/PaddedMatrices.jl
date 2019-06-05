@@ -35,7 +35,7 @@ end
     if r > 0
         rrep, rrem = divrem(r, W)
         u_sym = gensym(Symbol(:u_remw))
-        push!(q.args, :($u_sym = rand(rng, Vec{$(W*rrep),$T}) ))
+        rrep > 0 && push!(q.args, :($u_sym = rand(rng, Vec{$(W*rrep),$T}) ))
         for n ∈ 0:rrep - 1
             push!(q.args, :(vstore!(ptr_A, $(VectorizedRNG.subset_vec(u_sym, W, n*W)), $(L - r + 1 + n*W))))
         end
@@ -74,7 +74,7 @@ Random.rand!(A::AbstractMutableFixedSizePaddedArray) = rand!(VectorizedRNG.GLOBA
     if r > 0
         rrep, rrem = divrem(r, W)
         u_sym = gensym(Symbol(:u_remw))
-        push!(u_exprs.args, :($u_sym = rand(rng, Vec{$(W*rrep),$T}) ))
+        rrep > 0 && push!(u_exprs.args, :($u_sym = rand(rng, Vec{$(W*rrep),$T}) ))
         for j ∈ 1:W*rrep
             push!(out_exprs.args, :( @inbounds $u_sym[$j].value ) )
         end
@@ -92,7 +92,6 @@ end
 function Random.rand(::Type{ <: ConstantFixedSizePaddedArray{S,T}}) where {S,T<:Union{Float32,Float64}}
     rand(VectorizedRNG.GLOBAL_vPCG, ConstantFixedSizePaddedArray{S,T})
 end
-
 
 @generated function Random.randn!(rng::VectorizedRNG.PCG, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {S,T<:Union{Float32,Float64},N,R,L}
     size_T = sizeof(T)
@@ -117,7 +116,7 @@ end
     if r > 0
         rrep, rrem = divrem(r, W)
         u_sym = gensym(Symbol(:u_remw))
-        push!(q.args, :($u_sym = randn(rng, Vec{$(W*rrep),$T}) ))
+        rrep > 0 && push!(q.args, :($u_sym = randn(rng, Vec{$(W*rrep),$T}) ))
         for n ∈ 0:rrep - 1
             push!(q.args, :(vstore!(ptr_A, $(VectorizedRNG.subset_vec(u_sym, W, n*W)), $(L - r + 1 + n*W))))
         end
@@ -157,7 +156,7 @@ Random.randn!(A::AbstractMutableFixedSizePaddedArray) = randn!(VectorizedRNG.GLO
     if r > 0
         rrep, rrem = divrem(r, W)
         u_sym = gensym(Symbol(:u_remw))
-        push!(u_exprs.args, :($u_sym = randn(rng, Vec{$(W*rrep),$T}) ))
+        rrep > 0 && push!(u_exprs.args, :($u_sym = randn(rng, Vec{$(W*rrep),$T}) ))
         for j ∈ 1:W*rrep
             push!(out_exprs.args, :( @inbounds $u_sym[$j].value ) )
         end
@@ -222,7 +221,7 @@ end
     if r > 0
         rrep, rrem = divrem(r, W)
         u_sym = gensym(Symbol(:u_remw))
-        push!(q.args, :($u_sym = randexp(rng, Vec{$(W*rrep),$T}) ))
+        rrep > 0 && push!(q.args, :($u_sym = randexp(rng, Vec{$(W*rrep),$T}) ))
         for n ∈ 0:rrep - 1
             push!(q.args, :(vstore!(ptr_A, $(VectorizedRNG.subset_vec(u_sym, W, n*W)), $(L - r + 1 + n*W))))
         end
@@ -263,7 +262,7 @@ Random.randexp!(A::AbstractMutableFixedSizePaddedArray) = randexp!(VectorizedRNG
     if r > 0
         rrep, rrem = divrem(r, W)
         u_sym = gensym(Symbol(:u_remw))
-        push!(u_exprs.args, :($u_sym = randexp(rng, Vec{$(W*rrep),$T}) ))
+        rrep > 0 && push!(u_exprs.args, :($u_sym = randexp(rng, Vec{$(W*rrep),$T}) ))
         for j ∈ 1:W*rrep
             push!(out_exprs.args, :( @inbounds $u_sym[$j].value ) )
         end

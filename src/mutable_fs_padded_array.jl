@@ -291,15 +291,17 @@ end
 @generated function Base.setindex!(A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}, v, i::Vararg{Integer,M}) where {S,T,N,R,L,M}
     dims = ntuple(j -> S.parameters[j], Val(N))
     if M == 1
+        bound_check = :(i[1] > $L && ThrowBoundsError("index == $(i[1]) > $L == length of array"))
         ex = :(@inbounds i[1])
     else
         ex = sub2ind_expr(dims, R)
+        bound_check = :(Base.Cartesian.@nif $(N+1) d->( d == 1 ? i[d] > $R : i[d] > $dims[d]) d-> ThrowBoundsError("Dimension $d out of bounds $(i[d]) > $R") d -> nothing)
     end
     quote
         
         $(Expr(:meta, :inline))
         @boundscheck begin
-            Base.Cartesian.@nif $(N+1) d->( d == 1 ? i[d] > $R : i[d] > $dims[d]) d-> ThrowBoundsError("Dimension $d out of bounds $(i[d]) > $R") d -> nothing
+            $bound_check
         end
         VectorizationBase.store!(pointer(A) + sizeof(T) * ($ex - 1), convert($T,v))
         v
@@ -437,7 +439,7 @@ end
     end
 end
 
-@inline Base.unsafe_convert(::Type{Ptr{T}}, A::AbstractMutableFixedSizePaddedArray) where {T} = Base.unsafe_convert(Ptr{T}, pointer_from_objref(A))
+@inline Base.unsafe_convert(::Type{Ptr{T}}, A::AbstractMutableFixedSizePaddedArray) where {T} = Base.unsafe_convert(Ptr{T}, pointer(A))
 @generated function Base.strides(A::AbstractFixedSizePaddedArray{S,T,N,R,L}) where {S,T,N,R,L}
     SV = S.parameters
     N = length(SV)
