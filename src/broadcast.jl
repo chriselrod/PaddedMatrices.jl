@@ -472,7 +472,7 @@ function broadcast_index_expression(SB, N)
     q = quote end
     preq = quote end
     assign_to = gensym(:assign)
-    if length(SBV) > 1 && SBV[1] isa Int
+    if length(SBV) > 0 && SBV[1] isa Int
         callexpr = quote end
         
         incorporate_cartesian_inds!(callexpr, preq, SBV,  inds, gensym(:arg), :(bc.args[1]))
