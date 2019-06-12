@@ -1,7 +1,6 @@
 # First, we add templates for matrix multiplication
 abstract type AbstractProdct{T,N} end
-abstract type AbstractSizedProdct{M,P,K,T,N} <: AbstractProdct{T,N} end
-
+abstract type AbstractSizedProduct{M,P,K,T,N} <: AbstractProdct{T,N} end
 
 function reduce_size(S::DataType, ::Val{N}) where {N}
     s = fill!(MutableFixedSizePaddedVector{N,Int}(undef),1)
@@ -29,6 +28,7 @@ function reduce_size(S::DataType, ::Val{N}) where {N}
     end
     ConstantFixedSizePaddedVector(s)
 end
+
 function reduce_size(S::DataType)
     reduce_size!(Int[1], S)
 end
@@ -74,7 +74,7 @@ function Base.show(io::IO, p::AbstractProdct)
     println("Product of A, of size $(size(p.A)):\n", p.A, "\nand B, of size $(size(p.B)):\n", p.B)
 end
 
-struct SizedMatrixMatrixProduct{T,M,P,K,TA <: AbstractFixedSizePaddedMatrix{M,P,T}, TB <: AbstractFixedSizePaddedMatrix{P,K,T}} <: AbstractSizedProdct{M,P,K,T,2}
+struct SizedMatrixMatrixProduct{T,M,P,K,TA <: AbstractFixedSizePaddedMatrix{M,P,T}, TB <: AbstractFixedSizePaddedMatrix{P,K,T}} <: AbstractSizedProduct{M,P,K,T,2}
     A::TA
     B::TB
 end
@@ -85,7 +85,7 @@ end
 @inline Base.size(::SizedMatrixMatrixProduct{T,M,P,K}) where {T,M,P,K} = (M,K)
 @inline Base.axes(::SizedMatrixMatrixProduct{T,M,P,K}) where {T,M,P,K} = (Base.OneTo(M),Base.OneTo(K))
 
-struct SizedVectorMatrixProduct{T,P,K,TA <: AbstractFixedSizePaddedVector{P,T}, TB <: AbstractFixedSizePaddedMatrix{P,K,T}} <: AbstractSizedProdct{1,P,K,T,2}
+struct SizedVectorMatrixProduct{T,P,K,TA <: AbstractFixedSizePaddedVector{P,T}, TB <: AbstractFixedSizePaddedMatrix{P,K,T}} <: AbstractSizedProduct{1,P,K,T,2}
     A::TA
     B::TB
 end
@@ -96,7 +96,7 @@ end
 @inline Base.axes(::SizedVectorMatrixProduct{T,P,K}) where {T,P,K} = (Base.OneTo(1),Base.OneTo(K))
 
 
-struct SizedMatrixVectorProduct{T,M,P,TA <: AbstractFixedSizePaddedMatrix{M,P,T}, TB <: AbstractFixedSizePaddedVector{P,T}} <: AbstractSizedProdct{M,P,1,T,1}
+struct SizedMatrixVectorProduct{T,M,P,TA <: AbstractFixedSizePaddedMatrix{M,P,T}, TB <: AbstractFixedSizePaddedVector{P,T}} <: AbstractSizedProduct{M,P,1,T,1}
     A::TA
     B::TB
 end
