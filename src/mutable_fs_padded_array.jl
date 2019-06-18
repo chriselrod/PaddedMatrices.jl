@@ -52,16 +52,16 @@ function init_mutable_fs_padded_array_quote(S, T)
             $(Expr(:meta,:inline))
             out = MutableFixedSizePaddedArray{$S,$T,$N,$padded_rows,$L}(undef)
         end
-        if rem > 0
-            push!(q.args, quote
-                @nloops $(N-1) i j -> 1:$SV[j+1] begin
-                    @inbounds for i_0 ∈ $(padded_rows+1-W):$padded_rows
-                        ( @nref $N out n -> i_{n-1} ) = zero($T)
-                    end
-                end
-                out
-            end)
-        end
+#        if rem > 0
+#            push!(q.args, quote
+#                @nloops $(N-1) i j -> 1:$SV[j+1] begin
+#                    @inbounds for i_0 ∈ $(padded_rows+1-W):$padded_rows
+#                        ( @nref $N out n -> i_{n-1} ) = zero($T)
+#                    end
+#                end
+#                out
+#            end)
+#        end
         return q
     end
     while W >= TwoN
@@ -76,11 +76,12 @@ function init_mutable_fs_padded_array_quote(S, T)
     end
     quote
         $(Expr(:meta,:inline))
-        out = MutableFixedSizePaddedArray{$S,$T,$N,$padded_rows,$L}(undef)
-        for l ∈ 1:$L
-            out[l] = zero($T)
-        end
-        out
+        MutableFixedSizePaddedArray{$S,$T,$N,$padded_rows,$L}(undef)
+#        out = MutableFixedSizePaddedArray{$S,$T,$N,$padded_rows,$L}(undef)
+#        for l ∈ 1:$L
+#            out[l] = zero($T)
+#        end
+#        out
     end
 end
 
@@ -237,6 +238,17 @@ end
         PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
 end
+@generated function PtrArray{S,T,N}(ptr::Ptr{T},::Val{P}=Val{true}()) where {S,T,N,P}
+    R = calc_padding(S.parameters[1], T)
+    L = R
+    for i ∈ 2:N
+        L *= S.parameters[i]
+    end
+    quote
+        $(Expr(:meta,:inline))
+        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
+    end
+end
 @generated function PtrArray{S,T}(ptr::Ptr{T}, ::Val{P} = Val{true}()) where {S,T,P}
     N, R, L = calc_NPL(S, T)
     quote
@@ -251,13 +263,52 @@ end
         PtrArray{$S,$T,$N,$P,$L,true}(ptr)
     end
 end
-@generated function PtrArray{S}(ptr::Ptr{T}, ::Val{P}) where {S,T,P}
+@generated function PtrArray{S}(ptr::Ptr{T}, ::Val{P} = Val{true}()) where {S,T,P}
     N,R,L = calc_NPL(S,T)
     quote
         $(Expr(:meta,:inline))
         PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
 end
+@generated function PtrArray{S}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,P}
+    N,R,L = calc_NPL(S,Float64)
+    quote
+        Expr(:meta,:inline)
+        sp + $(8L), PtrArray{$S,Float64,$N,$R,$L,$P}(pointer(sp, Float64))
+    end
+end
+@generated function PtrArray{S,T}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,T,P}
+    N,R,L = calc_NPL(S,T)
+    quote
+        Expr(:meta,:inline)
+        sp + $(sizeof(T)*L), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
+    end
+end
+@generated function PtrArray{S,T,N}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,T,N,P}
+    R = calc_padding(S.parameters[1], T)
+    L = R
+    for n ∈ 2:N
+        L *= n
+    end
+    quote
+        Expr(:meta,:inline)
+        sp + $(sizeof(T)*L), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
+    end
+end
+@generated function PtrArray{S,T,N,R}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,T,N,R,P}
+    L = R
+    for n ∈ 2:N
+        L *= n
+    end
+    quote
+        Expr(:meta,:inline)
+        sp + $(sizeof(T)*L), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
+    end
+end
+
+@support_stack_pointer PaddedMatrices PtrVector;
+@support_stack_pointer PaddedMatrices PtrMatrix;
+@support_stack_pointer PaddedMatrices PtrArray;
 
 const PtrVector{N,T,R,L,P} = PtrArray{Tuple{N},T,1,R,L,P} # R and L will always be the same...
 const PtrMatrix{M,N,T,R,L,P} = PtrArray{Tuple{M,N},T,2,R,L,P}

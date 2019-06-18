@@ -58,22 +58,37 @@ end
     end
     q
 end
+@generated function Base.:*(
+    sp::StackPointer,
+    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR},
+    X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}
+) where {M,N,P,T,ADR,XR}
+    quote
+        $(Expr(:meta,:inline))
+        sp, D = PtrMatrix{$M,$P,$T,$ADR}(sp)
+        pD = pointer(D)
+        pA = pointer(A)
+        pX = pointer(X)
+        $(mulquote(ADR,N,P,ADR,XR,T))
+        sp, D
+    end
+end
 
 
-@inline function LinearAlgebra.mul!(C, A, B::PaddedMatrix)
+@inline function LinearAlgebra.mul!(C, A, B::DynamicPaddedMatrix)
     Bdata = B.data
     @uviews Bdata mul!(C, A, @view(B.data[1:B.nrow,:]))
 end
 
-@inline function LinearAlgebra.mul!(C, A::PaddedMatrix, B::PaddedMatrix)
+@inline function LinearAlgebra.mul!(C, A::DynamicPaddedMatrix, B::DynamicPaddedMatrix)
     Bdata = B.data
     @uviews Bdata mul!(C, A.data, @view(B.data[1:B.nrow,:]))
 end
-@inline function LinearAlgebra.mul!(C::PaddedMatrix, A, B::PaddedMatrix)
+@inline function LinearAlgebra.mul!(C::DynamicPaddedMatrix, A, B::DynamicPaddedMatrix)
     Bdata = B.data
     @uviews Bdata mul!(C.data, A, @view(B.data[1:B.nrow,:]))
 end
-@inline function LinearAlgebra.mul!(C::PaddedMatrix, A::PaddedMatrix, B::PaddedMatrix)
+@inline function LinearAlgebra.mul!(C::DynamicPaddedMatrix, A::DynamicPaddedMatrix, B::DynamicPaddedMatrix)
     Bdata = B.data
     @uviews Bdata mul!(C.data, A.data, @view(B.data[1:B.nrow,:]))
 end
@@ -183,6 +198,35 @@ end
         B = Bdiagonal.diag
         $(elementwise_product_quote(N,T,P))
         mv'
+    end
+end
+@generated function Base.:*(
+    sp::StackPointer,
+    Adiagonal::Diagonal{T,<:AbstractMutableFixedSizePaddedVector{N,T,P}},
+    B::AbstractMutableFixedSizePaddedVector{N,T,P}
+) where {N,T,P}
+    quote
+        sp, mv = PtrVector{$N,$T,$P}(sp)
+        A = Adiagonal.diag
+        @vectorize $T for p ∈ 1:$P
+            mv[p] = A[p] * B[p]
+        end
+        sp, mv
+    end
+end
+@generated function Base.:*(
+    sp::StackPointer,
+    Aadjoint::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedVector{N,T,P}},
+    Bdiagonal::Diagonal{T,<:AbstractMutableFixedSizePaddedVector{N,T,P}}
+) where {N,T,P}
+    quote
+        sp, mv = PtrVector{$N,$T,$P}(sp)
+        A = Aadjoint.parent
+        B = Bdiagonal.diag
+        @vectorize $T for p ∈ 1:$P
+            mv[p] = A[p] * B[p]
+        end
+        sp, mv'
     end
 end
 

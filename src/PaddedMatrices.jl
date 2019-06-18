@@ -95,16 +95,25 @@ end
 Converts Cartesian one-based index into linear one-based index.
 Just subtract 1 for a zero based index.
 """
-function sub2ind_expr(S, P)
-    N = length(S)
-    N == 1 && return :(i[1])
+function sub2ind_expr(S, P,  N = length(S))
+    N == 1 && return :(@inbounds i[1])
     ex = :(i[$N] - 1)
     for i ∈ (N - 1):-1:2
         ex = :(i[$i] - 1 + $(S[i]) * $ex)
     end
-    :(i[1] + $P * $ex)
+    :(@inbounds i[1] + $P * $ex)
+end
+@generated function sub2ind(s::NTuple{N}, i::NTuple{N}, P = size(s,1)) where {N}
+    N == 1 && return :(@inbounds i[1])
+    ex = :(i[$N] - 1)
+    for j ∈ (N-1):-1:2
+        ex = :(i[$j] - 1 + s[$j] * $ex)
+    end
+    :(@inbounds i[1] + $P * $ex)
 end
 
+## WHAT IS THIS FOR?
+## ADD DOCS FOR STUBS
 function vload! end
 
 function __init__()

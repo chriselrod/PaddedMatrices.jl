@@ -445,12 +445,12 @@ end
     end
 end
 @inline function Base.Broadcast.materialize(
-    bc::Base.Broadcast.Broadcasted{FixedSizePaddedMatrixDefaultStyle{S,T1,R,A}},
-    mystack::Ptr{T2}
+    sp::StackPointer,
+    bc::Base.Broadcast.Broadcasted{FixedSizePaddedMatrixDefaultStyle{S,T1,R,A}}
 ) where {S,A,T1,T2,R}
-    out, mystack = similar(bc, mystack)
+    sp, out = similar(sp, bc)
     Base.broadcast.materialize!(out, bc)
-    out, mystack
+    sp, out
 end
 @inline function Base.Broadcast.materialize(
         bc::Base.Broadcast.Broadcasted{FixedSizePaddedMatrixDefaultStyle{S,T,R,A}}
