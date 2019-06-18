@@ -155,7 +155,7 @@ end
     MMP.A * MMP.B
 end
 @inline function Base.copyto!(
-                C::Union{<: PaddedArray{T},<:AbstractMutableFixedSizePaddedArray{T}},
+                C::Union{<: AbstractDynamicPaddedArray{T},<:AbstractMutableFixedSizePaddedArray{T}},
                 MMP::AbstractProdct{T}
             ) where {T}
     mul!(C, MMP.A, MMP.B)

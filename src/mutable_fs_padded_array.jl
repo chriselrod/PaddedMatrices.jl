@@ -185,7 +185,7 @@ function Base.copy(A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T
     B
 end
 function Base.copyto!(B::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}, A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L}
-    @inbounds for l ∈ 1:L
+    @inbounds @simd ivdep for l ∈ 1:L
         B[l] = A[l]
     end
     B
@@ -263,7 +263,7 @@ end
         PtrArray{$S,$T,$N,$P,$L,true}(ptr)
     end
 end
-@generated function PtrArray{S}(ptr::Ptr{T}, ::Val{P} = Val{true}()) where {S,T,P}
+@generated function PtrArray{S}(ptr::Ptr{T}, ::Val{P}) where {S,T,P}
     N,R,L = calc_NPL(S,T)
     quote
         $(Expr(:meta,:inline))
@@ -306,12 +306,15 @@ end
     end
 end
 
+
+const PtrVector{N,T,R,L,P} = PtrArray{Tuple{N},T,1,R,L,P} # R and L will always be the same...
+const PtrMatrix{M,N,T,R,L,P} = PtrArray{Tuple{M,N},T,2,R,L,P}
+
+
 @support_stack_pointer PaddedMatrices PtrVector;
 @support_stack_pointer PaddedMatrices PtrMatrix;
 @support_stack_pointer PaddedMatrices PtrArray;
 
-const PtrVector{N,T,R,L,P} = PtrArray{Tuple{N},T,1,R,L,P} # R and L will always be the same...
-const PtrMatrix{M,N,T,R,L,P} = PtrArray{Tuple{M,N},T,2,R,L,P}
 
 
 @inline Base.pointer(A::PtrArray) = A.ptr
@@ -324,6 +327,12 @@ const PtrMatrix{M,N,T,R,L,P} = PtrArray{Tuple{M,N},T,2,R,L,P}
 @inline VectorizationBase.vectorizable(A::LinearAlgebra.Diagonal{T,<:AbstractMutableFixedSizePaddedArray}) where {T} = VectorizationBase.vpointer(pointer(A.diag))
 @inline VectorizationBase.vectorizable(A::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedArray}) where {T} = VectorizationBase.vpointer(pointer(A.parent))
 
+
+@inline Base.similar(sp::StackPointer, A::AbstractMutableFixedSizePaddedArray{S,T,N,R}) where {S,T,N,R} = PtrArray{S,T,N,R}(sp, Val{true}())
+@inline function Base.copy(sp::StackPointer, A::AbstractMutableFixedSizePaddedArray{S,T,N,R}) where {S,T,N,R}
+    sp, B = PtrArray{S,T,N,R}(sp, Val{true}())
+    sp, copyto!(B, A)
+end
 
 
 @generated function Base.setindex!(A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}, v, i::CartesianIndex{N}) where {S,T,N,R,L}

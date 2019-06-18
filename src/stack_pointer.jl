@@ -20,12 +20,12 @@ macro support_stack_pointer(mod, func)
     end)
 end
 
-@support_stack_pointer Base getindex;
-@support_stack_pointer Base materialize;
-@support_stack_pointer Base *;
-@support_stack_pointer Base +;
-@support_stack_pointer Base similar;
-@support_stack_pointer Base copy;
+@support_stack_pointer Base getindex
+@support_stack_pointer Base materialize
+@support_stack_pointer Base (*)
+@support_stack_pointer Base (+)
+@support_stack_pointer Base similar
+@support_stack_pointer Base copy
 
 function stack_pointer_pass(expr, stacksym, blacklist = nothing)
     if blacklist == nothing

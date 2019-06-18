@@ -1,5 +1,8 @@
- abstract type AbstractDynamicPaddedArray{T,N} <: AbstractPaddedArray{T,N} end
-struct PaddedArray{T,N} <: AbstractDynamicPaddedArray{T,N}
+abstract type AbstractDynamicPaddedArray{T,N} <: AbstractPaddedArray{T,N} end
+const AbstractDynamicPaddedVector{T} = AbstractDynamicPaddedArray{T,1}
+const AbstractDynamicPaddedMatrix{T} = AbstractDynamicPaddedArray{T,2}
+
+struct DynamicPaddedArray{T,N} <: AbstractDynamicPaddedArray{T,N}
     data::Array{T,N}
 #    nvector_loads::Int
 #    stride::Int
@@ -7,13 +10,28 @@ struct PaddedArray{T,N} <: AbstractDynamicPaddedArray{T,N}
 end
 struct DynamicPtrArray{T,N} <: AbstractDynamicPaddedArray{T,N}
     ptr::Ptr{T}
-    stride::Int
     size::NTuple{N,Int}
+    stride::Int
+#    full_length::Int
 end
 const DynamicPaddedVector{T} = DynamicPaddedArray{T,1}
 const DynamicPaddedMatrix{T} = DynamicPaddedArray{T,2}
 const DynamicPtrVector{T} = DynamicPtrArray{T,1}
 const DynamicPtrMatrix{T} = DynamicPtrArray{T,2}
+
+@inline column_stride(A::DynamicPaddedArray) = size(A.data,1)
+@inline column_stride(A::DynamicPtrArray) = A.stride
+
+full_length(A::DynamicPaddedArray) = length(A.data)
+function full_length(Asize::NTuple{N,Int}, L::Int) where {N}
+    @inbounds for n ∈ 2:N
+        L *= Asize[n]
+    end
+    L
+end
+full_length(A::DynamicPtrArray) = A.full_length(A.size, A.size)
+
+
 
 #=
 @generated function DynamicPaddedArray{T}(::UndefInitializer, S::NTuple{N}) where {T,N}#, ::Val{Z} = Val(true)) where {T,N,Z}
@@ -79,6 +97,17 @@ function DynamicPaddedArray(A::AbstractArray{T,N}) where {T,N}
     end
     pA
 end
+
+function DynamicPtrArray{T}(sp::StackPointer, size, stride) where {T}
+    L = full_length(size, stride)
+    ptr = pointer(sp, T)
+    sp + L*sizeof(T), DynamicPtrArray(ptr, size, stride)    
+end
+
+@support_stack_pointer PaddedMatrices DynamicPtrVector;
+@support_stack_pointer PaddedMatrices DynamicPtrMatrix;
+@support_stack_pointer PaddedMatrices DynamicPtrArray;
+
 # function DynamicPaddedArray{T where T,N}(A::AbstractArray{T,N}) where {T,N}
 #     pA = DynamicPaddedArray{T}(undef, size(A))
 #     @inbounds for i ∈ CartesianIndices(A)
@@ -157,7 +186,7 @@ end
 @inline Base.pointer(A::DynamicPtrArray) = A.ptr
 @inline Base.unsafe_convert(::Type{Ptr{T}}, A::DynamicPtrArray{T}) where {T} = A.ptr
 
-@inline VectorizationBase.vectorizable(A::AbstractDynamicPaddedArray) = VectorizationBase.vpointer(pointer(A.data))
+@inline VectorizationBase.vectorizable(A::AbstractDynamicPaddedArray) = VectorizationBase.vpointer(pointer(A))
 
 
 
@@ -167,7 +196,7 @@ end
     N == 1 && return (1,)
     s = Expr(:tuple,1,:(A.stride))
     N == 2 && return s
-    for n ∈ 2:$N-1
+    for n ∈ 2:N-1
         push!(s.args, :(sizaA[$n]))
     end
     :(sizeA = A.size; @inbounds $s)
@@ -180,20 +209,34 @@ end
 end
 
 
-@inline function Base.copy(A::DynamicPaddedArray{T,N}) where {T,N}
-    DynamicPaddedArray(
-        copy(A.data), A.size
-    )
-end
-@inline function Base.copy(A::DynamicPtrArray{T,N}) where {T,N}
-    B = Array{T,N}(undef, Base.setindex(A.size, A.stride, 1))
-    @inbounds @simd ivdep for i ∈ eachindex(B)
+function Base.copyto!(B::AbstractDynamicPaddedArray{T,N}, A::AbstractDynamicPaddedArray{T,N}) where {T,N}
+    @boundscheck strides(A) == strides(B) || ThrowBoundsError("strides(A) == $(strides(A)) != $(strides(B)) == strides(B)")
+    @inbounds @simd ivdep for i ∈ 1:full_length(A)
         B[i] = A[i]
     end
-    DynamicPaddedArray(
-        B, A.size
-    )
+    B
 end
+
+function Base.similar(A::DynamicPaddedArray)
+    DynamicPaddedArray(similar(A.data), A.size)
+end
+function Base.similar(A::DynamicPtrArray{T,N}) where {T,N}
+    DynamicPaddedArray(Array{T,N}(undef, Base.setindex(A.size, A.stride, 1)), A.size)
+end
+function Base.similar(sp::StackPointer, A::AbstractDynamicPaddedArray{T}) where {T}
+    DynamicPtrArray{T}(sp, A.size, column_stride(A))
+end
+
+
+                      
+function Base.copy(A::AbstractDynamicPaddedArray)
+    @inbounds copyto!(similar(A), A)
+end
+function Base.copy(sp::StackPointer, A::AbstractDynamicPaddedArray)
+    sp, B = similar(sp, A)
+    sp, @inbounds copyto!(B, A)
+end
+
 
 @generated function muladd!(
     D::AbstractDynamicPaddedMatrix{T},

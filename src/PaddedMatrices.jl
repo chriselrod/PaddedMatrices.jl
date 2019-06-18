@@ -5,6 +5,8 @@ using VectorizationBase, SIMDPirates,
         SLEEFPirates, VectorizedRNG,
         LoopVectorization, LinearAlgebra, Random
 
+using MacroTools: @capture
+
 export @Constant, @Mutable,
     ConstantFixedSizePaddedArray,
     ConstantFixedSizePaddedVector,
@@ -40,8 +42,8 @@ const AbstractConstantFixedSizePaddedMatrix{M,N,T,P,L} = AbstractConstantFixedSi
 
 @inline LoopVectorization.stride_row(::AbstractFixedSizePaddedMatrix{M,N,T,P}) where {M,N,T,P} = P
 
-Base.IndexStyle(::AbstractPaddedArray) = IndexCartesian()
-Base.IndexStyle(::AbstractPaddedVector) = IndexLinear()
+Base.IndexStyle(::Type{<:AbstractPaddedArray}) = IndexCartesian()
+Base.IndexStyle(::Type{<:AbstractPaddedVector}) = IndexLinear()
 @noinline ThrowBoundsError() = throw(BoundsError())
 @noinline ThrowBoundsError(str) = throw(BoundsError(str))
 
@@ -120,6 +122,7 @@ function __init__()
     set_zero_subnormals(true)
 end
 
+include("stack_pointer.jl")
 include("padded_array.jl")
 include("mutable_fs_padded_array.jl")
 include("const_fs_padded_array.jl")
