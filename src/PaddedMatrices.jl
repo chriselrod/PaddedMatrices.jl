@@ -14,8 +14,12 @@ export @Constant, @Mutable,
     MutableFixedSizePaddedArray,
     MutableFixedSizePaddedVector,
     MutableFixedSizePaddedMatrix,
-    PaddedVector, PaddedMatrix, PaddedArray, ×
+    PaddedVector, PaddedMatrix, PaddedArray,
+    PtrVector, PtrMatrix, PtrArray
 
+
+@noinline ThrowBoundsError() = throw(BoundsError())
+@noinline ThrowBoundsError(str) = throw(BoundsError(str))
 
 struct Static{N} end
 Base.@pure Static(N) = Static{N}()
@@ -23,6 +27,10 @@ static_type(::Static{N}) where {N} = N
 static_type(::Type{Static{N}}) where {N} = N
 (::Base.Colon)(i::Int64,::Static{N}) where {N} = i:N
 tonumber(::Static{N}) where {N} = N
+@inline function Base.getindex(::Static{N}, i) where {N}
+    @boundscheck i > N && ThrowBoundsError()
+    i
+end
 
 abstract type AbstractPaddedArray{T,N} <: AbstractArray{T,N} end
 abstract type AbstractFixedSizePaddedArray{S,T,N,P,L} <: AbstractPaddedArray{T,N} end
@@ -40,12 +48,23 @@ const AbstractMutableFixedSizePaddedMatrix{M,N,T,P,L} = AbstractMutableFixedSize
 const AbstractConstantFixedSizePaddedVector{M,T,P,L} = AbstractConstantFixedSizePaddedArray{Tuple{M},T,1,P,L}
 const AbstractConstantFixedSizePaddedMatrix{M,N,T,P,L} = AbstractConstantFixedSizePaddedArray{Tuple{M,N},T,2,P,L}
 
+struct StaticUnitRange{L,S} <: AbstractFixedSizePaddedVector{L,Int,L,L} end
+Base.getindex(::StaticUnitRange{L,S}, i::Integer) where {L,S} = Int(i+S-1)
+Base.size(::StaticUnitRange{L}) where {L} = (L,)
+Base.length(::StaticUnitRange{L}) where {L} = L
+Base.IndexStyle(::Type{<:StaticUnitRange}) = Base.IndexLinear()
+@generated StaticUnitRange(::Val{Start}, ::Val{Stop}) where {Start,Stop} = StaticUnitRange{Stop-Start+1,Start}()
+macro StaticRange(rq)
+    @assert rq.head == :call
+    @assert rq.args[1] == :(:)
+    :(StaticUnitRange(Val{$(rq.args[2])}(), Val{$(rq.args[3])}()))
+end
+
+                                
 @inline LoopVectorization.stride_row(::AbstractFixedSizePaddedMatrix{M,N,T,P}) where {M,N,T,P} = P
 
 Base.IndexStyle(::Type{<:AbstractPaddedArray}) = IndexCartesian()
 Base.IndexStyle(::Type{<:AbstractPaddedVector}) = IndexLinear()
-@noinline ThrowBoundsError() = throw(BoundsError())
-@noinline ThrowBoundsError(str) = throw(BoundsError(str))
 
 @inline full_length(::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L} = L
 @inline full_length(::Type{<: AbstractFixedSizePaddedArray{S,T,N,P,L}}) where {S,T,N,P,L} = L

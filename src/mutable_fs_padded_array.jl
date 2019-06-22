@@ -116,6 +116,8 @@ const MutableFixedSizePaddedMatrix{M,N,T,P,L} = MutableFixedSizePaddedArray{Tupl
 @inline MutableFixedSizePaddedMatrix(A::AbstractFixedSizePaddedArray{S,T,2,P,L}) where {S,T,P,L} = MutableFixedSizePaddedArray{S,T,2,P,L}(A.data)
 @inline MutableFixedSizePaddedArray(A::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L}= MutableFixedSizePaddedArray{S,T,N,P,L}(A.data)
 
+
+
 @generated function MutableFixedSizePaddedArray(::UndefInitializer, ::Val{S}, ::Type{T1}=Float64) where {S,T1}
     SD = Tuple{S...}
     init_mutable_fs_padded_array_quote(SD, T1)
@@ -230,8 +232,8 @@ struct PtrArray{S,T,N,R,L,P} <: AbstractMutableFixedSizePaddedArray{S,T,N,R,L}
 end
 @generated function PtrArray{S,T,N,R}(ptr::Ptr{T},::Val{P}=Val{true}()) where {S,T,N,R,P}
     L = R
-    for i ∈ 2:N
-        L *= S.parameters[i]
+    for n ∈ 2:N
+        L *= S.parameters[n]
     end
     quote
         $(Expr(:meta,:inline))
@@ -241,8 +243,8 @@ end
 @generated function PtrArray{S,T,N}(ptr::Ptr{T},::Val{P}=Val{true}()) where {S,T,N,P}
     R = calc_padding(S.parameters[1], T)
     L = R
-    for i ∈ 2:N
-        L *= S.parameters[i]
+    for n ∈ 2:N
+        L *= S.parameters[n]
     end
     quote
         $(Expr(:meta,:inline))
@@ -273,14 +275,14 @@ end
 @generated function PtrArray{S}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,P}
     N,R,L = calc_NPL(S,Float64)
     quote
-        Expr(:meta,:inline)
+#        Expr(:meta,:inline)
         sp + $(8L), PtrArray{$S,Float64,$N,$R,$L,$P}(pointer(sp, Float64))
     end
 end
 @generated function PtrArray{S,T}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,T,P}
     N,R,L = calc_NPL(S,T)
     quote
-        Expr(:meta,:inline)
+    #    Expr(:meta,:inline)
         sp + $(sizeof(T)*L), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
     end
 end
@@ -288,21 +290,23 @@ end
     R = calc_padding(S.parameters[1], T)
     L = R
     for n ∈ 2:N
-        L *= n
+        L *= S.parameters[n]
     end
     quote
-        Expr(:meta,:inline)
+#        Expr(:meta,:inline)
         sp + $(sizeof(T)*L), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
     end
 end
 @generated function PtrArray{S,T,N,R}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,T,N,R,P}
     L = R
     for n ∈ 2:N
-        L *= n
+        L *= S.parameters[n]
     end
     quote
-        Expr(:meta,:inline)
+#        Expr(:meta,:inline)
+        ptr = Base.unsafe_convert(Ptr{$T}, sp.ptr)
         sp + $(sizeof(T)*L), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
+#        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
 end
 
@@ -573,4 +577,21 @@ macro sview(expr)
     end
     esc(q)
 end
+
+"""
+This function is not safe -- make sure the underlying data is protected!!!
+"""
+@generated function Base.vec(a::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {S,T,N,R,L}
+    N == 1 || S.parameters[1] == R || throw("vec-ing multidimensional arrays with padding would lead to weird behavior.")
+    :(PtrVector{$L,$T,$L}(pointer(a)))
+end
+@generated function Base.reshape(A::AbstractMutableFixedSizePaddedArray{S1,T,N,R,L}, ::Val{S2}) where {S1,S2,T,N,R,L}
+    N == 1 || S1.parameters[1] == R || throw("Reshaping multidimensional arrays with padding would lead to weird behavior.")
+    prod(S2.parameters) == prod(S1.parameters) || throw("Total length of reshaped array should equal original length.")
+    N2 = length(S2.parameters)
+    R2 = S2.parameters[1]
+    :(PtrArray{$S2,$T,$N2,$R2,$L}(pointer(A)))
+end
+
+
 

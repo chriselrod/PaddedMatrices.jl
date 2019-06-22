@@ -19,13 +19,34 @@ macro support_stack_pointer(mod, func)
         @inline $mod.$func(sp::PaddedMatrices.StackPointer, args...) = (sp, $mod.$func(args...))
     end)
 end
+macro support_stack_pointer(func)
+    # Could use @__MODULE__
+    esc(quote
+#        push!(PaddedMatrices.STACK_POINTER_SUPPORTED_MODMETHODS, ($(QuoteNode(mod)),$(QuoteNode(func))))
+        push!(PaddedMatrices.STACK_POINTER_SUPPORTED_METHODS, $(QuoteNode(func)))
+        @inline $func(sp::PaddedMatrices.StackPointer, args...) = (sp, $func(args...))
+    end)
+end
+
+function ∂getindex end
+function ∂materialize end
+function ∂mul end
+function ∂add end
+function ∂muladd end
 
 @support_stack_pointer Base getindex
 @support_stack_pointer Base materialize
 @support_stack_pointer Base (*)
 @support_stack_pointer Base (+)
+@support_stack_pointer Base (-)
 @support_stack_pointer Base similar
 @support_stack_pointer Base copy
+
+@support_stack_pointer ∂getindex
+@support_stack_pointer ∂materialize
+@support_stack_pointer ∂mul
+@support_stack_pointer ∂add
+@support_stack_pointer ∂muladd
 
 function stack_pointer_pass(expr, stacksym, blacklist = nothing)
     if blacklist == nothing

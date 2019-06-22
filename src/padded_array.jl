@@ -19,8 +19,8 @@ const DynamicPaddedMatrix{T} = DynamicPaddedArray{T,2}
 const DynamicPtrVector{T} = DynamicPtrArray{T,1}
 const DynamicPtrMatrix{T} = DynamicPtrArray{T,2}
 
-@inline column_stride(A::DynamicPaddedArray) = size(A.data,1)
-@inline column_stride(A::DynamicPtrArray) = A.stride
+@inline LoopVectorization.stride_row(A::DynamicPaddedArray) = size(A.data,1)
+@inline LoopVectorization.stride_row(A::DynamicPtrArray) = A.stride
 
 full_length(A::DynamicPaddedArray) = length(A.data)
 function full_length(Asize::NTuple{N,Int}, L::Int) where {N}
@@ -149,8 +149,8 @@ function Base.fill(::Type{<: DynamicPaddedArray}, S::NTuple{N}, v::T) where {T,N
 end
 
 Base.size(A::AbstractDynamicPaddedArray) = A.size
-@inline Base.getindex(A::DynamicPaddedArray, I...) = Base.getindex(A.data, I...)
-@inline Base.setindex!(A::DynamicPaddedArray, v, I...) = Base.setindex!(A.data, v, I...)
+@inline Base.@propagate_inbounds Base.getindex(A::DynamicPaddedArray, I...) = Base.getindex(A.data, I...)
+@inline Base.@propagate_inbounds Base.setindex!(A::DynamicPaddedArray, v, I...) = Base.setindex!(A.data, v, I...)
 
 @inline function Base.getindex(A::DynamicPtrArray{T,N}, i::Integer) where {T,N}
     VectorizationBase.load(A.ptr + (i-1) * sizeof(T))
@@ -224,7 +224,7 @@ function Base.similar(A::DynamicPtrArray{T,N}) where {T,N}
     DynamicPaddedArray(Array{T,N}(undef, Base.setindex(A.size, A.stride, 1)), A.size)
 end
 function Base.similar(sp::StackPointer, A::AbstractDynamicPaddedArray{T}) where {T}
-    DynamicPtrArray{T}(sp, A.size, column_stride(A))
+    DynamicPtrArray{T}(sp, A.size, LoopVectorization.stride_row(A))
 end
 
 
@@ -237,6 +237,15 @@ function Base.copy(sp::StackPointer, A::AbstractDynamicPaddedArray)
     sp, @inbounds copyto!(B, A)
 end
 
+function Base.view(A::DynamicPtrMatrix{T}, ::Colon, i::UnitRange) where {T}
+    ptrA = pointer(A)
+    M,N = A.size
+    P = A.stride
+    ptrB = ptrA + P * sizeof(T) * (first(i) - 1)
+    DynamicPtrMatrix{T}(
+        ptrB, (M,length(i)), P
+    )
+end
 
 @generated function muladd!(
     D::AbstractDynamicPaddedMatrix{T},

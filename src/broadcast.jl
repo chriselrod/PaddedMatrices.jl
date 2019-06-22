@@ -224,6 +224,8 @@ function pick_R(R1, R2)
 end
 
 Base.BroadcastStyle(::Type{<:AbstractFixedSizePaddedArray{S,T,N,R}}) where {S,T,N,R} = FixedSizePaddedMatrixDefaultStyle{S,T,R,LinearIndexing}()
+Base.BroadcastStyle(::Type{LinearAlgebra.Adjoint{T,V}}) where {S,T,R,V<:AbstractFixedSizePaddedVector{S,T,R}} = FixedSizePaddedMatrixDefaultStyle{Tuple{1,S},T,R,LinearIndexing}()
+#Base.BroadcastStyle(::Type{LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedMatrix{M,N,T,R}}}) where {M,N,T,R} = FixedSizePaddedMatrixDefaultStyle{Tuple{N,M},T,R,LinearIndexing}()
 
 @inline function Base.Broadcast.result_style(s1::FixedSizePaddedMatrixDefaultStyle, s2::FixedSizePaddedMatrixDefaultStyle)
     # s1, s2 is always the canonical order.
@@ -233,11 +235,24 @@ end
 
 
 @generated function Base.Broadcast.combine_styles(
-    s::Vararg{<:Union{AbstractFixedSizePaddedArray{S} where S,BLAS.BlasFloat,Int32,Int64}, N}) where {N}
+    s::Vararg{<:Union{AbstractFixedSizePaddedArray{S} where S,
+                      <:LinearAlgebra.Adjoint{<:Any,<:AbstractFixedSizePaddedArray{S}} where S,
+                      <:Base.Broadcast.Broadcasted{<:AbstractPaddedMatrixStyle},
+                      BLAS.BlasFloat,Int32,Int64}, N}) where {N}
 
     is_padded_array = Vector{Bool}(undef, N)
+ #   is_adj_padded_array = Vector{Bool}(undef, N)
     for n ∈ 1:N
-        is_padded_array[n] = s[n] <: AbstractFixedSizePaddedArray
+        if s[n] <: AbstractFixedSizePaddedArray
+            is_padded_array[n] = true
+        elseif s[n] <: LinearAlgebra.Adjoint{<:Any,<:AbstractFixedSizePaddedArray}
+            is_padded_array[n] = true
+        elseif s[n] <: Base.Broadcast.Broadcasted{<:AbstractPaddedMatrixStyle}
+            is_padded_array[n] = true
+        else
+            is_padded_array[n] = false
+        end
+#        is_adj_padded_array[n] = s[n] <: LinearAlgebra.Adjoint{<:Any,<:AbstractFixedSizePaddedArray}
     end
     any(is_padded_array) || return Base.Broadcast.DefaultArrayStyle{0}()
     
@@ -253,7 +268,7 @@ end
         T = sₙ[2]
         R = sₙ[3]
         A = sₙ[4]
-    elseif bs1 <: Base.Broadcast.DefaultArrayStyle{0}()
+    else#if s[1] <: Base.Broadcast.DefaultArrayStyle{0}()
         push!(Svec, Tuple{})
         T = s[1]
         R = typemax(Int)
@@ -444,23 +459,6 @@ end
         return :(PtrArray{$ST,$T1,$N,$R,$L,true}(Base.unsafe_convert(Ptr{$T1},mystack)), mystack+$(L*sizeof(T)))
     end
 end
-@inline function Base.Broadcast.materialize(
-    sp::StackPointer,
-    bc::Base.Broadcast.Broadcasted{FixedSizePaddedMatrixDefaultStyle{S,T1,R,A}}
-) where {S,A,T1,T2,R}
-    sp, out = similar(sp, bc)
-    Base.broadcast.materialize!(out, bc)
-    sp, out
-end
-@inline function Base.Broadcast.materialize(
-        bc::Base.Broadcast.Broadcasted{FixedSizePaddedMatrixDefaultStyle{S,T,R,A}}
-    ) where {S,T,R,A}
-#    ElType = Base.Broadcast.combine_eltypes(bc.f, bc.args)
-#    out = similar(bc, ElType)
-    out = similar(bc)
-    Base.Broadcast.materialize!(out, bc)
-    out
-end
 
 @inline extract(x::Base.RefValue) = x[]
 @inline extract(x::Number) = x
@@ -648,6 +646,25 @@ end
 
 @generated function Base.Broadcast.materialize!(out::AbstractMutableFixedSizePaddedArray{S,T,N,P}, bc::Base.Broadcast.Broadcasted{FixedSizePaddedMatrixDefaultStyle{SB,T,R,A}}) where {S,A,T,SB,N,P,R}
     materialize_quote(S.parameters, A, T, SB, N, P, R)
+end
+
+
+@inline function Base.Broadcast.materialize(
+    sp::StackPointer,
+    bc::Base.Broadcast.Broadcasted{FixedSizePaddedMatrixDefaultStyle{S,T1,R,A}}
+) where {S,A,T1,T2,R}
+    sp, out = similar(sp, bc)
+    Base.broadcast.materialize!(out, bc)
+    sp, out
+end
+@inline function Base.Broadcast.materialize(
+        bc::Base.Broadcast.Broadcasted{FixedSizePaddedMatrixDefaultStyle{S,T,R,A}}
+    ) where {S,T,R,A}
+#    ElType = Base.Broadcast.combine_eltypes(bc.f, bc.args)
+#    out = similar(bc, ElType)
+    out = similar(bc)
+    Base.Broadcast.materialize!(out, bc)
+    out
 end
 
 

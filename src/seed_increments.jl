@@ -35,6 +35,20 @@ end
 
 @inline RESERVED_INCREMENT_SEED_RESERVED(a) = a
 @inline RESERVED_DECREMENT_SEED_RESERVED(a) = -a
+@support_stack_pointer RESERVED_INCREMENT_SEED_RESERVED
+@support_stack_pointer RESERVED_DECREMENT_SEED_RESERVED
+@inline function RESERVED_INCREMENT_SEED_RESERVED(sp::StackPointer, a, b, c)
+    SIMDPirates.vmuladd(sp, a, b, c)
+end
+@inline function RESERVED_DECREMENT_SEED_RESERVED(sp::StackPointer, a, b, c)
+    SIMDPirates.fnmadd(sp, a, b, c)
+end
+@inline function RESERVED_INCREMENT_SEED_RESERVED(sp::StackPointer, a, b)
+    +(sp, a, b)
+end
+@inline function RESERVED_DECREMENT_SEED_RESERVED(sp::StackPointer, a, b)
+    -(sp, b, a)
+end
 
 
 ussize(a) = size(a)
@@ -60,3 +74,14 @@ end
     # @assert !(isa(out, Array) || isa(out, LinearAlgebra.Adjoint{<:Any,<:Array}))
     out
 end
+
+@support_stack_pointer RESERVED_MULTIPLY_SEED_RESERVED
+@support_stack_pointer RESERVED_NMULTIPLY_SEED_RESERVED
+@inline function RESERVED_MULTIPLY_SEED_RESERVED(sp::StackPointer, a, b)
+    *(sp, a, b)
+end
+@inline function RESERVED_NMULTIPLY_SEED_RESERVED(sp::StackPointer, a, b)
+    *(sp, -a, b)
+end
+
+
