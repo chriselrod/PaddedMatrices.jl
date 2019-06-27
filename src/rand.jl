@@ -113,7 +113,7 @@ end
     else
         q = quote ptr_A = pointer(A) end
     end
-    if r > 0
+    if r > 0 #&& (r & (W-1)) == 0
         rrep, rrem = divrem(r, W)
         u_sym = gensym(Symbol(:u_remw))
         rrep > 0 && push!(q.args, :($u_sym = randn(rng, Vec{$(W*rrep),$T}) ))
@@ -122,8 +122,9 @@ end
         end
         if rrem > 0
             u_sym = gensym(:u_rem)
-            push!(q.args, :($u_sym = randn(rng, Vec{$rrem,$T}) ))
-            push!(q.args, :(vstore!(ptr_A, $u_sym, $(L - rrem + 1))))
+            push!(q.args, :($u_sym = randn(rng, Vec{$W,$T}) ))
+            mask = (VectorizationBase.mask_type(W))(2^rrem - 1)
+            push!(q.args, :(vstore!(ptr_A, $u_sym, $(L - rrem + 1), $mask )))
         end
     end
     push!(q.args, :A)
@@ -321,3 +322,31 @@ end
 macro Constant(expr)
     rand_expr(expr, :ConstantFixedSizePaddedArray)
 end
+
+
+# Not sure where these should live.
+# They are not vectorized, which is why they aren't in
+# VectorizedRNG - that'd be misleading.
+function randgamma_g1(rng::AbstractRNG, α::T) where {T}
+    # @show α
+    OneThird = one(T)/T(3)
+    d = α - OneThird
+    @fastmath c = OneThird / sqrt(d)
+    @fastmath while true
+        x = randn(rng, T)
+        v = one(T) + c*x
+        v < zero(T) && continue
+        v3 = v^3
+        dv3 = d*v3
+        randexp(rng, T) > T(-0.5)*x^2 - d + dv3 - d*log(v3) && return dv3
+    end
+end
+function randgamma(rng::AbstractRNG, α::T) where {T}
+    α < one(T) ? exp(-randexp(rng, T)/α) * randgamma_g1(rng, α+one(T)) : randgamma_g1(rng, α)
+end
+randgamma(rng::AbstractRNG, α::T, β::T) where {T} = β * randgamma(rng, α)
+randgamma(α::Real, β::Real) = randgamma(Random.GLOBAL_RNG, α, β)
+randgamma(α::Real) = randgamma(Random.GLOBAL_RNG, α)
+
+randbeta(rng::AbstractRNG, α::Real, β::Real) = (x = randgamma(rng, α); x / (x + randgamma(rng, β)))
+randbeta(α::Real, β::Real) = randbeta(Random.GLOBAL_RNG, α, β)

@@ -224,7 +224,7 @@ function pick_R(R1, R2)
 end
 
 Base.BroadcastStyle(::Type{<:AbstractFixedSizePaddedArray{S,T,N,R}}) where {S,T,N,R} = FixedSizePaddedMatrixDefaultStyle{S,T,R,LinearIndexing}()
-Base.BroadcastStyle(::Type{LinearAlgebra.Adjoint{T,V}}) where {S,T,R,V<:AbstractFixedSizePaddedVector{S,T,R}} = FixedSizePaddedMatrixDefaultStyle{Tuple{1,S},T,R,LinearIndexing}()
+Base.BroadcastStyle(::Type{LinearAlgebra.Adjoint{T,V}}) where {S,T,R,V<:AbstractFixedSizePaddedVector{S,T,R}} = FixedSizePaddedMatrixDefaultStyle{Tuple{1,S},T,1,CartesianIndexing}()
 #Base.BroadcastStyle(::Type{LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedMatrix{M,N,T,R}}}) where {M,N,T,R} = FixedSizePaddedMatrixDefaultStyle{Tuple{N,M},T,R,LinearIndexing}()
 
 @inline function Base.Broadcast.result_style(s1::FixedSizePaddedMatrixDefaultStyle, s2::FixedSizePaddedMatrixDefaultStyle)
@@ -622,6 +622,7 @@ function materialize_quote(S, A, T, SB, N, P, R)
     elseif A == CartesianIndexing
         inds, loop_body, pre_loop = broadcast_index_expression(SB, N)
         loop = quote
+#            for $(inds[1]) ∈ 1:$(S[1])
             LoopVectorization.@vectorize $T for $(inds[1]) ∈ 1:$(S[1])
                 $loop_body
             end
@@ -642,6 +643,12 @@ function materialize_quote(S, A, T, SB, N, P, R)
         throw("KernelBatches not yet implemented.")
     end
 end
+
+function materialize_quote(bc::Base.Broadcast.Broadcasted{FixedSizePaddedMatrixDefaultStyle{SB,T,R,A}}) where {A,T,SB,R}
+    S = reduce_size(SB)
+    prettify(materialize_quote(S, A, T, SB, length(S), R, R))
+end
+
 
 
 @generated function Base.Broadcast.materialize!(out::AbstractMutableFixedSizePaddedArray{S,T,N,P}, bc::Base.Broadcast.Broadcasted{FixedSizePaddedMatrixDefaultStyle{SB,T,R,A}}) where {S,A,T,SB,N,P,R}

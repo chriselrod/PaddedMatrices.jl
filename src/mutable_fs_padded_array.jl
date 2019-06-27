@@ -196,18 +196,48 @@ Base.similar(A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L
 Base.similar(A::AbstractMutableFixedSizePaddedArray{S,T1,N,P,L},::Type{T2}) where {S,T1,T2,N,P,L} = MutableFixedSizePaddedArray{S,T2,N}(undef)
 
 function MutableFixedSizePaddedArray(A::AbstractArray{T,N}) where {T,N}
-    mA = MutableFixedSizePaddedArray{Tuple{size(A)...},Float64}(undef)
+    mA = MutableFixedSizePaddedArray{Tuple{size(A)...},T}(undef)
     mA .= A
     mA
 end
 function MutableFixedSizePaddedVector(A::AbstractVector{T}) where {T}
-    mA = MutableFixedSizePaddedVector{length(A),Float64}(undef)
+    mA = MutableFixedSizePaddedVector{length(A),T}(undef)
     mA .= A
     mA
 end
 function MutableFixedSizePaddedMatrix(A::AbstractMatrix{T}) where {T}
     M,N = size(A)
-    mA = MutableFixedSizePaddedMatrix{M,N,Float64}(undef)
+    mA = MutableFixedSizePaddedMatrix{M,N,T}(undef)
+    mA .= A
+    mA
+end
+function MutableFixedSizePaddedArray{S}(A::AbstractArray{T,N}) where {S,T,N}
+    mA = MutableFixedSizePaddedArray{S,T}(undef)
+    mA .= A
+    mA
+end
+function MutableFixedSizePaddedVector{L}(A::AbstractVector{T}) where {L,T}
+    mA = MutableFixedSizePaddedVector{L,T}(undef)
+    mA .= A
+    mA
+end
+function MutableFixedSizePaddedMatrix{M,N}(A::AbstractMatrix{T}) where {M,N,T}
+    mA = MutableFixedSizePaddedMatrix{M,N,T}(undef)
+    mA .= A
+    mA
+end
+function MutableFixedSizePaddedArray{S,T1}(A::AbstractArray{T2,N}) where {S,T1,T2,N}
+    mA = MutableFixedSizePaddedArray{S,T1}(undef)
+    mA .= A
+    mA
+end
+function MutableFixedSizePaddedVector{L,T1}(A::AbstractVector{T2}) where {L,T1,T2}
+    mA = MutableFixedSizePaddedVector{L,T1}(undef)
+    mA .= A
+    mA
+end
+function MutableFixedSizePaddedMatrix{M,N,T1}(A::AbstractMatrix{T2}) where {M,N,T1,T2}
+    mA = MutableFixedSizePaddedMatrix{M,N,T1}(undef)
     mA .= A
     mA
 end
@@ -229,6 +259,12 @@ Wraps a pointer, while passing info on the size of the block and stride.
 """
 struct PtrArray{S,T,N,R,L,P} <: AbstractMutableFixedSizePaddedArray{S,T,N,R,L}
     ptr::Ptr{T}
+end
+@generated function PtrArray{S,T,N,R,L}(ptr::Ptr{T},::Val{P}=Val{true}()) where {S,T,N,R,P,L}
+    quote
+        $(Expr(:meta,:inline))
+        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
+    end
 end
 @generated function PtrArray{S,T,N,R}(ptr::Ptr{T},::Val{P}=Val{true}()) where {S,T,N,R,P}
     L = R
@@ -309,15 +345,24 @@ end
 #        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
 end
+@generated function PtrArray{S,T,N,R,L}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,T,N,R,P,L}
+    quote
+#        Expr(:meta,:inline)
+        ptr = Base.unsafe_convert(Ptr{$T}, sp.ptr)
+        sp + $(sizeof(T)*L), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
+#        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
+    end
+end
 
 
 const PtrVector{N,T,R,L,P} = PtrArray{Tuple{N},T,1,R,L,P} # R and L will always be the same...
 const PtrMatrix{M,N,T,R,L,P} = PtrArray{Tuple{M,N},T,2,R,L,P}
 
-
-@support_stack_pointer PaddedMatrices PtrVector;
-@support_stack_pointer PaddedMatrices PtrMatrix;
-@support_stack_pointer PaddedMatrices PtrArray;
+# Now defining these, because any use of PtrArray is going to already be using some pointer.
+# These will therefore be fully manual.
+#@support_stack_pointer PaddedMatrices PtrVector;
+#@support_stack_pointer PaddedMatrices PtrMatrix;
+#@support_stack_pointer PaddedMatrices PtrArray;
 
 
 
@@ -587,7 +632,7 @@ This function is not safe -- make sure the underlying data is protected!!!
 end
 @generated function Base.reshape(A::AbstractMutableFixedSizePaddedArray{S1,T,N,R,L}, ::Val{S2}) where {S1,S2,T,N,R,L}
     N == 1 || S1.parameters[1] == R || throw("Reshaping multidimensional arrays with padding would lead to weird behavior.")
-    prod(S2.parameters) == prod(S1.parameters) || throw("Total length of reshaped array should equal original length.")
+    prod(S2.parameters) == prod(S1.parameters) || throw("Total length of reshaped array should equal original length\n\n$(S1)\n\n$(S2)\n\n.")
     N2 = length(S2.parameters)
     R2 = S2.parameters[1]
     :(PtrArray{$S2,$T,$N2,$R2,$L}(pointer(A)))

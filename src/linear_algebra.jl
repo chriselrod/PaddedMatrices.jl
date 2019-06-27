@@ -258,7 +258,7 @@ end
 Assumes the input matrix is positive definite (no checking is done; will return NaNs if not PD).
 Uses the lower triangle of the input matrix S, and returns the upper triangle of the input matrix.
 """
-@generated function chol(S::AbstractConstantFixedSizePaddedMatrix{P,P,T,R}) where {P,R,T}
+@generated function chol(S::AbstractFixedSizePaddedMatrix{P,P,T,R}) where {P,R,T}
     # q = quote @fastmath @inbounds begin end end
     # qa = q.args[2].args[3].args[3].args
     q = quote end
@@ -275,19 +275,19 @@ Uses the lower triangle of the input matrix S, and returns the upper triangle of
     # q
 end
 
-function LAPACK_chol!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, UPLO = 'U') where {N,LDA}
+function LAPACK_chol!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, UPLO::Char = 'U') where {N,LDA}
     INFO = 0
     ccall((LinearAlgebra.BLAS.@blasfunc(dpotrf_), LinearAlgebra.BLAS.libblas), Cvoid,
         (Ref{UInt8}, Ref{LinearAlgebra.BLAS.BlasInt}, Ptr{Float64}, Ref{LinearAlgebra.BLAS.BlasInt}, Ref{LinearAlgebra.BLAS.BlasInt}),
         UPLO, N, A, LDA, INFO)
 end
-function LAPACK_tri_inv!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, UPLO = 'U', DIAG = 'N') where {N,LDA}
+function LAPACK_tri_inv!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, UPLO::Char = 'U', DIAG::Char = 'N') where {N,LDA}
     INFO = 0
     ccall((LinearAlgebra.BLAS.@blasfunc(dtrtri_), LinearAlgebra.BLAS.libblas), Cvoid,
         (Ref{UInt8}, Ref{UInt8}, Ref{LinearAlgebra.BLAS.BlasInt}, Ptr{Float64}, Ref{LinearAlgebra.BLAS.BlasInt}, Ref{LinearAlgebra.BLAS.BlasInt}),
         UPLO, DIAG, N, A, LDA, INFO)
 end
-function BLAS_dtrmv!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, x::AbstractMutableFixedSizePaddedVector{N,Float64,LDA}, UPLO = 'U', TRANS = 'N', DIAG = 'N') where {N,LDA}
+function BLAS_dtrmv!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, x::AbstractMutableFixedSizePaddedVector{N,Float64,LDA}, UPLO::Char = 'U', TRANS::Char = 'N', DIAG::Char = 'N') where {N,LDA}
     INCX = 1
 
     ccall((LinearAlgebra.BLAS.@blasfunc(dtrmv_), LinearAlgebra.BLAS.libblas), Cvoid,
@@ -295,7 +295,7 @@ function BLAS_dtrmv!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, x
         UPLO, TRANS, DIAG, N, A, LDA, x, INCX)
 
 end
-function BLAS_dsymv!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, x::AbstractMutableFixedSizePaddedVector{N,Float64,LDA}, y::AbstractMutableFixedSizePaddedVector{N,Float64,LDA}, α = 1.0, β = 0.0, UPLO = 'U') where {N,LDA}
+function BLAS_dsymv!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, x::AbstractMutableFixedSizePaddedVector{N,Float64,LDA}, y::AbstractMutableFixedSizePaddedVector{N,Float64,LDA}, α::Float64 = 1.0, β::Float64 = 0.0, UPLO::Char = 'U') where {N,LDA}
     INCX = 1
     INCY = 1
 

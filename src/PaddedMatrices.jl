@@ -5,7 +5,7 @@ using VectorizationBase, SIMDPirates,
         SLEEFPirates, VectorizedRNG,
         LoopVectorization, LinearAlgebra, Random
 
-using MacroTools: @capture
+using MacroTools: @capture, prettify, postwalk
 
 export @Constant, @Mutable,
     ConstantFixedSizePaddedArray,
@@ -14,7 +14,9 @@ export @Constant, @Mutable,
     MutableFixedSizePaddedArray,
     MutableFixedSizePaddedVector,
     MutableFixedSizePaddedMatrix,
-    PaddedVector, PaddedMatrix, PaddedArray,
+    DynamicPaddedVector,
+    DynamicPaddedMatrix,
+    DynamicPaddedArray,
     PtrVector, PtrMatrix, PtrArray
 
 
@@ -59,9 +61,11 @@ macro StaticRange(rq)
     @assert rq.args[1] == :(:)
     :(StaticUnitRange(Val{$(rq.args[2])}(), Val{$(rq.args[3])}()))
 end
-
+LinearAlgebra.checksquare(::AbstractFixedSizePaddedMatrix{M,M}) where {M} = M
+LinearAlgebra.checksquare(::AbstractFixedSizePaddedMatrix) = DimensionMismatch("Matrix is not square.")
                                 
-@inline LoopVectorization.stride_row(::AbstractFixedSizePaddedMatrix{M,N,T,P}) where {M,N,T,P} = P
+@inline LoopVectorization.stride_row(::LinearAlgebra.Adjoint{T,V}) where {T,V <: AbstractVector{T}} = 1
+@inline LoopVectorization.stride_row(::AbstractFixedSizePaddedArray{S,T,N,P}) where {S,T,N,P} = P
 
 Base.IndexStyle(::Type{<:AbstractPaddedArray}) = IndexCartesian()
 Base.IndexStyle(::Type{<:AbstractPaddedVector}) = IndexLinear()
@@ -130,7 +134,7 @@ end
     for j ∈ (N-1):-1:2
         ex = :(i[$j] - 1 + s[$j] * $ex)
     end
-    :(@inbounds i[1] + $P * $ex)
+    :(@inbounds i[1] + P * $ex)
 end
 
 ## WHAT IS THIS FOR?
