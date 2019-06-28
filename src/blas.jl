@@ -190,9 +190,10 @@ end
     end
 end
 @generated function Base.:*(
-            Aadjoint::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedVector{N,T,P}},
-            Bdiagonal::Diagonal{T,<:AbstractMutableFixedSizePaddedVector{N,T,P}}
-        ) where {N,T,P}
+    Aadjoint::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedVector{N,T,P1}},
+    Bdiagonal::Diagonal{T,<:AbstractMutableFixedSizePaddedVector{N,T,P2}}
+) where {N,T,P1,P2}
+    P = min(P1,P2)
     quote
         A = Aadjoint.parent
         B = Bdiagonal.diag
@@ -202,9 +203,10 @@ end
 end
 @generated function Base.:*(
     sp::StackPointer,
-    Adiagonal::Diagonal{T,<:AbstractMutableFixedSizePaddedVector{N,T,P}},
-    B::AbstractMutableFixedSizePaddedVector{N,T,P}
-) where {N,T,P}
+    Adiagonal::Diagonal{T,<:AbstractMutableFixedSizePaddedVector{N,T,P1}},
+    B::AbstractMutableFixedSizePaddedVector{N,T,P2}
+) where {N,T,P1,P2}
+    P = min(P1,P2)
     quote
         sp, mv = PtrVector{$N,$T,$P}(sp)
         A = Adiagonal.diag
@@ -216,10 +218,12 @@ end
 end
 @generated function Base.:*(
     sp::StackPointer,
-    Aadjoint::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedVector{N,T,P}},
-    Bdiagonal::Diagonal{T,<:AbstractMutableFixedSizePaddedVector{N,T,P}}
-) where {N,T,P}
+    Aadjoint::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedVector{N,T,P1}},
+    Bdiagonal::Diagonal{T,<:AbstractMutableFixedSizePaddedVector{N,T,P2}}
+) where {N,T,P1,P2}
+    P = min(P1,P2)
     quote
+#        $(Expr(:meta,:inline))
         sp, mv = PtrVector{$N,$T,$P}(sp)
         A = Aadjoint.parent
         B = Bdiagonal.diag

@@ -44,6 +44,8 @@ end
     (sp, SIMDPirates.fnmadd(sp, a, b, c))
 end
 @inline function RESERVED_INCREMENT_SEED_RESERVED(sp::StackPointer, a, b)
+#    @show a, b
+#    @show typeof(a), typeof(b)
     +(sp, a, b)
 end
 @inline function RESERVED_DECREMENT_SEED_RESERVED(sp::StackPointer, a, b)

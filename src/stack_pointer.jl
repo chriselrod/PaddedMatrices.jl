@@ -52,6 +52,8 @@ function ∂materialize end
 #@support_stack_pointer ∂add
 #@support_stack_pointer ∂muladd
 
+@support_stack_pointer vexp
+
 function stack_pointer_pass(expr, stacksym, blacklist = nothing)
     if blacklist == nothing
         whitelist = STACK_POINTER_SUPPORTED_METHODS

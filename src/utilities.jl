@@ -144,3 +144,40 @@ end
 end
 
 @inline Base.pointer(x::Symmetric{T,MutableFixedSizePaddedMatrix{P,P,T,R,L}}) where {P,T,R,L} = pointer(x.data)
+
+@generated function vexp(
+    A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}
+) where {S,T,N,R,L}
+    quote
+        $(Expr(:meta,:inline))
+        B = MutableFixedSizePaddedArray{$S,$T,$N,$R,$L}(undef)
+        LoopVectorization.@vvectorize $T for l ∈ 1:$L
+            B[l] = SLEEFPirates.exp(A[l])
+        end
+        B
+    end
+end
+@generated function vexp(
+    A::AbstractConstantFixedSizePaddedArray{S,T,N,R,L}
+) where {S,T,N,R,L}
+    quote
+        B = MutableFixedSizePaddedArray{$S,$T,$N,$R,$L}(undef)
+        LoopVectorization.@vvectorize $T for l ∈ 1:$L
+            B[l] = SLEEFPirates.exp(A[l])
+        end
+        ConstantFixedSizePaddedArray(B)
+    end
+end
+@generated function vexp(
+    sp::StackPointer,
+    A::AbstractFixedSizePaddedArray{S,T,N,R,L}
+) where {S,T,N,R,L}
+    quote
+#        $(Expr(:meta,:inline))
+        B = PtrArray{$S,$T,$N,$R,$L}(pointer(sp,$T))
+        LoopVectorization.@vvectorize $T for l ∈ 1:$L
+            B[l] = SLEEFPirates.exp(A[l])
+        end
+        sp + $(sizeof(T)*L), B
+    end
+end
