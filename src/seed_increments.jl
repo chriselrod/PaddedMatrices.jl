@@ -38,10 +38,10 @@ end
 @support_stack_pointer RESERVED_INCREMENT_SEED_RESERVED
 @support_stack_pointer RESERVED_DECREMENT_SEED_RESERVED
 @inline function RESERVED_INCREMENT_SEED_RESERVED(sp::StackPointer, a, b, c)
-    (sp, SIMDPirates.vmuladd(a, b, c))
+    sp, SIMDPirates.vmuladd(a, b, c)
 end
 @inline function RESERVED_DECREMENT_SEED_RESERVED(sp::StackPointer, a, b, c)
-    (sp, SIMDPirates.fnmadd(sp, a, b, c))
+    sp, SIMDPirates.fnmadd(a, b, c)
 end
 @inline function RESERVED_INCREMENT_SEED_RESERVED(sp::StackPointer, a, b)
 #    @show a, b

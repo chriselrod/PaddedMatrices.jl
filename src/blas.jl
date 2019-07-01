@@ -210,7 +210,7 @@ end
     quote
         sp, mv = PtrVector{$N,$T,$P}(sp)
         A = Adiagonal.diag
-        @vectorize $T for p ∈ 1:$P
+        @vvectorize $T for p ∈ 1:$P
             mv[p] = A[p] * B[p]
         end
         sp, mv
@@ -227,7 +227,7 @@ end
         sp, mv = PtrVector{$N,$T,$P}(sp)
         A = Aadjoint.parent
         B = Bdiagonal.diag
-        @vectorize $T for p ∈ 1:$P
+        @vvectorize $T for p ∈ 1:$P
             mv[p] = A[p] * B[p]
         end
         sp, mv'
@@ -235,12 +235,17 @@ end
 end
 
 
-@inline function Base.:+(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
-    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
-    @fastmath @inbounds @simd ivdep for i ∈ 1:L
-        mv[i] = A[i] + B[i]
+@generated function Base.:+(
+    A::AbstractFixedSizePaddedArray{S,T,N,P,L},
+    B::AbstractFixedSizePaddedArray{S,T,N,P,L}
+) where {S,T<:Number,N,P,L}
+    quote
+        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        @vvectorize $T for i ∈ 1:$L
+            mv[i] = A[i] + B[i]
+        end
+        ConstantFixedSizePaddedArray(mv)
     end
-    ConstantFixedSizePaddedArray(mv)
 end
 @inline function Base.:+(A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}, B::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
     mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
@@ -249,9 +254,46 @@ end
     end
     mv
 end
+@generated function Base.:+(
+    sp::StackPointer,
+    A::AbstractFixedSizePaddedArray{S,T,N,P,L},
+    B::AbstractFixedSizePaddedArray{S,T,N,P,L}
+) where {S,T<:Number,N,P,L}
+    P = min(PA,PB)
+    L = min(LA,LB)
+    quote
+        mv = PtrArray{$S,$T,$N,$P,$L}(pointer(sp,$T))
+        @vvectorize $T for i ∈ 1:$L
+            mv[i] = A[i] + B[i]
+        end
+        sp + $(sizeof(T)*L), mv
+    end
+end
+@generated function Base.:+(
+    sp::StackPointer,
+    A::AbstractFixedSizePaddedVector{N,T,PA,PA},
+    B::AbstractFixedSizePaddedVector{N,T,PB,PB}
+) where {N,T<:Number,PA,PB}
+    P = min(PA,PB)
+    quote
+        mv = PtrVector{$N,$T,$P,$P}(pointer(sp,$T))
+        @vvectorize $T for i ∈ 1:$P
+            mv[i] = A[i] + B[i]
+        end
+        sp + $(sizeof(T)*P), mv
+    end
+end
 @inline function Base.:+(A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}},
                         B::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}) where {S,T,N,P,L}
     (A' + B')'
+end
+@inline function Base.:+(
+    sp::StackPointer,
+    A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,PA,LA}},
+    B::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,PB,LB}}
+) where {S,T,N,PA,PB,LA,LB}
+    sp2, C = (+(sp, A', B'))
+    sp2, C'
 end
 @inline function Base.:+(a::T, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
     mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
@@ -439,6 +481,35 @@ end
         mv[i] = A[i] * b
     end
     ConstantFixedSizePaddedArray(mv)'
+end
+@generated function Base.:*(
+    sp::StackPointer,
+    A::AbstractFixedSizePaddedArray{S,T,N,P,L},
+    bλ::Union{T,UniformScaling{T}}
+) where {S,T<:Real,N,P,L}
+    quote
+        mv = PtrArray{$S,$T,$N,$P,$L}(pointer(sp,$T))
+        b = extract_λ(bλ)
+        @vvectorize for i ∈ 1:$L
+            mv[i] = A[i] * b
+        end
+        sp + $(sizeof(T)*L), mv
+    end
+end
+@generated function Base.:*(
+    sp::StackPointer,
+    Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}},
+    bλ::Union{T,UniformScaling{T}}
+) where {S,T<:Real,N,P,L}
+    quote
+        mv = PtrArray{$S,$T,$N,$P,$L}(pointer(sp,$T))
+        A = Aadj.parent
+        b = extract_λ(bλ)
+        @vvectorize $T for i ∈ 1:$L
+            mv[i] = A[i] * b
+        end
+        sp + $(sizeof(T)*L), mv'
+    end
 end
 @inline function Base.:*(a::T, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
     mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
@@ -1031,6 +1102,30 @@ end
         push!(q.args, :(ConstantFixedSizePaddedMatrix(C)))
     else
         push!(q.args, :(C))
+    end
+    q
+end
+@generated function Base.:*(
+    sp::StackPointer,
+    A::LinearAlgebra.Diagonal{T,<:AbstractFixedSizePaddedVector{M,T,P}},
+    B::AbstractFixedSizePaddedMatrix{M,N,T,P}
+) where {M,N,T,P}
+    W, Wshift = VectorizationBase.pick_vector_width_shift(P, T)
+    reps = P >> Wshiftp
+    V = Vec{W,T}
+    q = quote
+        C = PtrMatrix{$M,$N,$T,$P}(pointer(sp,$T))
+        va = VectorizationBase.vectorizable(A.diag)
+        vB = VectorizationBase.vectorizable(B)
+        vC = VectorizationBase.vectorizable(C)
+        Base.Cartesian.@nexprs $reps r -> va_r = SIMDPirates.vload($V, va + $W*(r-1))
+        for n ∈ 0:$(N-1)
+            Base.Cartesian.@nexprs $reps r -> begin
+                prod_r = SIMDPirates.vmul(va_r, SIMDPirates.vload($V, vB + $P*n + $W*(r-1) ))
+                SIMDPirates.vstore!(vC + $P*n + $W*(r-1), prod_r)
+            end
+        end
+        sp + $(sizeof(T)*P*N), C
     end
     q
 end

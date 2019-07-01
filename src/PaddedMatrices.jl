@@ -6,6 +6,7 @@ using VectorizationBase, SIMDPirates,
         LoopVectorization, LinearAlgebra, Random
 
 using MacroTools: @capture, prettify, postwalk
+using LoopVectorization: @vvectorize
 
 export @Constant, @Mutable,
     ConstantFixedSizePaddedArray,
