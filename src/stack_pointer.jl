@@ -4,6 +4,11 @@ end
 @inline Base.pointer(s::StackPointer) = s.ptr
 @inline Base.pointer(s::StackPointer, ::Type{T}) where {T} = Base.unsafe_convert(Ptr{T}, s.ptr)
 
+# These are for "fuzzing" offsets; answers shouldn't change for SPO ≥ 0, so if they do, there's a bug!
+#const SPO = Ref{Int}(800);
+#@inline Base.:+(sp::StackPointer, i::Integer) = StackPointer(sp.ptr + i + SPO[])
+#@inline Base.:+(i::Integer, sp::StackPointer) = StackPointer(sp.ptr + i + SPO[])
+
 @inline Base.:+(sp::StackPointer, i::Integer) = StackPointer(sp.ptr + i)
 @inline Base.:+(i::Integer, sp::StackPointer) = StackPointer(sp.ptr + i)
 @inline Base.:-(sp::StackPointer, i::Integer) = StackPointer(sp.ptr - i)

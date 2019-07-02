@@ -465,22 +465,26 @@ end
 
 @inline extract_λ(a) = a
 @inline extract_λ(a::UniformScaling) = a.λ
-@inline function Base.:*(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,P,L}
-    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
-    b = extract_λ(bλ)
-    @fastmath @inbounds @simd ivdep for i ∈ 1:L
-        mv[i] = A[i] * b
+@generated function Base.:*(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,P,L}
+    quote
+        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        b = extract_λ(bλ)
+        @vvectorize $T for i ∈ 1:$L
+            mv[i] = A[i] * b
+        end
+        ConstantFixedSizePaddedArray(mv)
     end
-    ConstantFixedSizePaddedArray(mv)
 end
-@inline function Base.:*(Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,P,L}
-    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
-    A = Aadj.parent
-    b = extract_λ(bλ)
-    @fastmath @inbounds @simd ivdep for i ∈ 1:L
-        mv[i] = A[i] * b
+@generated function Base.:*(Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,P,L}
+    quote
+        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        A = Aadj.parent
+        b = extract_λ(bλ)
+        @vvectorize $T for i ∈ 1:$L
+            mv[i] = A[i] * b
+        end
+        ConstantFixedSizePaddedArray(mv)'
     end
-    ConstantFixedSizePaddedArray(mv)'
 end
 @generated function Base.:*(
     sp::StackPointer,
@@ -511,12 +515,14 @@ end
         sp + $(sizeof(T)*L), mv'
     end
 end
-@inline function Base.:*(a::T, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
-    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
-    @fastmath @inbounds @simd ivdep for i ∈ 1:L
-        mv[i] = a * B[i]
+@generated function Base.:*(a::T, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+    quote
+        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        @vvectorize $T for i ∈ 1:$L
+            mv[i] = a * B[i]
+        end
+        ConstantFixedSizePaddedArray(mv)
     end
-    ConstantFixedSizePaddedArray(mv)
 end
 @inline function SIMDPirates.vmuladd(a::T, x::AbstractFixedSizePaddedArray{S,T,N,P,L}, y::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
     mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
