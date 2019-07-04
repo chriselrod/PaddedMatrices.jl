@@ -70,6 +70,13 @@ LinearAlgebra.checksquare(::AbstractFixedSizePaddedMatrix) = DimensionMismatch("
 
 Base.IndexStyle(::Type{<:AbstractPaddedArray}) = IndexCartesian()
 Base.IndexStyle(::Type{<:AbstractPaddedVector}) = IndexLinear()
+@generated function Base.IndexStyle(::Type{<:AbstractFixedSizePaddedArray{S},T,N,P}) where {S,T,P}
+    # If it is a vector, of if the array doesn't have padding, then it is IndexLinear().
+    N == 1 && return IndexLinear()
+    S.parameters[1] == P && return IndexLinear()
+    IndexCartesian()
+end
+
 
 @inline full_length(::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L} = L
 @inline full_length(::Type{<: AbstractFixedSizePaddedArray{S,T,N,P,L}}) where {S,T,N,P,L} = L
