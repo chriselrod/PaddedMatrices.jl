@@ -93,9 +93,11 @@ end
     @uviews Bdata mul!(C.data, A.data, @view(B.data[1:B.nrow,:]))
 end
 
-@generated function LinearAlgebra.mul!(D::AbstractMutableFixedSizePaddedMatrix{M,P,T,DR},
-                            A::AbstractMutableFixedSizePaddedMatrix{M,N,T,AR},
-                            X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}) where {M,N,P,T,AR,XR,DR}
+@generated function LinearAlgebra.mul!(
+    D::AbstractMutableFixedSizePaddedMatrix{M,P,T,DR},
+    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,AR},
+    X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}
+) where {M,N,P,T,AR,XR,DR}
     quote
         $(Expr(:meta,:inline))
         pD = pointer(D)
@@ -106,9 +108,11 @@ end
 end
 
 
-@generated function LinearAlgebra.mul!(D::AbstractMutableFixedSizePaddedVector{M,T,DR},
-                            A::AbstractMutableFixedSizePaddedMatrix{M,N,T,AR},
-                            X::AbstractMutableFixedSizePaddedVector{N,T,XR}) where {M,N,T,AR,XR,DR}
+@generated function LinearAlgebra.mul!(
+    D::AbstractMutableFixedSizePaddedVector{M,T,DR},
+    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,AR},
+    X::AbstractMutableFixedSizePaddedVector{N,T,XR}
+) where {M,N,T,AR,XR,DR}
     quote
         $(Expr(:meta,:inline))
         pD = pointer(D)
@@ -117,9 +121,11 @@ end
         $(mulquote(AR,N,1,AR,XR,T,:initkernel!,nothing,DR))
     end
 end
-@generated function LinearAlgebra.mul!(D::PtrMatrix{M,P,T,DR,LD,PD},
-                            A::PtrMatrix{M,N,T,AR,LA,PA},
-                            X::PtrMatrix{N,P,T,XR}) where {M,N,P,T,AR,XR,DR,LA,PA,LD,PD}
+@generated function LinearAlgebra.mul!(
+    D::PtrMatrix{M,P,T,DR,LD,PD},
+    A::PtrMatrix{M,N,T,AR,LA,PA},
+    X::PtrMatrix{N,P,T,XR}
+) where {M,N,P,T,AR,XR,DR,LA,PA,LD,PD}
     if PD && PA && (DR == AR)
         Meffective = DR
     else
@@ -133,9 +139,11 @@ end
         $(mulquote(Meffective,N,P,AR,XR,T,:initkernel!,nothing,DR))
     end
 end
-@generated function LinearAlgebra.mul!(D::PtrVector{M,T,DR,LD,PD},
-                            A::PtrMatrix{M,N,T,AR,LA,PA},
-                                       X::PtrVector{N,T,XR}) where {M,N,T,AR,XR,DR,LD,PD,LA,PA}
+@generated function LinearAlgebra.mul!(
+    D::PtrVector{M,T,DR,LD,PD},
+    A::PtrMatrix{M,N,T,AR,LA,PA},
+    X::PtrVector{N,T,XR}
+) where {M,N,T,AR,XR,DR,LD,PD,LA,PA}
     if PD && PA && (DR == AR)
         Meffective = DR
     else
@@ -148,6 +156,20 @@ end
         pA = pointer(A)
         pX = pointer(X)
         $(mulquote(Meffective,N,1,AR,XR,T,:initkernel!,nothing,DR))
+    end
+end
+
+@generated function gemm!(
+    D::AbstractMutableFixedSizePaddedMatrix{M,P,T,DR},
+    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,AR},
+    X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}
+) where {M,P,N,T,DR,AR,XR}
+    quote
+        $(Expr(:meta,:inline))
+        pD = pointer(D)
+        pA = pointer(A)
+        pX = pointer(X)
+        $(mulquote(AR,N,P,AR,XR,T,:kernel!,nothing,DR))
     end
 end
 
@@ -640,27 +662,6 @@ end
     end
 end
 
-"""
-Not within BLAS module, because we aren't supporting the full gemm API at the moment.
-This simply calculates:
-D += A*X
-"""
-@generated function gemm!(D::AbstractMutableFixedSizePaddedMatrix{M,P,T,ADR},
-                            A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR},
-                            X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}) where {M,N,P,T,ADR,XR}
-
-    mulquote(ADR,N,P,ADR,XR,T,:kernel!)
-end
-
-function gemm(
-            D::AbstractMutableFixedSizePaddedMatrix{M,P,T,ADR},
-            A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR},
-            X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}
-        ) where {M,N,P,T,ADR,XR}
-    C = copy(D)
-    gemm!(C, A, X)
-    C
-end
 # @generated function gemm!(D::PtrMatrix{M,P,T,ADR},
 #                             A::PtrMatrix{M,N,T,ADR},
 #                             X::PtrMatrix{N,P,T,XR},
@@ -669,9 +670,12 @@ end
 #     mulquote(M, N, P, ADR, XR, T, :kernel!, prefetchAX)
 # end
 
-function mulquote(D::AbstractMutableFixedSizePaddedMatrix{M,P,T,ADR},
-                A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR},
-                X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR},init = :initkernel!) where {M,N,P,T,ADR,XR}
+function mulquote(
+    D::AbstractMutableFixedSizePaddedMatrix{M,P,T,ADR},
+    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR},
+    X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR},
+    init = :initkernel!
+) where {M,N,P,T,ADR,XR}
     quote
         $(Expr(:meta,:inline))
         pD = pointer(D)
@@ -866,7 +870,7 @@ function cache_mulquote(M,N,P,stride_A,stride_X,(L1M,L1N,L1P),::Type{T}, init = 
     P_iter, P_remain = divrem(P, L1P)
     T_size = sizeof(T)
     if (M_iter == 0 || ((M_iter == 1) && (M_remain == 0))) && (P_iter == 0 || ((P_iter == 1) && (P_remain == 0)))
-        return kernel_quote(M,P,stride_A,stride_X,N,T,true,true,stride_D)
+        return kernel_quote(M,P,stride_A,stride_X,N,T,init == :initkernel!,true,nothing,stride_D)
     end
     if stride_A == stride_D
         stride_AD = stride_A

@@ -638,5 +638,10 @@ end
     :(PtrArray{$S2,$T,$N2,$R2,$L}(pointer(A)))
 end
 
+#@generated function Base.view(A::AbstractMutableFixedSizePaddedArray{S,T,N,P}, args...) where {S,T,N,P}
+#    @assert length(args) == N
+#    outdim = Vector{Int}
+#end
+
 
 

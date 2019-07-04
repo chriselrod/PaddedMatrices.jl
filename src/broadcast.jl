@@ -383,6 +383,13 @@ end
         return FixedSizePaddedMatrixDefaultStyle{Tuple{S1,S2},T,R,CartesianIndexing}()
     end
 end
+function Base.Broadcast.BroadcastStyle(
+    style1::Base.Broadcast.BroadcastStyle,
+    style2::FixedSizePaddedMatrixDefaultStyle{S,T,R,A}
+) where {S,T,R,A}
+    return style1
+end
+
 
 function Base.Broadcast.result_style(
     style1::FixedSizePaddedMatrixDefaultStyle{S,T,R,A},
@@ -396,6 +403,7 @@ function Base.Broadcast.result_style(
 ) where {S,T,R,A}
     return FixedSizePaddedMatrixDefaultStyle{Tuple{Tuple{},S},T,R,A}()
 end
+
 
 # @generated function Base.BroadcastStyle(style1::AbstractPaddedMatrixStyle{S1,A1,C1}, style2::AbstractPaddedMatrixStyle{S2,A2,C2}) where {S1,A1,C1,S2,A2,C2}
 #     A3 = max(A1, A2)
@@ -650,7 +658,9 @@ function materialize_quote(bc::Base.Broadcast.Broadcasted{FixedSizePaddedMatrixD
 end
 
 
-
+# FIXME:
+# D .= A .+ B
+# does not work when A is a matrix and B a 3d array
 @generated function Base.Broadcast.materialize!(out::AbstractMutableFixedSizePaddedArray{S,T,N,P}, bc::Base.Broadcast.Broadcasted{FixedSizePaddedMatrixDefaultStyle{SB,T,R,A}}) where {S,A,T,SB,N,P,R}
     materialize_quote(S.parameters, A, T, SB, N, P, R)
 end
