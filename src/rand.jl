@@ -11,20 +11,24 @@ function calculate_L_from_size(S, T)
     P, L
 end
 
-
-@generated function Random.rand!(rng::VectorizedRNG.PCG, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {S,T<:Union{Float32,Float64},N,R,L}
+function rand_mutable_fixed_size_expr(L, T, P, randfunc)
     size_T = sizeof(T)
-    W = VectorizationBase.pick_vector_width(L, T)
-    nrep, r = divrem(L, 4W)
-    float_q = :(rand(rng, Vec{$(4W),$T}, VectorizedRNG.RXS_M_XS))
+    W, Wshift = VectorizationBase.pick_vector_width_shift(L, T)
+    PW = P*W
+    if PW > L
+        P = (L+W-1) >> Wshift
+        PW = P*W
+    end
+    nrep, r = divrem(L, PW)
+    float_q = :($randfunc(rng, NTuple{$P,Vec{$W,$T}}, VectorizedRNG.RXS_M_XS))
     store_expr = quote end
-    for n ∈ 0:3
-        push!(store_expr.args, :(vstore!(ptr_A, $(VectorizedRNG.subset_vec(:u, W, n*W)), i + $(n*W))))
+    for p ∈ 1:P
+        push!(store_expr.args, :(@inbounds vstore!(ptr_A + $(sizeof(T)*W) * (i*$(P) + $(p-1)), u[$p])))
     end
     if nrep > 0
         q = quote
             ptr_A = pointer(A)
-            for i ∈ 1:$(4W):$(nrep * 4W)
+            for i ∈ 0:$(nrep-1)
                 u = $float_q
                 $store_expr
             end
@@ -34,143 +38,55 @@ end
     end
     if r > 0
         rrep, rrem = divrem(r, W)
-        u_sym = gensym(Symbol(:u_remw))
-        rrep > 0 && push!(q.args, :($u_sym = rand(rng, Vec{$(W*rrep),$T}) ))
-        for n ∈ 0:rrep - 1
-            push!(q.args, :(vstore!(ptr_A, $(VectorizedRNG.subset_vec(u_sym, W, n*W)), $(L - r + 1 + n*W))))
+        if rrem > 0
+            Nremv = rrep + 1
+        else
+            Nremv = rrep
+        end
+        u_sym = gensym(:u_rem)
+        push!(q.args, :($u_sym = $randfunc(rng, NTuple{$Nremv,Vec{$W,$T}}, VectorizedRNG.RXS_M_XS)))
+        for rrepiter ∈ 0:rrep-1
+            push!(q.args, :( vstore!(ptr_A + $(sizeof(T)*W*(nrep*P + rrepiter)), $u_sym[$(rrepiter+1)]) ))
         end
         if rrem > 0
-            u_sym = gensym(:u_rem)
-            push!(u_exprs.args, :($u_sym = rand(rng, Vec{$rrem,$T}) ))
-            push!(q.args, :(vstore!(ptr_A, $u_sym, $(L - rrem + 1))))
+            mask = (VectorizationBase.mask_type(W))(2^rrem - 1)
+            push!(q.args, :( vstore!(ptr_A + $(sizeof(T)*W*(nrep*P + rrep)), $u_sym[$Nremv], $mask) ))
         end
     end
     push!(q.args, :A)
     q
 end
+
+
+@generated function Random.rand!(rng::VectorizedRNG.PCG{P}, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {P,S,T<:Union{Float32,Float64},N,R,L}
+    rand_mutable_fixed_size_expr(L, T, P, :rand)
+end
 Random.rand!(A::AbstractMutableFixedSizePaddedArray) = rand!(VectorizedRNG.GLOBAL_vPCG, A)
-@generated function Random.rand(rng::VectorizedRNG.PCG, ::Type{ <: ConstantFixedSizePaddedArray{S,T}}) where {S,T<:Union{Float32,Float64}}
-    N = length(S.parameters)
-
-    R, L = calculate_L_from_size(S.parameters, T)
-
-    size_T = sizeof(T)
-    W = VectorizationBase.pick_vector_width(L, T)
-    nrep, r = divrem(L, 4W)
-    float_q = :(rand(rng, Vec{$(4W),$T}, VectorizedRNG.RXS_M_XS))
-    store_expr = quote end
-    for n ∈ 0:3
-        push!(store_expr.args, :(vstore!(ptr_A, $(VectorizedRNG.subset_vec(:u, W, n*W)), i + $(n*W))))
+@generated function Random.rand(rng::VectorizedRNG.PCG{P}, ::Type{ <: ConstantFixedSizePaddedArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
+    N,R,L = calc_NPL(S.parameters, T)
+    quote
+        A = MutableFixedSizePaddedArray{$S,$T,$N,$R,$L}(undef)
+        $(rand_mutable_fixed_size_expr(L, T, P, :rand))
+        ConstantFixedSizePaddedArray(A)
     end
-    u_exprs = quote end
-    out_exprs = Expr(:tuple,)
-    for i ∈ 1:nrep
-        u_sym = Symbol(:u_, i)
-        push!(u_exprs.args, :($u_sym = $float_q ))
-        for j ∈ 1:4W
-            push!(out_exprs.args, :( @inbounds $u_sym[$j].value ) )
-        end
-    end
-    if r > 0
-        rrep, rrem = divrem(r, W)
-        u_sym = gensym(Symbol(:u_remw))
-        rrep > 0 && push!(u_exprs.args, :($u_sym = rand(rng, Vec{$(W*rrep),$T}) ))
-        for j ∈ 1:W*rrep
-            push!(out_exprs.args, :( @inbounds $u_sym[$j].value ) )
-        end
-        if rrem > 0
-            u_sym = gensym(:u_rem)
-            push!(u_exprs.args, :($u_sym = rand(rng, Vec{$rrem,$T}) ))
-            for j ∈ 1:rrem
-                push!(out_exprs.args, :( @inbounds $u_sym[$j].value ) )
-            end
-        end
-    end
-    push!(u_exprs.args, :(ConstantFixedSizePaddedArray{$S,$T,$N,$R,$L}($out_exprs)))
-    u_exprs
 end
 function Random.rand(::Type{ <: ConstantFixedSizePaddedArray{S,T}}) where {S,T<:Union{Float32,Float64}}
     rand(VectorizedRNG.GLOBAL_vPCG, ConstantFixedSizePaddedArray{S,T})
 end
 
-@generated function Random.randn!(rng::VectorizedRNG.PCG, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {S,T<:Union{Float32,Float64},N,R,L}
-    size_T = sizeof(T)
-    W = VectorizationBase.pick_vector_width(L, T)
-    nrep, r = divrem(L, 4W)
-    float_q = :(randn(rng, Vec{$(4W),$T}, VectorizedRNG.RXS_M_XS))
-    store_expr = quote end
-    for n ∈ 0:3
-        push!(store_expr.args, :(vstore!(ptr_A, $(VectorizedRNG.subset_vec(:u, W, n*W)), i + $(n*W))))
-    end
-    if nrep > 0
-        q = quote
-            ptr_A = pointer(A)
-            for i ∈ 1:$(4W):$(nrep * 4W)
-                u = $float_q
-                $store_expr
-            end
-        end
-    else
-        q = quote ptr_A = pointer(A) end
-    end
-    if r > 0 #&& (r & (W-1)) == 0
-        rrep, rrem = divrem(r, W)
-        u_sym = gensym(Symbol(:u_remw))
-        rrep > 0 && push!(q.args, :($u_sym = randn(rng, Vec{$(W*rrep),$T}) ))
-        for n ∈ 0:rrep - 1
-            push!(q.args, :(vstore!(ptr_A, $(VectorizedRNG.subset_vec(u_sym, W, n*W)), $(L - r + 1 + n*W))))
-        end
-        if rrem > 0
-            u_sym = gensym(:u_rem)
-            push!(q.args, :($u_sym = randn(rng, Vec{$W,$T}) ))
-            mask = (VectorizationBase.mask_type(W))(2^rrem - 1)
-            push!(q.args, :(vstore!(ptr_A, $u_sym, $(L - rrem + 1), $mask )))
-        end
-    end
-    push!(q.args, :A)
-    q
+#@generated
+function Random.randn!(rng::VectorizedRNG.PCG{P}, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {S,P,T<:Union{Float32,Float64},N,R,L}
+    rand_mutable_fixed_size_expr(L, T, P, :randn)
 end
 Random.randn!(A::AbstractMutableFixedSizePaddedArray) = randn!(VectorizedRNG.GLOBAL_vPCG, A)
 
-@generated function Random.randn(rng::VectorizedRNG.PCG, ::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {S,T<:Union{Float32,Float64}}
-    N = length(S.parameters)
-
-    R, L = calculate_L_from_size(S.parameters, T)
-
-    size_T = sizeof(T)
-    W = VectorizationBase.pick_vector_width(L, T)
-    nrep, r = divrem(L, 4W)
-    float_q = :(randn(rng, Vec{$(4W),$T}, VectorizedRNG.RXS_M_XS))
-    store_expr = quote end
-    for n ∈ 0:3
-        push!(store_expr.args, :(vstore!(ptr_A, $(VectorizedRNG.subset_vec(:u, W, n*W)), i + $(n*W))))
+@generated function Random.randn(rng::VectorizedRNG.PCG{P}, ::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
+    N,R,L = calc_NPL(S.parameters, T)
+    quote
+        A = MutableFixedSizePaddedArray{$S,$T,$N,$R,$L}(undef)
+        $(rand_mutable_fixed_size_expr(L, T, P, :randn))
+        ConstantFixedSizePaddedArray(A)
     end
-    u_exprs = quote end
-    out_exprs = Expr(:tuple,)
-    for i ∈ 1:nrep
-        u_sym = gensym(Symbol(:u_, i))
-        push!(u_exprs.args, :($u_sym = $float_q ))
-        for j ∈ 1:4W
-            push!(out_exprs.args, :( @inbounds $u_sym[$j].value ) )
-        end
-    end
-    if r > 0
-        rrep, rrem = divrem(r, W)
-        u_sym = gensym(Symbol(:u_remw))
-        rrep > 0 && push!(u_exprs.args, :($u_sym = randn(rng, Vec{$(W*rrep),$T}) ))
-        for j ∈ 1:W*rrep
-            push!(out_exprs.args, :( @inbounds $u_sym[$j].value ) )
-        end
-        if rrem > 0
-            u_sym = gensym(:u_rem)
-            push!(u_exprs.args, :($u_sym = randn(rng, Vec{$rrem,$T}) ))
-            for j ∈ 1:rrem
-                push!(out_exprs.args, :( @inbounds $u_sym[$j].value ) )
-            end
-        end
-    end
-    push!(u_exprs.args, :(ConstantFixedSizePaddedArray{$S,$T,$N,$R,$L}($out_exprs)))
-    u_exprs
 end
 function Random.randn(::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {S,T<:Union{Float32,Float64}}
     randn(VectorizedRNG.GLOBAL_vPCG, ConstantFixedSizePaddedArray{S,T})
@@ -199,84 +115,19 @@ end
 end
 
 
-@generated function Random.randexp!(rng::VectorizedRNG.PCG, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {S,T<:Union{Float32,Float64},N,R,L}
-    size_T = sizeof(T)
-    W = VectorizationBase.pick_vector_width(L, T)
-    nrep, r = divrem(L, 4W)
-    float_q = :(randexp(rng, Vec{$(4W),$T}, VectorizedRNG.RXS_M_XS))
-    store_expr = quote end
-    for n ∈ 0:3
-        push!(store_expr.args, :(vstore!(ptr_A, $(VectorizedRNG.subset_vec(:u, W, n*W)), i + $(n*W))))
-    end
-    if nrep > 0
-        q = quote
-            ptr_A = pointer(A)
-            for i ∈ 1:$(4W):$(nrep * 4W)
-                u = $float_q
-                $store_expr
-            end
-        end
-    else
-        q = quote ptr_A = pointer(A) end
-    end
-    if r > 0
-        rrep, rrem = divrem(r, W)
-        u_sym = gensym(Symbol(:u_remw))
-        rrep > 0 && push!(q.args, :($u_sym = randexp(rng, Vec{$(W*rrep),$T}) ))
-        for n ∈ 0:rrep - 1
-            push!(q.args, :(vstore!(ptr_A, $(VectorizedRNG.subset_vec(u_sym, W, n*W)), $(L - r + 1 + n*W))))
-        end
-        if rrem > 0
-            u_sym = gensym(:u_rem)
-            push!(u_exprs.args, :($u_sym = randexp(rng, Vec{$rrem,$T}) ))
-            push!(q.args, :(vstore!(ptr_A, $u_sym, $(L - rrem + 1))))
-        end
-    end
-    push!(q.args, :A)
-    q
+@generated function Random.randexp!(rng::VectorizedRNG.PCG{P}, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {P,S,T<:Union{Float32,Float64},N,R,L}
+    rand_mutable_fixed_size_expr(L, T, P, :randexp)
 end
 Random.randexp!(A::AbstractMutableFixedSizePaddedArray) = randexp!(VectorizedRNG.GLOBAL_vPCG, A)
 
 
-@generated function Random.randexp(rng::VectorizedRNG.PCG, ::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {S,T<:Union{Float32,Float64}}
-    N = length(S.parameters)
-
-    R, L = calculate_L_from_size(S.parameters, T)
-
-    size_T = sizeof(T)
-    W = VectorizationBase.pick_vector_width(L, T)
-    nrep, r = divrem(L, 4W)
-    float_q = :(randexp(rng, Vec{$(4W),$T}, VectorizedRNG.RXS_M_XS))
-    store_expr = quote end
-    for n ∈ 0:3
-        push!(store_expr.args, :(vstore!(ptr_A, $(VectorizedRNG.subset_vec(:u, W, n*W)), i + $(n*W))))
+@generated function Random.randexp(rng::VectorizedRNG.PCG{P}, ::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
+    N,R,L = calc_NPL(S.parameters, T)
+    quote
+        A = MutableFixedSizePaddedArray{$S,$T,$N,$R,$L}(undef)
+        $(rand_mutable_fixed_size_expr(L, T, P, :randexp))
+        ConstantFixedSizePaddedArray(A)
     end
-    u_exprs = quote end
-    out_exprs = Expr(:tuple,)
-    for i ∈ 1:nrep
-        u_sym = gensym(Symbol(:u_, i))
-        push!(u_exprs.args, :($u_sym = $float_q ))
-        for j ∈ 1:4W
-            push!(out_exprs.args, :( @inbounds $u_sym[$j].value ) )
-        end
-    end
-    if r > 0
-        rrep, rrem = divrem(r, W)
-        u_sym = gensym(Symbol(:u_remw))
-        rrep > 0 && push!(u_exprs.args, :($u_sym = randexp(rng, Vec{$(W*rrep),$T}) ))
-        for j ∈ 1:W*rrep
-            push!(out_exprs.args, :( @inbounds $u_sym[$j].value ) )
-        end
-        if rrem > 0
-            u_sym = gensym(:u_rem)
-            push!(u_exprs.args, :($u_sym = randexp(rng, Vec{$rrem,$T}) ))
-            for j ∈ 1:rrem
-                push!(out_exprs.args, :( @inbounds $u_sym[$j].value ) )
-            end
-        end
-    end
-    push!(u_exprs.args, :(ConstantFixedSizePaddedArray{$S,$T,$N,$R,$L}($out_exprs)))
-    u_exprs
 end
 function Random.randexp(::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {S,T<:Union{Float32,Float64}}
     randexp(VectorizedRNG.GLOBAL_vPCG, ConstantFixedSizePaddedArray{S,T})
