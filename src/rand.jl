@@ -74,8 +74,7 @@ function Random.rand(::Type{ <: ConstantFixedSizePaddedArray{S,T}}) where {S,T<:
     rand(VectorizedRNG.GLOBAL_vPCG, ConstantFixedSizePaddedArray{S,T})
 end
 
-#@generated
-function Random.randn!(rng::VectorizedRNG.PCG{P}, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {S,P,T<:Union{Float32,Float64},N,R,L}
+@generated function Random.randn!(rng::VectorizedRNG.PCG{P}, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {S,P,T<:Union{Float32,Float64},N,R,L}
     rand_mutable_fixed_size_expr(L, T, P, :randn)
 end
 Random.randn!(A::AbstractMutableFixedSizePaddedArray) = randn!(VectorizedRNG.GLOBAL_vPCG, A)
