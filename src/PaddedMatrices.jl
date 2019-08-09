@@ -136,7 +136,11 @@ function sub2ind_expr(S, P,  N = length(S))
     end
     :(@inbounds i[1] + $P * $ex)
 end
-@generated function sub2ind(s::NTuple{N}, i::NTuple{N}, P = size(s,1)) where {N}
+@generated function sub2ind(
+    s::NTuple{N},
+    i::Union{<: NTuple{N}, CartesianIndex{N}},
+    P = size(s,1)
+) where {N}
     N == 1 && return :(@inbounds i[1])
     ex = :(i[$N] - 1)
     for j ∈ (N-1):-1:2

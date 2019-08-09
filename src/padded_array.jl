@@ -23,13 +23,13 @@ const DynamicPtrMatrix{T} = DynamicPtrArray{T,2}
 @inline LoopVectorization.stride_row(A::DynamicPtrArray) = A.stride
 
 full_length(A::DynamicPaddedArray) = length(A.data)
-function full_length(Asize::NTuple{N,Int}, L::Int) where {N}
+function full_length(Asize::NTuple{N,Int}, L::Int = Asize[1]) where {N}
     @inbounds for n ∈ 2:N
         L *= Asize[n]
     end
     L
 end
-full_length(A::DynamicPtrArray) = A.full_length(A.size, A.size)
+full_length(A::DynamicPtrArray) = full_length(A.size, A.stride)
 
 
 
