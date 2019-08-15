@@ -169,7 +169,7 @@ end
         pD = pointer(D)
         pA = pointer(A)
         pX = pointer(X)
-        $(mulquote(AR,N,P,AR,XR,T,:kernel!,nothing,DR))
+        $(mulquote(M,N,P,AR,XR,T,:kernel!,nothing,DR))
     end
 end
 
@@ -688,7 +688,7 @@ function mulquote(M,N,P,AR,XR,T,init=:initkernel!,prefetchAX=nothing,DR=AR)
     (L1S, L2S, L3S), num = blocking_structure(M, N, P, T)
     if num == 0 || (M*N*P < 104^3)
         # if init == :kernel! || M*P > 14*16
-            return cache_mulquote(M,N,P,AR,XR,L1S,T,init,DR)
+        return cache_mulquote(M,N,P,AR,XR,L1S,T,init,DR)
         # else
             # M, P, strideA, strideX, N, T
             # return kernel_quote(M,P,ADR,XR,N,T,true,true,CDR)
@@ -700,16 +700,17 @@ function mulquote(M,N,P,AR,XR,T,init=:initkernel!,prefetchAX=nothing,DR=AR)
     elseif T <: LinearAlgebra.BlasFloat
         # blas_gemm_quote(M,N,P,DR,AR,XR,T,init)
         :(BLAS.gemm!('N','N',one($T),A,X,$(init==:initkernel! ? zero(T) : one(T)),D))
+        #    elseif num == 1
     elseif num == 1
         return cache_mulquote(M,N,P,AR,XR,L1S,T,init,DR)
-    elseif num == 2
+    else#if num == 2
         # Loop over L2 cache blocks
-        return cache_mulquote(M,N,P,AR,XR,L1S,L2S,T,init,prefetchAX)
-    else #num == 3
+        return cache_mulquote(M,N,P,AR,XR,L1S,L2S,T,init)#,true)#prefetchAX)
+  #  else #num == 3
         # Loop over L3 cache blocks.
         # return cache_mulquote(ADR,N,P,ADR,XR,L1S,L2S,L3S,T,init)
         # Except that they are fused, so we aren't doing anything special.
-        return cache_mulquote(M,N,P,AR,XR,L1S,L3S,T,init,prefetchAX) # should recurse calling mul and gemm!
+ #       return cache_mulquote(M,N,P,AR,XR,L1S,L3S,T,init,prefetchAX) # should recurse calling mul and gemm!
     end
 end
 
@@ -725,8 +726,12 @@ function initkernel_quote(D::AbstractMutableFixedSizePaddedMatrix{M,Pₖ,T,strid
     kernel_quote(M,Pₖ,stride_AD,stride_X,N,T,true,true)
 end
 
-function block_loop_quote(L1M,L1N,L1P,stride_AD,stride_X,M_iter,M_remain,P_iter,P_remain,T_size,kernel=:kernel!,pA=:pAₙ,pX=:pXₙ,pD=:pD,X_transposed=false)
-
+#function block_loop_quote_minbandwidth(
+function block_loop_quote(
+    L1M,L1N,L1P,stride_AD,stride_X,M_iter,M_remain,P_iter,P_remain,
+    T_size,kernel=:kernel!,pA=:pAₙ,pX=:pXₙ,pD=:pD,X_transposed=false
+)
+    
     if M_remain == 0
         D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_AD)*pᵢ)
         A = :($pA + $(T_size*L1M)*mᵢ)
@@ -862,6 +867,69 @@ function block_loop_quote(L1M,L1N,L1P,stride_AD,stride_X,M_iter,M_remain,P_iter,
     q
 end
 
+function block_loop_quote_test_simple_prefetch(
+    L1M,L1N,L1P,stride_AD,stride_X,M_iter,M_remain,P_iter,P_remain,
+    T_size,kernel=:kernel!,pA=:pAₙ,pX=:pXₙ,pD=:pD,X_transposed=false,prefetch = false
+)
+#    prefetch = true
+    D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_AD)*pᵢ)
+    A = :($pA + $(T_size*L1M)*mᵢ)
+    X = X_transposed ? pX : :($pX + $(T_size*L1P*stride_X)*pᵢ)
+    if prefetch && M_remain == 0
+        M_remain = L1M
+        M_iter -= 1
+    end
+    kernel_call = if prefetch
+        :($(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_AD,$stride_X,$L1N}(), Val{$(PrefetchA(L1M))}()))
+    else
+        :($(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_AD,$stride_X,$L1N}()))
+    end
+    kernel_call_Mremain = if prefetch
+        :($(kernel)($D, $A, $X, Kernel{$M_remain,$L1P,$stride_AD,$stride_X,$L1N}()),Val{$(PrefetchAX(-L1M*M_iter,L1P*stride_X))}())
+    else
+        :($(kernel)($D, $A, $X, Kernel{$M_remain,$L1P,$stride_AD,$stride_X,$L1N}()))
+    end
+    ploopbody = quote
+        for mᵢ ∈ 0:$M_iter - 1
+            $kernel_call
+        end
+    end
+    if M_remain > 0
+        remain_expr = quote
+            mᵢ = $M_iter
+            $kernel_call_Mremain
+        end
+        push!(ploopbody.args, remain_expr)
+    end
+
+    q = quote
+        for pᵢ ∈ 0:$P_iter - 1
+            $ploopbody
+        end
+    end
+
+    if P_remain > 0
+        kernel_call = if prefetch
+            :($(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_AD,$stride_X,$L1N}(), Val{$(PrefetchA(L1M))}()))
+        else
+            :($(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_AD,$stride_X,$L1N}()))
+        end
+        kernel_call_Mremain = :($(kernel)($D, $A, $X, Kernel{$M_remain,$P_remain,$stride_AD,$stride_X,$L1N}()))
+        p_remain_quote = quote
+            pᵢ = $P_iter
+            for mᵢ ∈ 0:$M_iter - 1
+                $kernel_call
+            end            
+        end
+        if M_remain > 0
+            push!(p_remain_quote.args, :(mᵢ = $M_iter))
+            push!(p_remain_quote.args, kernel_call_Mremain)
+        end
+        push!(q.args, p_remain_quote)
+    end
+    q
+end
+
 function cache_mulquote(M,N,P,stride_A,stride_X,(L1M,L1N,L1P),::Type{T}, init = :initkernel!, stride_D::Integer = stride_A) where {T}
 
     primary = :kernel!
@@ -938,72 +1006,72 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
             px_off = pᵢ*$(L2P*stride_X*T_size)
             for mᵢ ∈ 0:$(M_iter-1)
                 m_off = mᵢ*$(L2M*T_size)
-                pD_temp = PtrMatrix{$L2M,$L2P,$T,$stride_AD,$(stride_AD*L2P),false}(pD + m_off + pd_off)
-                pA_temp = PtrMatrix{$L2M,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + m_off)
-                pX_temp = PtrMatrix{$L2N,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + px_off)
+                pD_temp1 = PtrMatrix{$L2M,$L2P,$T,$stride_AD,$(stride_AD*L2P),false}(pD + m_off + pd_off)
+                pA_temp1 = PtrMatrix{$L2M,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + m_off)
+                pX_temp1 = PtrMatrix{$L2N,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + px_off)
                 $(prefetch_ ? quote
-                    prefetch(pD_temp, Val(1))
-                    prefetch(pA_temp, Val(0))
-                    prefetch(pX_temp, Val(0))
+                    prefetch(pD_temp1, Val(1))
+                    prefetch(pA_temp1, Val(0))
+                    prefetch(pX_temp1, Val(0))
                 end : nothing )
-                $initmul(pD_temp,
-                     pA_temp,
-                     pX_temp)
+                $initmul(pD_temp1,
+                     pA_temp1,
+                     pX_temp1)
                 for nᵢ ∈ 1:$(N_iter-1)
-                    pA_temp = PtrMatrix{$L2M,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + m_off + nᵢ*$(L2N*stride_AD*T_size))
-                    pX_temp = PtrMatrix{$L2N,$L2P,$T,$stride_X,$(stride_X*L2p),false}(pX + nᵢ*$(L2N*T_size) + px_off)
+                    pA_temp1 = PtrMatrix{$L2M,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + m_off + nᵢ*$(L2N*stride_AD*T_size))
+                    pX_temp1 = PtrMatrix{$L2N,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + nᵢ*$(L2N*T_size) + px_off)
                     $(prefetch_ ? quote
-                        prefetch(pA_temp, Val(0))
-                        prefetch(pX_temp, Val(0))
+                        prefetch(pA_temp1, Val(0))
+                        prefetch(pX_temp1, Val(0))
                     end : nothing )
-                    gemm!(pD_temp,
-                         pA_temp,
-                         pX_temp)
+                    gemm!(pD_temp1,
+                         pA_temp1,
+                         pX_temp1)
                 end
                 $(N_remain == 0 ? nothing : quote
-                    pA_temp = PtrMatrix{$L2M,$N_remain,$T,$stride_AD,$(stride_AD*N_remain),false}(pA + m_off + $(N_iter*L2N*stride_AD*T_size))
-                    pX_temp = PtrMatrix{$N_remain,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + $(N_iter*L2N*T_size) + px_off)
+                    pA_temp2 = PtrMatrix{$L2M,$N_remain,$T,$stride_AD,$(stride_AD*N_remain),false}(pA + m_off + $(N_iter*L2N*stride_AD*T_size))
+                    pX_temp2 = PtrMatrix{$N_remain,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + $(N_iter*L2N*T_size) + px_off)
                     $(prefetch_ ? quote
-                        prefetch(pA_temp, Val(0))
-                        prefetch(pX_temp, Val(0))
+                        prefetch(pA_temp2, Val(0))
+                        prefetch(pX_temp2, Val(0))
                     end : nothing )
-                    gemm!(pD_temp, pA_temp, pX_temp)
+                    gemm!(pD_temp1, pA_temp2, pX_temp2)
                 end)
             end
             ### Check if we need to add an expression for a remainder of M.
             $(M_remain == 0 ? nothing : quote
-                pD_temp = PtrMatrix{$M_remain,$L2P,$T,$stride_AD,$(stride_AD*L2P),false}(pD + $(M_iter*L2M*T_size) + pd_off)
-                pA_temp = PtrMatrix{$M_remain,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + $(M_iter*L2M*T_size))
-                pX_temp = PtrMatrix{$L2N,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + px_off)
+                pD_temp3 = PtrMatrix{$M_remain,$L2P,$T,$stride_AD,$(stride_AD*L2P),false}(pD + $(M_iter*L2M*T_size) + pd_off)
+                pA_temp3 = PtrMatrix{$M_remain,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + $(M_iter*L2M*T_size))
+                pX_temp3 = PtrMatrix{$L2N,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + px_off)
                 $(prefetch_ ? quote
-                    prefetch(pD_temp, Val(1))
-                    prefetch(pA_temp, Val(0))
-                    prefetch(pX_temp, Val(0))
+                    prefetch(pD_temp3, Val(1))
+                    prefetch(pA_temp3, Val(0))
+                    prefetch(pX_temp3, Val(0))
                 end : nothing )
-                $initmul(pD_temp,
-                     pA_temp,
-                     pX_temp)
+                $initmul(pD_temp3,
+                     pA_temp3,
+                     pX_temp3)
                 for nᵢ ∈ 1:$(N_iter-1)
-                    pA_temp = PtrMatrix{$M_remain,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + $(M_iter*L2M*T_size) + nᵢ*$(L2N*stride_AD*T_size))
-                    pX_temp = PtrMatrix{$L2N,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + nᵢ*$(L2N*T_size) + px_off)
+                    pA_temp3 = PtrMatrix{$M_remain,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + $(M_iter*L2M*T_size) + nᵢ*$(L2N*stride_AD*T_size))
+                    pX_temp3 = PtrMatrix{$L2N,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + nᵢ*$(L2N*T_size) + px_off)
                     $(prefetch_ ? quote
-                        prefetch(pA_temp, Val(0))
-                        prefetch(pX_temp, Val(0))
+                        prefetch(pA_temp3, Val(0))
+                        prefetch(pX_temp3, Val(0))
                     end : nothing )
-                    gemm!(pD_temp,
-                         pA_temp,
-                         pX_temp)
+                    gemm!(pD_temp3,
+                         pA_temp3,
+                         pX_temp3)
                 end
                 $(N_remain == 0 ? nothing : quote
-                    pA_temp = PtrMatrix{$M_remain,$N_remain,$T,$stride_AD,$(stride_AD*N_remain),false}(pA + $(M_iter*L2M*T_size + N_iter*L2N*stride_AD*T_size))
-                    pX_temp = PtrMatrix{$N_remain,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + $(N_iter*L2N*T_size) + px_off)
+                    pA_temp4 = PtrMatrix{$M_remain,$N_remain,$T,$stride_AD,$(stride_AD*N_remain),false}(pA + $(M_iter*L2M*T_size + N_iter*L2N*stride_AD*T_size))
+                    pX_temp4 = PtrMatrix{$N_remain,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + $(N_iter*L2N*T_size) + px_off)
                     $(prefetch_ ? quote
-                        prefetch(pA_temp, Val(0))
-                        prefetch(pX_temp, Val(0))
+                        prefetch(pA_temp4, Val(0))
+                        prefetch(pX_temp4, Val(0))
                     end : nothing )
-                    gemm!(pD_temp,
-                     pA_temp,
-                     pX_temp)
+                    gemm!(pD_temp3,
+                     pA_temp4,
+                     pX_temp4)
                 end )
             end) # $(M_remain == 0 ? nothing
         end # for pᵢ ∈ 0:$(P_iter-1)
@@ -1014,74 +1082,74 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
             quote
                 for mᵢ ∈ 0:$(M_iter-1)
                     m_off = mᵢ*$(L2M*T_size)
-                    pD_temp = PtrMatrix{$L2M,$P_remain,$T,$stride_AD,$(stride_AD*P_remain),false}(pD + m_off + $(P_iter*L2P*stride_AD*T_size))
-                    pA_temp = PtrMatrix{$L2M,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + m_off)
-                    pX_temp = PtrMatrix{$L2N,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + $(P_iter*L2P*stride_X*T_size))
+                    pD_temp5 = PtrMatrix{$L2M,$P_remain,$T,$stride_AD,$(stride_AD*P_remain),false}(pD + m_off + $(P_iter*L2P*stride_AD*T_size))
+                    pA_temp5 = PtrMatrix{$L2M,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + m_off)
+                    pX_temp5 = PtrMatrix{$L2N,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + $(P_iter*L2P*stride_X*T_size))
                     $(prefetch_ ? quote
-                        prefetch(pD_temp, Val(1))
-                        prefetch(pA_temp, Val(0))
-                        prefetch(pA_temp, Val(0))
+                        prefetch(pD_temp5, Val(1))
+                        prefetch(pA_temp5, Val(0))
+                        prefetch(pA_temp5, Val(0))
                     end : nothing )
-                    $initmul(pD_temp,
-                         pA_temp,
-                         pX_temp)
+                    $initmul(pD_temp5,
+                         pA_temp5,
+                         pX_temp5)
                     for nᵢ ∈ 1:$(N_iter-1)
-                        pA_temp = PtrMatrix{$L2M,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + m_off + nᵢ*$(L2N*stride_AD*T_size))
-                        pX_temp = PtrMatrix{$L2N,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + nᵢ*$(L2N*T_size) + $(P_iter*L2P*stride_X*T_size))
+                        pA_temp5 = PtrMatrix{$L2M,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + m_off + nᵢ*$(L2N*stride_AD*T_size))
+                        pX_temp5 = PtrMatrix{$L2N,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + nᵢ*$(L2N*T_size) + $(P_iter*L2P*stride_X*T_size))
                         $(prefetch_ ? quote
-                            prefetch(pA_temp, Val(0))
-                            prefetch(pX_temp, Val(0))
+                            prefetch(pA_temp5, Val(0))
+                            prefetch(pX_temp5, Val(0))
                         end : nothing )
-                        gemm!(pD_temp,
-                             pA_temp,
-                             pX_temp)
+                        gemm!(pD_temp5,
+                             pA_temp5,
+                             pX_temp5)
                     end
                     $(N_remain == 0 ? nothing : quote
-                        pA_temp = PtrMatrix{$L2M,$N_remain,$T,$stride_AD,$(stride_AD*N_remain),false}(pA + m_off + $(N_iter*L2N*stride_AD*T_size))
-                        pX_temp = PtrMatrix{$N_remain,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + $(N_iter*L2N*T_size + P_iter*L2P*stride_X*T_size))
+                        pA_temp6 = PtrMatrix{$L2M,$N_remain,$T,$stride_AD,$(stride_AD*N_remain),false}(pA + m_off + $(N_iter*L2N*stride_AD*T_size))
+                        pX_temp6 = PtrMatrix{$N_remain,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + $(N_iter*L2N*T_size + P_iter*L2P*stride_X*T_size))
                         $(prefetch_ ? quote
-                            prefetch(pA_temp, Val(0))
-                            prefetch(pX_temp, Val(0))
+                            prefetch(pA_temp5, Val(0))
+                            prefetch(pX_temp5, Val(0))
                         end : nothing )
-                        gemm!(pD_temp,
-                         pA_temp,
-                         pX_temp)
+                        gemm!(pD_temp5,
+                         pA_temp6,
+                         pX_temp6)
                     end )
                 end
                 ### Check if we need to add an expression for a remainder of M.
                 $(M_remain == 0 ? nothing : quote
-                    pD_temp = PtrMatrix{$M_remain,$P_remain,$T,$stride_AD,$(stride_AD*P_remain),false}(pD + $(M_iter*L2M*T_size + P_iter*L2P*stride_AD*T_size))
-                    pA_temp = PtrMatrix{$M_remain,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + $(M_iter*L2M*T_size))
-                    pX_temp = PtrMatrix{$L2N,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + $(P_iter*L2P*stride_X*T_size))
+                    pD_temp7 = PtrMatrix{$M_remain,$P_remain,$T,$stride_AD,$(stride_AD*P_remain),false}(pD + $(M_iter*L2M*T_size + P_iter*L2P*stride_AD*T_size))
+                    pA_temp7 = PtrMatrix{$M_remain,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + $(M_iter*L2M*T_size))
+                    pX_temp7 = PtrMatrix{$L2N,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + $(P_iter*L2P*stride_X*T_size))
                     $(prefetch_ ? quote
-                        prefetch(pD_temp, Val(1))
-                        prefetch(pA_temp, Val(0))
-                        prefetch(pX_temp, Val(0))
+                        prefetch(pD_temp7, Val(1))
+                        prefetch(pA_temp7, Val(0))
+                        prefetch(pX_temp7, Val(0))
                     end : nothing )
-                    $initmul(pD_temp,
-                         pA_temp,
-                         pX_temp)
+                    $initmul(pD_temp7,
+                         pA_temp7,
+                         pX_temp7)
                     for nᵢ ∈ 1:$(N_iter-1)
-                        pA_temp = PtrMatrix{$M_remain,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + $(M_iter*L2M*T_size) + nᵢ*$(L2N*stride_AD*T_size))
-                        pX_temp = PtrMatrix{$L2N,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + nᵢ*$(L2N*T_size) + $(P_iter*L2P*stride_X*T_size))
+                        pA_temp7 = PtrMatrix{$M_remain,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + $(M_iter*L2M*T_size) + nᵢ*$(L2N*stride_AD*T_size))
+                        pX_temp7 = PtrMatrix{$L2N,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + nᵢ*$(L2N*T_size) + $(P_iter*L2P*stride_X*T_size))
                         $(prefetch_ ? quote
-                            prefetch(pA_temp, Val(0))
-                            prefetch(pX_temp, Val(0))
+                            prefetch(pA_temp7, Val(0))
+                            prefetch(pX_temp7, Val(0))
                         end : nothing )
-                        gemm!(pD_temp,
-                             pA_temp,
-                             pX_temp)
+                        gemm!(pD_temp7,
+                             pA_temp7,
+                             pX_temp7)
                     end
                     $(N_remain == 0 ? nothing : quote
-                        pA_temp = PtrMatrix{$M_remain,$N_remain,$T,$stride_AD,$(stride_AD*N_remain),false}(pA + $(M_iter*L2M*T_size + N_iter*L2N*stride_AD*T_size))
-                        pX_temp = PtrMatrix{$N_remain,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + $(N_iter*L2N*T_size + P_iter*L2P*stride_X*T_size))
+                        pA_temp8 = PtrMatrix{$M_remain,$N_remain,$T,$stride_AD,$(stride_AD*N_remain),false}(pA + $(M_iter*L2M*T_size + N_iter*L2N*stride_AD*T_size))
+                        pX_temp8 = PtrMatrix{$N_remain,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + $(N_iter*L2N*T_size + P_iter*L2P*stride_X*T_size))
                         $(prefetch_ ? quote
-                            prefetch(pA_temp, Val(0))
-                            prefetch(pX_temp, Val(0))
+                            prefetch(pA_temp8, Val(0))
+                            prefetch(pX_temp8, Val(0))
                         end : nothing )
-                        gemm!(pD_temp,
-                         pA_temp,
-                         pX_temp)
+                        gemm!(pD_temp7,
+                         pA_temp8,
+                         pX_temp8)
                     end )
                 end) # $(M_remain == 0 ? nothing
             end) # end quote
