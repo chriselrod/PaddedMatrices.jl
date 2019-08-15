@@ -686,7 +686,7 @@ function mulquote(
 end
 function mulquote(M,N,P,AR,XR,T,init=:initkernel!,prefetchAX=nothing,DR=AR)
     (L1S, L2S, L3S), num = blocking_structure(M, N, P, T)
-    if num == 0 || (M*N*P < 104^3)
+    if num == 0 || (M*N*P < 64^3)#104^3)
         # if init == :kernel! || M*P > 14*16
         return cache_mulquote(M,N,P,AR,XR,L1S,T,init,DR)
         # else
