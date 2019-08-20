@@ -868,32 +868,87 @@ end
 # will be maximized with relatively square blocks, making that friendliest for the cache.
 # """
 function pick_kernel_size(
-            ::Type{T}, row_max = typemax(Int), col_max = typemax(Int);
-            D_count = 1, A_count = 1, X_count = 1) where {T}
+    ::Type{T}, row_max = typemax(Int), col_max = typemax(Int);
+    D_count = 1, A_count = 1, X_count = 1,
+    W = VectorizationBase.REGISTER_SIZE ÷ sizeof(T),
+    NREG = VectorizationBase.REGISTER_COUNT, verbose = false,
+    max_aloads = min(NREG >> 1, row_max)
+) where {T}
     T_size = sizeof(T)
-    W = VectorizationBase.REGISTER_SIZE ÷ T_size
+    
     # cache_line = W
     # cache_line = CACHELINE_SIZE ÷ T_size
-    max_total = W * VectorizationBase.REGISTER_COUNT
+    max_total = W * NREG
     # num_cache_lines = cld(max_total, cache_line)
     prev_num_rows, prev_num_cols = 0, 0
     prev_ratio = -Inf
-    for a_loads ∈ 1:4
+    rows = Vector{Int}(undef, max_aloads)
+    cols = Vector{Int}(undef, max_aloads)
+    ratios = Vector{Float64}(undef, max_aloads)
+    for a_loads ∈ 1:max_aloads
         num_rows = a_loads * W
-        num_cols = (VectorizationBase.REGISTER_COUNT - a_loads - 1) ÷ a_loads # assumes we need only a single B
+        num_cols = (NREG - a_loads - 1) ÷ a_loads # assumes we need only a single B
         num_cols = min(num_cols, col_max)
-        length_D = num_rows * num_cols
-        num_loads = num_cols + a_loads
-        next_ratio = length_D / num_loads
-        if next_ratio < prev_ratio
-            break
+        next_ratio_fc_fr = (num_rows * num_cols) / (num_cols + a_loads)
+        if col_max != typemax(Int)
+            nfullcol, remcol = divrem(col_max, num_cols)
+            if remcol == 0
+                next_ratio_rc_fr = next_ratio_fc_fr
+                rem_col_indicator = 0
+            else
+                next_ratio_rc_fr = (num_rows * remcol) / (remcol + a_loads)
+                rem_col_indicator = 1
+            end
+#            rem_col_indicator = remcol > 0 ? 1 : 0
         else
-            prev_ratio = next_ratio
-            prev_num_rows, prev_num_cols = num_rows, num_cols
+            next_ratio_rc_fr = next_ratio_fc_fr
+            nfullcol, remcol = 1, 0
+            rem_col_indicator = 0
         end
-        num_rows >= row_max && break
+        if row_max != typemax(Int)
+            nfullrow, remrow = divrem(row_max, num_rows)
+            if remrow == 0
+                next_ratio_fc_rr = next_ratio_fc_fr
+                rem_row_indicator = 0
+            else
+                next_ratio_fc_rr = (remrow * num_cols) / (num_cols + cld(remrow, W))
+                rem_row_indicator = 1
+            end
+#            rem_row_indicator = remrow > 0 ? 1 : 0
+        else
+            next_ratio_fc_rr = rem_row_fc_fr
+            nfullrow, remrow = 1, 0
+            rem_row_indicator = 0
+        end
+        nrcrr = rem_col_indicator * rem_row_indicator
+        if nrcrr != 0
+            next_ratio_rc_rr = (remrow * remcol) / (remcol + cld(remrow, W))
+        else
+            next_ratio_rc_rr = next_ratio_fc_fr
+        end
+        nfcfr = nfullcol * nfullrow
+        nfcrr = nfullcol * rem_row_indicator
+        nrcfr = rem_col_indicator * nfullrow
+        next_ratio = (next_ratio_fc_fr*nfcfr + next_ratio_fc_rr*nfcrr + next_ratio_rc_fr*nrcfr + next_ratio_rc_rr*nrcrr) / (nfcfr + nfcrr + nrcfr + nrcrr)
+        rows[a_loads] = num_rows
+        cols[a_loads] = num_cols
+        ratios[a_loads] = next_ratio
+        if verbose
+            @show a_loads, num_rows, num_cols, next_ratio
+        end
+#        if next_ratio < prev_ratio
+#            break
+#        else
+#            prev_ratio = next_ratio
+#            prev_num_rows, prev_num_cols = num_rows, num_cols
+#        end
+        if num_rows >= row_max
+            ratios[a_loads+1:end] .= 0
+            break
+        end
     end
-    W, prev_num_rows, prev_num_cols
+    max_ratio, max_ind = findmax(ratios)
+    W, rows[max_ind], cols[max_ind]
 end
 # function pick_kernel_size(::Type{T}; D_count = 1, A_count = 1, X_count = 1) where {T}
 #     W = VectorizationBase.pick_vector_width(T)
