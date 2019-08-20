@@ -440,17 +440,17 @@ prefetch_A(::Any, ::Any, ::Any, ::Any)    = (nothing, nothing, nothing)
 prefetch_X(::Any, ::Any, ::Any, ::Any, ::Any)    = (nothing, nothing, nothing, nothing)
 function prefetch_A(::Type{PF}, N, Qₚ, AD_stride) where {PF <: Union{PrefetchA, PrefetchAX}}
     (
-        :(@nexprs $Qₚ q -> prefetch(pA + pf.A + $(VectorizationBase.CACHELINE_SIZE)*(q-1), Val(3), Val(0))),
-        :(@nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $(VectorizationBase.CACHELINE_SIZE)*(q-1), Val(3), Val(0))),
-        :(@nexprs $Qₚ q -> prefetch(pA + pf.A + $((N-1)*AD_stride) + $(VectorizationBase.CACHELINE_SIZE)*(q-1), Val(3), Val(0)))
+        :(@nexprs $Qₚ q -> prefetch(pA + $(pf.A + VectorizationBase.CACHELINE_SIZE)*(q-1), Val(3), Val(0))),
+        :(@nexprs $Qₚ q -> prefetch(pA + $(pf.A) + n*$AD_stride + $(VectorizationBase.CACHELINE_SIZE)*(q-1), Val(3), Val(0))),
+        :(@nexprs $Qₚ q -> prefetch(pA + $(pf.A + (N-1)*AD_stride) + $(VectorizationBase.CACHELINE_SIZE)*(q-1), Val(3), Val(0)))
     )
 end
-function prefetch_X(::Type{PrefetchX}, N, Pₖ, X_stride, T_size)
+function prefetch_X(::Type{PF}, N, Pₖ, X_stride, T_size) where {PF <: Union{PrefetchA, PrefetchAX}}
     (
-        :(@nexprs $Pₖ p -> prefetch(pX + pf.X + (p-1)*$X_stride, Val(3), Val(0))),
-        :(@nexprs $Pₖ p -> prefetch(pX + pf.X + n₁*$T_size + (p-1)*$X_stride, Val(3), Val(0))),
-        :(prefetch(pX + pf.X + $(N*T_size) + (p-1)*$X_stride, Val(3), Val(0))),
-        :(prefetch(pX + pf.X + $(N*T_size + (Pₖ-1)*X_stride), Val(3), Val(0)))
+        :(@nexprs $Pₖ p -> prefetch(pX + $(pf.X) + (p-1)*$X_stride, Val(3), Val(0))),
+        :(@nexprs $Pₖ p -> prefetch(pX + $(pf.X) + n₁*$T_size + (p-1)*$X_stride, Val(3), Val(0))),
+        :(prefetch(pX + $(pf.X + N*T_size) + (p-1)*$X_stride, Val(3), Val(0))),
+        :(prefetch(pX + $(pf.X + N*T_size + (Pₖ-1)*X_stride), Val(3), Val(0)))
     )
 end
 
@@ -671,6 +671,18 @@ end
 
 @generated function initkernel!(pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, K::Kernel{Mₖ,Pₖ,stride_AD,stride_X,N}) where {Mₖ,Pₖ,stride_AD,stride_X,N,T}
     kernel_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,true,true)
+end
+
+@generated function kernel!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_AD,stride_X,N},::Val{PF}
+) where {Mₖ,Pₖ,stride_AD,stride_X,N,T,PF}
+    kernel_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,false,true,PF)
+end
+
+@generated function initkernel!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, K::Kernel{Mₖ,Pₖ,stride_AD,stride_X,N},::Val{PF}
+) where {Mₖ,Pₖ,stride_AD,stride_X,N,T,PF}
+    kernel_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,true,true,PF)
 end
 
 

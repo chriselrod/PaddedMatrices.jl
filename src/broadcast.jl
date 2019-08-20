@@ -522,7 +522,7 @@ function broadcast_index_expression!(q, preq, SBV, inds, bcsym, assign)
         SBVₗ₁ = (SBVₗ[1])::Union{Int,DataType}
         if SBVₗ₁ isa Int # array argument
             incorporate_cartesian_inds!(callexpr, preq, SBVₗ, inds, argsym, :($bcsym.args[$l]))
-        elseif SBVₗ₁ isa DataType
+        elseif SBVₗ₁ isa DataType # Another broadcastable
             push!(preq.args, :($argsym = @inbounds $bcsym.args[$l]))
             assign_to = gensym(:assign)
             broadcast_index_expression!(q, preq, SBVₗ, inds, argsym, assign_to)
