@@ -40,7 +40,7 @@ function ∂materialize end
 #function ∂muladd end
 
 @support_stack_pointer Base getindex
-@support_stack_pointer Base materialize
+@support_stack_pointer Base.Broadcast materialize
 @support_stack_pointer Base (*)
 @support_stack_pointer Base (+)
 @support_stack_pointer Base (-)
