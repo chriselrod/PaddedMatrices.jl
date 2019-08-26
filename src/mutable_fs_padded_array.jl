@@ -311,14 +311,14 @@ end
 @generated function PtrArray{S}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,P}
     N,R,L = calc_NPL(S,Float64)
     quote
-#        Expr(:meta,:inline)
+        $(Expr(:meta,:inline))
         sp + $(8L), PtrArray{$S,Float64,$N,$R,$L,$P}(pointer(sp, Float64))
     end
 end
 @generated function PtrArray{S,T}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,T,P}
     N,R,L = calc_NPL(S,T)
     quote
-    #    Expr(:meta,:inline)
+        $(Expr(:meta,:inline))
         sp + $(sizeof(T)*L), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
     end
 end
@@ -329,7 +329,7 @@ end
         L *= S.parameters[n]
     end
     quote
-#        Expr(:meta,:inline)
+        $(Expr(:meta,:inline))
         sp + $(sizeof(T)*L), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
     end
 end
@@ -339,7 +339,7 @@ end
         L *= S.parameters[n]
     end
     quote
-#        Expr(:meta,:inline)
+        $(Expr(:meta,:inline))
         ptr = Base.unsafe_convert(Ptr{$T}, sp.ptr)
         sp + $(sizeof(T)*L), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
 #        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
@@ -347,7 +347,7 @@ end
 end
 @generated function PtrArray{S,T,N,R,L}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,T,N,R,P,L}
     quote
-#        Expr(:meta,:inline)
+        $(Expr(:meta,:inline))
         ptr = Base.unsafe_convert(Ptr{$T}, sp.ptr)
         sp + $(sizeof(T)*L), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
 #        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)

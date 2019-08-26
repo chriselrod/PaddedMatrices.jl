@@ -2,7 +2,8 @@ struct StackPointer
     ptr::Ptr{Cvoid}
 end
 @inline Base.pointer(s::StackPointer) = s.ptr
-@inline Base.pointer(s::StackPointer, ::Type{T}) where {T} = Base.unsafe_convert(Ptr{T}, s.ptr)
+#@inline Base.pointer(s::StackPointer, ::Type{T}) where {T} = Base.unsafe_convert(Ptr{T}, s.ptr)
+@inline Base.pointer(s::StackPointer, ::Type{T}) where {T} = reinterpret(Ptr{T}, s.ptr)
 
 # These are for "fuzzing" offsets; answers shouldn't change for SPO ≥ 0, so if they do, there's a bug!
 #const SPO = Ref{Int}(800);
