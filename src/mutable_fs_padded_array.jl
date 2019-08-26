@@ -461,7 +461,7 @@ end
     T = eltype(A)
     VectorizationBase.load(pointer(A) + sizeof(T) * (i - 1))
 end
-@inline function Base.getindex(A::AbstractMutableFixedSizePaddedArray{S,Vec{W,T},1}, i::Int) where {S,T,L,W}
+@inline function Base.getindex(A::AbstractMutableFixedSizePaddedArray{S,Vec{W,T},1,L,L}, i::Int) where {S,T,L,W}
     @boundscheck i <= full_length(A) || ThrowBoundsError("Index $i > full length $L.")
     SIMDPirates.vload(Vec{W,T}, pointer(A) + sizeof(Vec{W,T}) * (i - 1))
 end
