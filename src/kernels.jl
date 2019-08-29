@@ -4,10 +4,11 @@ Base.@pure Kernel(Mₖ,N,Pₖ,stride_AD,stride_X) = Kernel{Mₖ,Pₖ,stride_AD,s
 The kernel is typed based on M and P. M is a critical component of vector length,
 while the kernel is unrolled across P. It simply loops over N.
 """
-struct Kernel{Mₖ,Pₖ,stride_AD,stride_X,N} end
-Base.@pure Kernel(Mₖ,N,Pₖ,stride_AD,stride_X) = Kernel{Mₖ,Pₖ,stride_AD,stride_X,N}()
-struct DKernel{Mₖ,Pₖ,stride_AD,stride_X} N::Int end
-Base.@pure DKernel(Mₖ,N,Pₖ,stride_AD,stride_X) = Kernel{Mₖ,Pₖ,stride_AD,stride_X}(N)
+abstract type AbstractKernel{Mₖ,Pₖ} end
+struct Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N} <: AbstractKernel{Mₖ,Pₖ} end
+Base.@pure Kernel(Mₖ,N,Pₖ,stride_A,stride_X,stride_D) = Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}()
+struct DKernel{Mₖ,Pₖ,stride_A,stride_X,stride_D} <: AbstractKernel{Mₖ,Pₖ} N::Int end
+Base.@pure DKernel(Mₖ,N,Pₖ,stride_A,stride_X,stride_D) = Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D}(N)
 
 @inline tuple_join(x) = x
 @inline tuple_join(x, y) = (x..., y...)
@@ -26,7 +27,7 @@ end
 function mul_block(V, W, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B, gemm = nothing)
     Prange = (1 + poffset):(P + poffset)
     loop_max = isa(N, Number) ? N - 1 : :($N - 1)
-    if gemm == nothing
+    if gemm === nothing
         loop_min = 1
         initialize = quote
             $([:(
@@ -59,7 +60,7 @@ end
 function mul_block(V, W, R1, R2, m_rep, N, P, poffset::Symbol, vA = :vA, B = :B, gemm = nothing)
     Prange = 1:P
     loop_max = isa(N, Number) ? N - 1 : :($N - 1)
-    if gemm == nothing
+    if gemm === nothing
         loop_min = 1
         initialize = quote
             $([:(
@@ -103,7 +104,7 @@ ie, A is not transposed, and B is tranposed.
 function mul_block_nt(V, W, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B, gemm = nothing)
     Prange = (1 + poffset):(P + poffset)
     loop_max = isa(N, Number) ? N - 1 : :($N - 1)
-    if gemm == nothing
+    if gemm === nothing
         loop_min = 1
         initialize = quote
             $([:(
@@ -136,7 +137,7 @@ end
 function mul_block_nt(V, W, R1, R2, m_rep, N, P, poffset::Symbol, vA = :vA, B = :B, gemm = nothing)
     Prange = 1:P
     loop_max = isa(N, Number) ? N - 1 : :($N - 1)
-    if gemm == nothing
+    if gemm === nothing
         loop_min = 1
         initialize = quote
             $([:(
@@ -393,19 +394,19 @@ function mulinit(V, WT, Q, Pₖ, X_stride, r, mask_expr, inline_expr, pfA_1, X_t
     q
 
 end
-function gemminit(V, WT, Q, Pₖ, AD_stride, r, mask_expr, inline_expr, X_transposed = false)
+function gemminit(V, WT, Q, Pₖ, D_stride, r, mask_expr, inline_expr, X_transposed = false)
     if r == 0
         expr = quote
-            @nexprs $Pₖ p -> @nexprs $Q q -> Dx_q_p = vload($V, pD + $WT*(q-1) + $AD_stride*(p-1))
+            @nexprs $Pₖ p -> @nexprs $Q q -> Dx_q_p = vload($V, pD + $WT*(q-1) + $D_stride*(p-1))
         end
     else
         expr = quote
-            @nexprs $(Pₖ-1) p -> @nexprs $Q q -> Dx_q_p = vload($V, pD + $WT*(q-1) + $AD_stride*(p-1))
+            @nexprs $(Pₖ-1) p -> @nexprs $Q q -> Dx_q_p = vload($V, pD + $WT*(q-1) + $D_stride*(p-1))
         end
         for q ∈ 1:Q-1
-            push!(expr.args, :($(Symbol(:Dx_,q,:_,Pₖ)) = vload($V, pD + $(WT*(q-1) + AD_stride*(Pₖ-1)))))
+            push!(expr.args, :($(Symbol(:Dx_,q,:_,Pₖ)) = vload($V, pD + $(WT*(q-1) + D_stride*(Pₖ-1)))))
         end
-        push!(expr.args, :($(Symbol(:Dx_,Q,:_,Pₖ)) = vload($V, pD + $(WT*(Q-1) + AD_stride*(Pₖ-1)),$mask_expr)))
+        push!(expr.args, :($(Symbol(:Dx_,Q,:_,Pₖ)) = vload($V, pD + $(WT*(Q-1) + D_stride*(Pₖ-1)),$mask_expr)))
     end
     inline_expr == :nothing || pushfirst!(expr.args, inline_expr)
     expr
@@ -440,17 +441,17 @@ prefetch_A(::Any, ::Any, ::Any, ::Any)    = (nothing, nothing, nothing)
 prefetch_X(::Any, ::Any, ::Any, ::Any, ::Any)    = (nothing, nothing, nothing, nothing)
 function prefetch_A(::Type{PF}, N, Qₚ, AD_stride) where {PF <: Union{PrefetchA, PrefetchAX}}
     (
-        :(@nexprs $Qₚ q -> prefetch(pA + $(pf.A + VectorizationBase.CACHELINE_SIZE)*(q-1), Val(3), Val(0))),
-        :(@nexprs $Qₚ q -> prefetch(pA + $(pf.A) + n*$AD_stride + $(VectorizationBase.CACHELINE_SIZE)*(q-1), Val(3), Val(0))),
-        :(@nexprs $Qₚ q -> prefetch(pA + $(pf.A + (N-1)*AD_stride) + $(VectorizationBase.CACHELINE_SIZE)*(q-1), Val(3), Val(0)))
+        :(@nexprs $Qₚ q -> prefetch(pA + (pf.A + $(VectorizationBase.CACHELINE_SIZE))*(q-1), Val(3), Val(0))),
+        :(@nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $(VectorizationBase.CACHELINE_SIZE)*(q-1), Val(3), Val(0))),
+        :(@nexprs $Qₚ q -> prefetch(pA + pf.A + $((N-1)*AD_stride) + $(VectorizationBase.CACHELINE_SIZE)*(q-1), Val(3), Val(0)))
     )
 end
 function prefetch_X(::Type{PF}, N, Pₖ, X_stride, T_size) where {PF <: Union{PrefetchA, PrefetchAX}}
     (
-        :(@nexprs $Pₖ p -> prefetch(pX + $(pf.X) + (p-1)*$X_stride, Val(3), Val(0))),
-        :(@nexprs $Pₖ p -> prefetch(pX + $(pf.X) + n₁*$T_size + (p-1)*$X_stride, Val(3), Val(0))),
-        :(prefetch(pX + $(pf.X + N*T_size) + (p-1)*$X_stride, Val(3), Val(0))),
-        :(prefetch(pX + $(pf.X + N*T_size + (Pₖ-1)*X_stride), Val(3), Val(0)))
+        :(@nexprs $Pₖ p -> prefetch(pX + pf.X + (p-1)*$X_stride, Val(3), Val(0))),
+        :(@nexprs $Pₖ p -> prefetch(pX + pf.X + n₁*$T_size + (p-1)*$X_stride, Val(3), Val(0))),
+        :(prefetch(pX + pf.X + $(N*T_size) + (p-1)*$X_stride, Val(3), Val(0))),
+        :(prefetch(pX + pf.X + $(N*T_size + (Pₖ-1)*X_stride), Val(3), Val(0)))
     )
 end
 
@@ -548,7 +549,7 @@ function kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,init,inline = true, pf = n
         q = gemminit(V, WT, Q, Pₖ, A_stride, r, mask, inline_expr)
     end
 
-    if pfX_1 == nothing
+    if pfX_1 === nothing
         push!(q.args,
         quote
             for n ∈ $(Int(init)):$(r == 0 ? N-1 : N-2 )
@@ -691,9 +692,10 @@ end
 quote for
     D (+)= A * X'
 """
-function kernel_nt_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, pf = nothing)
+function kernel_nt_quote(Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T,init,inline = false, pf = nothing; negative::Bool = false)
     T_size = sizeof(T)
-    AD_stride = stride_AD * T_size
+    A_stride = stride_A * T_size
+    D_stride = stride_D * T_size
     X_stride = stride_X * T_size
     W = VectorizationBase.REGISTER_SIZE ÷ T_size
     while W >= 2Mₖ
@@ -702,50 +704,66 @@ function kernel_nt_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, p
     WT = W * T_size
     Q, r = divrem(Mₖ, W) #Assuming Mₖ is a multiple of W
     V = Vec{W,T}
+    f = negative ? :(SIMDPirates.vfnmadd) : :(SIMDPirates.vmuladd)
     if r == 0
         mask = create_mask(W, 0)
-        A_load_expr = :(@nexprs $Q q -> vA_q = vload($V, pA + n*$AD_stride + $WT*(q-1)))
-        D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $AD_stride*(p-1), Dx_q_p))
-        D_store2 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $(AD_stride*(Pₖ-1)),$(Symbol(:Dx_q_,Pₖ))))
+        A_load_expr = :(@nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1)))
+        D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $D_stride*(p-1), Dx_q_p))
+        D_store2 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $(D_stride*(Pₖ-1)),$(Symbol(:Dx_q_,Pₖ))))
     else
         mask = create_mask(W, r)
         if Q == 0
             Q = 1
-            A_load_expr = :($(Symbol(:vA_, Q)) = vload($V, pA + $((N-1)*AD_stride) + $(WT*(Q-1)), $mask))
+            A_load_expr = :($(Symbol(:vA_, Q)) = vload($V, pA + $((N-1)*A_stride) + $(WT*(Q-1)), $mask))
         else
             A_load_expr = quote
-                @nexprs $Q q -> vA_q = vload($V, pA + $((N-1)*AD_stride) + $WT*(q-1))
+                @nexprs $Q q -> vA_q = vload($V, pA + $((N-1)*A_stride) + $WT*(q-1))
             end
             Q += 1
-            push!(A_load_expr.args, :($(Symbol(:vA_, Q)) = vload($V, pA + $((N-1)*AD_stride) + $(WT*(Q-1)), $mask)))
+            push!(A_load_expr.args, :($(Symbol(:vA_, Q)) = vload($V, pA + $((N-1)*A_stride) + $(WT*(Q-1)), $mask)))
         end
 
-        D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $AD_stride*(p-1), Dx_q_p))
+        D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $D_stride*(p-1), Dx_q_p))
         D_store2 = quote
-            @nexprs $(Q-1) q -> vstore!(pD + $WT*(q-1) + $(AD_stride*(Pₖ-1)), $(Symbol(:Dx_q_,Pₖ)))
-            vstore!(pD + $(WT*(Q-1) + AD_stride*(Pₖ-1)), $(Symbol(:Dx_, Q, :_, Pₖ)), $mask)
+            @nexprs $(Q-1) q -> vstore!(pD + $WT*(q-1) + $(D_stride*(Pₖ-1)), $(Symbol(:Dx_q_,Pₖ)))
+            vstore!(pD + $(WT*(Q-1) + D_stride*(Pₖ-1)), $(Symbol(:Dx_, Q, :_, Pₖ)), $mask)
         end
     end
     C = min(VectorizationBase.CACHELINE_SIZE ÷ T_size,N)
     Qₚ = cld(Mₖ, C)
     # Check whether we are prefetching A and/or X.
-    pfA_1, pfA_2, pfA_3 = prefetch_A(pf, N, Qₚ, AD_stride)
+    pfA_1, pfA_2, pfA_3 = prefetch_A(pf, N, Qₚ, A_stride)
     pfX_1, pfX_2, pfX_3, pfX_4 = prefetch_X(pf, N, Pₖ, X_stride, T_size)
     inline_expr = inline ? Expr(:meta, :inline) : :(nothing)
     if init
-        q = mulinit(V, WT, Q, Pₖ, X_stride, r, mask, inline_expr, pfA_1)
+        # q = mulinit(V, WT, Q, Pₖ, X_stride, r, mask, inline_expr, pfA_1)
+        if negative
+            q = quote
+                @nexprs $Q q -> vA_q = vload($V, pA + $WT*(q-1))
+                @nexprs $Pₖ p -> begin
+                    vX = vbroadcast($V, VectorizationBase.load(pX + (p-1)*$T_size))
+                    @nexprs $Q q -> Dx_q_p = vmul(vA_q, vX)
+                end
+            end
+        else
+            q = quote
+                @nexprs $Pₖ p -> @nexprs $Q q -> Dx_q_p = vbroadcast($V, zero($T))
+            end
+        end
+        nstart = negative ? 0 : 1
     else
-        q = gemminit(V, WT, Q, Pₖ, AD_stride, r, mask, inline_expr)
+        q = gemminit(V, WT, Q, Pₖ, D_stride, r, mask, inline_expr)
+        nstart = 0
     end
 
-    if pfX_1 == nothing
+    if pfX_1 === nothing
         push!(q.args,
         quote
-            for n ∈ $(Int(init)):$(r == 0 ? N-1 : N-2 )
-                @nexprs $Q q -> vA_q = vload($V, pA + n*$AD_stride + $WT*(q-1))
+            for n ∈ $nstart:$(r == 0 ? N-1 : N-2 )
+                @nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1))
                 @nexprs $Pₖ p -> begin
                     vX = vbroadcast($V, VectorizationBase.load(pX + n*$X_stride + (p-1)*$T_size))
-                    @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
+                    @nexprs $Q q -> Dx_q_p = $f(vA_q, vX, Dx_q_p)
                 end
                 $pfA_2
                 # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
@@ -757,7 +775,7 @@ function kernel_nt_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, p
                 $A_load_expr
                 @nexprs $Pₖ p -> begin
                     vX = vbroadcast($V, VectorizationBase.load(pX + $((N-1)*X_stride) + (p-1)*$T_size))
-                    @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
+                    @nexprs $Q q -> Dx_q_p = $f(vA_q, vX, Dx_q_p)
                 end
                 $pfA_3
                 @nexprs $Pₖ p -> $D_store1
@@ -775,11 +793,11 @@ function kernel_nt_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, p
         push!(q.args,
         quote
             # @nexprs $Qₚ q -> prefetch(pA + pf.A + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
-            for n ∈ $(Int(init)):$(C-1)
-                @nexprs $Q q -> vA_q = vload($V, pA + n*$AD_stride + $WT*(q-1))
+            for n ∈ $nstart:$(C-1)
+                @nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1))
                 @nexprs $Pₖ p -> begin
                     vX = vbroadcast($V, VectorizationBase.load(pX + n*$X_stride + (p-1)*$T_size))
-                    @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
+                    @nexprs $Q q -> Dx_q_p = $f(vA_q, vX, Dx_q_p)
                 end
                 $pfA_2
                 # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
@@ -800,10 +818,10 @@ function kernel_nt_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, p
         quote
             for n₁ ∈ $C:$C:$C_upper_bound
                 for n ∈ n₁:n₁+$(C-1)
-                    @nexprs $Q q -> vA_q = vload($V, pA + n*$AD_stride + $WT*(q-1))
+                    @nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1))
                     @nexprs $Pₖ p -> begin
                         vX = vbroadcast($V, VectorizationBase.load(pX + n*$X_stride + (p-1)*$T_size))
-                        @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
+                        @nexprs $Q q -> Dx_q_p = $f(vA_q, vX, Dx_q_p)
                     end
                     $pfA_2
                     # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
@@ -816,10 +834,10 @@ function kernel_nt_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, p
             push!(q.args,
             quote
                 for n ∈ $remaining_iterations
-                    @nexprs $Q q -> vA_q = vload($V, pA + n*$AD_stride + $WT*(q-1))
+                    @nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1))
                     @nexprs $Pₖ p -> begin
                         vX = vbroadcast($V, VectorizationBase.load(pX + n*$X_stride + (p-1)*$T_size))
-                        @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
+                        @nexprs $Q q -> Dx_q_p = $f(vA_q, vX, Dx_q_p)
                     end
                     $pfA_2
                     # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
@@ -832,7 +850,7 @@ function kernel_nt_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, p
                 $A_load_expr
                 @nexprs $Pₖ p -> begin
                     vX = vbroadcast($V, VectorizationBase.load(pX + $((N-1)*X_stride) + (p-1)*$T_size))
-                    @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
+                    @nexprs $Q q -> Dx_q_p = $f(vA_q, vX, Dx_q_p)
                 end
                 $pfA_3
             end )
@@ -853,12 +871,71 @@ function kernel_nt_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,init,inline = false, p
     q
 end
 
-@generated function kernel_nt!(pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_AD,stride_X,N}) where {Mₖ,Pₖ,stride_AD,stride_X,N,T}
-    kernel_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,false,true)
+@generated function kernel_nt!(pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T}
+    kernel_nt_quote(Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T,false,true,stride_D)
 end
 
-@generated function initkernel_nt!(pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, K::Kernel{Mₖ,Pₖ,stride_AD,stride_X,N}) where {Mₖ,Pₖ,stride_AD,stride_X,N,T}
-    kernel_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,true,true)
+@generated function initkernel_nt!(pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, K::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T}
+    kernel_nt_quote(Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T,true,true,stride_D)
+end
+
+function kernel_tn_quote(Mₖ,Pₖ,stride_A,stride_X,stride_D,N::Union{Int,Symbol},T,init,inline = false, Asym = :pA, Xsym = :pX, Dsym = :pD, d_isa_ptr = true; negative::Bool = false)
+    if N isa Symbol
+        W, Wshift = VectorizationBase.pick_vector_width_shift(T)
+    else#if N isa Int
+        W, Wshift = VectorizationBase.pick_vector_width_shift(N, T)
+    end
+    V = Vec{W,T}
+    size_T = sizeof(T)
+    loop_body = quote end
+    for m ∈ 0:Mₖ-1
+        push!(loop_body.args, Expr(:(=), Symbol(:A_,m), :($Asym[n + $stride_A*$m])))
+    end
+    f = negative ? :(SIMDPirates.vfnmadd) : :(SIMDPirates.vmuladd)
+    for p ∈ 0:Pₖ-1
+        col_sym = Symbol(:B_,p)
+        push!(loop_body.args, Expr(:(=), col_sym, :($Xsym[n + $stride_X*$p])))
+        for m ∈ 0:Mₖ-1
+            push!(loop_body.args, Expr(:(=),Symbol(:vD_,m,:_,p), Expr(:call,f, Symbol(:A_,m), col_sym, Symbol(:vD_,m,:_,p))))
+        end
+    end
+    loop_quote = quote
+        @vvectorize $T for n ∈ 1:$N
+            $loop_body
+        end
+    end
+    q = quote
+        $([Expr(:(=),Symbol(:vD_,m,:_,p), :(SIMDPirates.vbroadcast($V,zero($T)))) for m ∈ 0:Mₖ-1, p ∈ 0:Pₖ-1]...)
+        $(macroexpand(LoopVectorization, loop_quote))
+        # $loop_quote
+    end
+    assign_quote = quote end
+    if d_isa_ptr
+        if init
+            for p ∈ 0:Pₖ-1, m ∈ 0:Mₖ-1
+                push!(assign_quote.args, :(VectorizationBase.store!($Dsym + $size_T*($m+$stride_D*$p), SIMDPirates.vsum($(Symbol(:vD_,m,:_,p))))))
+            end
+        else
+            for p ∈ 0:Pₖ-1, m ∈ 0:Mₖ-1
+                dptr = gensym(:dptr)
+                push!(assign_quote.args, Expr(:(=), dptr, :($Dsym + $size_T*($m+$stride_D*$p))))
+                push!(assign_quote.args, :(VectorizationBase.store!($dptr, VectorizationBase.load($dptr) + SIMDPirates.vsum($(Symbol(:vD_,m,:_,p))))))
+            end
+        end
+        push!(q.args, assign_quote)
+    else
+        assignment = init ? :(=) : :(+=)
+        for p ∈ 0:Pₖ-1, m ∈ 0:Mₖ-1
+            push!(assign_quote.args, Expr(assignment, :($Dsym[m,p]), :(SIMDPirates.vsum($(Symbol(:vD_,m,:_,p))))))
+        end
+        push!(q.args, :(@inbounds $assign_quote))
+    end
+    push!(q.args, Dsym)
+    inline && pushfirst!(q.args, Expr(:meta,:inline))
+    q
+end
+@generated function kernel_tn!(pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}) where {T,Mₖ,Pₖ,stride_A,stride_X,stride_D,N}
+    kernel_tn_quote(Mₖ, Pₖ, stride_A, stride_X, stride_D, N, T, true, true, :pA, :pX, :pD)
 end
 
 # """
@@ -901,6 +978,10 @@ function pick_kernel_size(
         num_rows = a_loads * W
         num_cols = (NREG - a_loads - 1) ÷ a_loads # assumes we need only a single B
         num_cols = min(num_cols, col_max)
+        if num_cols == 0
+            ratios[a_loads:end] .= 0
+            break
+        end
         next_ratio_fc_fr = (num_rows * num_cols) / (num_cols + a_loads)
         if col_max != typemax(Int)
             nfullcol, remcol = divrem(col_max, num_cols)
@@ -928,7 +1009,7 @@ function pick_kernel_size(
             end
 #            rem_row_indicator = remrow > 0 ? 1 : 0
         else
-            next_ratio_fc_rr = rem_row_fc_fr
+            next_ratio_fc_rr = next_ratio_fc_fr
             nfullrow, remrow = 1, 0
             rem_row_indicator = 0
         end
@@ -960,7 +1041,7 @@ function pick_kernel_size(
         end
     end
     max_ratio, max_ind = findmax(ratios)
-    W, rows[max_ind], cols[max_ind]
+    W, rows[max_ind], cols[max_ind], max_ind
 end
 # function pick_kernel_size(::Type{T}; D_count = 1, A_count = 1, X_count = 1) where {T}
 #     W = VectorizationBase.pick_vector_width(T)
@@ -1057,8 +1138,8 @@ function blocking_structure(M, N, P, ::Type{T} = Float64;
         m_3, p_3 = m_2, p_2
     end
 
-    (Base.Cartesian.@ntuple 3 i -> (m_i, n_i, p_i)),3
-
+    # (Base.Cartesian.@ntuple 3 i -> (m_i, n_i, p_i)),3
+    ((m_1,n_1,p_1),(m_2,n_2,p_2),(m_3,n_3,p_3)),3
 end
 
 function round_x_to_nearest_y(x::T, y::T) where {T}

@@ -269,18 +269,21 @@ end
         ConstantFixedSizePaddedArray(mv)
     end
 end
-@inline function Base.:+(A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}, B::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
-    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
-    @fastmath @inbounds @simd ivdep for i ∈ 1:L
-        mv[i] = A[i] + B[i]
+@generated function Base.:+(A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}, B::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+    quote
+        $(Expr(:meta,:inline))
+        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        @vvectorize $T for l ∈ 1:$L
+            mv[l] = A[l] + B[l]
+        end
+        mv
     end
-    mv
 end
 @generated function Base.:+(
     sp::StackPointer,
-    A::AbstractFixedSizePaddedArray{S,T,N,P,L},
-    B::AbstractFixedSizePaddedArray{S,T,N,P,L}
-) where {S,T<:Number,N,P,L}
+    A::AbstractFixedSizePaddedArray{S,T,N,PA,LA},
+    B::AbstractFixedSizePaddedArray{S,T,N,PB,LB}
+) where {S,T<:Number,N,PA,PB,LA,LB}
     P = min(PA,PB)
     L = min(LA,LB)
     quote
@@ -317,62 +320,83 @@ end
     sp2, C = (+(sp, A', B'))
     sp2, C'
 end
-@inline function Base.:+(a::T, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
-    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
-    @fastmath @inbounds @simd ivdep for i ∈ 1:L
-        mv[i] = a + B[i]
+@generated function Base.:+(a::T, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+    quote
+        # $(Expr(:meta,:inline))
+        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        @vvectorize $T for i ∈ 1:$L
+            mv[i] = a + B[i]
+        end
+        ConstantFixedSizePaddedArray(mv)
     end
-    ConstantFixedSizePaddedArray(mv)
 end
-@inline function Base.:+(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, b::T) where {S,T<:Number,N,P,L}
-    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
-    @fastmath @inbounds @simd ivdep for i ∈ 1:L
-        mv[i] = A[i] + b
+@generated function Base.:+(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, b::T) where {S,T<:Number,N,P,L}
+    quote
+        # $(Expr(:meta,:inline))
+        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        @vvectorize $T for i ∈ 1:$L
+            mv[i] = A[i] + b
+        end
+        ConstantFixedSizePaddedArray(mv)
     end
-    ConstantFixedSizePaddedArray(mv)
 end
-@inline function Base.:+(a::T, Badj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}) where {S,T<:Number,N,P,L}
-    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
-    B = Badj.parent
-    @fastmath @inbounds @simd ivdep for i ∈ 1:L
-        mv[i] = a + B[i]
+@generated function Base.:+(a::T, Badj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}) where {S,T<:Number,N,P,L}
+    quote
+        # $(Expr(:meta,:inline))
+        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        @vvectorize $T for i ∈ 1:$L
+            mv[i] = a + B[i]
+        end
+        ConstantFixedSizePaddedArray(mv)'
     end
-    ConstantFixedSizePaddedArray(mv)'
 end
-@inline function Base.:+(Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}, b::T) where {S,T<:Number,N,P,L}
-    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
-    A = Aadj.parent
-    @fastmath @inbounds @simd ivdep for i ∈ 1:L
-        mv[i] = A[i] + b
+@generated function Base.:+(Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}, b::T) where {S,T<:Number,N,P,L}
+    quote
+        # $(Expr(:meta,:inline))
+        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        @vvectorize $T for i ∈ 1:$L
+            mv[i] = A[i] + b
+        end
+        ConstantFixedSizePaddedArray(mv)'
     end
-    ConstantFixedSizePaddedArray(mv)'
 end
-@inline function Base.:-(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
-    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
-    @fastmath @inbounds @simd ivdep for i ∈ 1:L
-        mv[i] = A[i] - B[i]
+@generated function Base.:-(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+    quote
+        # $(Expr(:meta,:inline))
+        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        @vvectorize $T for i ∈ 1:$L
+            mv[i] = A[i] - B[i]
+        end
+        ConstantFixedSizePaddedArray(mv)
     end
-    ConstantFixedSizePaddedArray(mv)
 end
-@inline function diff!(C::MutableFixedSizePaddedArray{S,T,N,P,L}, A::AbstractFixedSizePaddedArray{S,T,N,P,L}, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
-    @fastmath @inbounds @simd ivdep for i ∈ 1:L
-        C[i] = A[i] - B[i]
+@generated function diff!(C::MutableFixedSizePaddedArray{S,T,N,P,L}, A::AbstractFixedSizePaddedArray{S,T,N,P,L}, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+    quote
+        @vvectorize $T for i ∈ 1:$L
+            C[i] = A[i] - B[i]
+        end
+        C
     end
-    C
 end
-@inline function Base.:-(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, b::T) where {S,T<:Number,N,L,P}
-    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
-    @fastmath @inbounds @simd ivdep for i ∈ 1:L
-        mv[i] = A[i] - b
+@generated function Base.:-(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, b::T) where {S,T<:Number,N,L,P}
+    quote
+        # $(Expr(:meta,:inline))
+        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        @vvectorize $T for i ∈ 1:$L
+            mv[i] = A[i] - b
+        end
+        ConstantFixedSizePaddedArray(mv)
     end
-    ConstantFixedSizePaddedArray(mv)
 end
-@inline function Base.:-(a::T, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
-    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
-    @fastmath @inbounds @simd ivdep for i ∈ 1:L
-        mv[i] = a - B[i]
+@generated function Base.:-(a::T, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+    quote
+        # $(Expr(:meta,:inline))
+        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        @vvectorize $T for i ∈ 1:$L
+            mv[i] = a - B[i]
+        end
+        ConstantFixedSizePaddedArray(mv)
     end
-    ConstantFixedSizePaddedArray(mv)
 end
 
 
@@ -546,22 +570,29 @@ end
         ConstantFixedSizePaddedArray(mv)
     end
 end
-@inline function SIMDPirates.vmuladd(a::T, x::AbstractFixedSizePaddedArray{S,T,N,P,L}, y::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
-    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
-    @fastmath @inbounds @simd ivdep for i ∈ 1:L
-        mv[i] = a * x[i] + y[i]
+@generated function SIMDPirates.vmuladd(a::T, x::AbstractFixedSizePaddedArray{S,T,N,P,L}, y::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+    quote
+        # $(Expr(:meta,:inline))
+        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        @vvectorize $T for i ∈ 1:$L
+            mv[i] = a * x[i] + y[i]
+        end
+        ConstantFixedSizePaddedArray(mv)
     end
-    ConstantFixedSizePaddedArray(mv)
 end
-@inline function SIMDPirates.vmuladd(a::T,
-                x::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{N,T,L,L}},
-                y::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{N,T,L,L}}
-            ) where {N,T,L}
-    mv = MutableFixedSizePaddedVector{N,T,L,L}(undef)
-    @fastmath @inbounds @simd ivdep for i ∈ 1:L
-        mv[i] = a * x[i] + y[i]
+@generated function SIMDPirates.vmuladd(
+    a::T,
+    x::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{N,T,L,L}},
+    y::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{N,T,L,L}}
+) where {N,T,L}
+    quote
+        # $(Expr(:meta,:inline))
+        mv = MutableFixedSizePaddedVector{$N,T,$L,$L}(undef)
+        @vvectorize $T for i ∈ 1:$L
+            mv[i] = a * x[i] + y[i]
+        end
+        ConstantFixedSizePaddedArray(mv)
     end
-    ConstantFixedSizePaddedArray(mv)
 end
 
 # @generated function SIMDPirates.vmuladd(a::T,
@@ -604,12 +635,15 @@ end
 #         end
 #     end
 # end
-@inline function SIMDPirates.vfnmadd(a::T, x::AbstractFixedSizePaddedArray{S,T,N,P,L}, y::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
-    mv = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
-    @fastmath @inbounds @simd ivdep for i ∈ 1:L
-        mv[i] = y[i] - a * x[i]
+@generated function SIMDPirates.vfnmadd(a::T, x::AbstractFixedSizePaddedArray{S,T,N,P,L}, y::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+    quote
+        # $(Expr(:meta,:inline))
+        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        @vvectorize $T for i ∈ 1:$L
+            mv[i] = y[i] - a * x[i]
+        end
+        ConstantFixedSizePaddedArray(mv)
     end
-    ConstantFixedSizePaddedArray(mv)
 end
 
 @generated function LinearAlgebra.dot(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L}
@@ -671,17 +705,17 @@ end
 # end
 
 function mulquote(
-    D::AbstractMutableFixedSizePaddedMatrix{M,P,T,ADR},
-    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR},
+    D::AbstractMutableFixedSizePaddedMatrix{M,P,T,DR},
+    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,AR},
     X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR},
     init = :initkernel!
-) where {M,N,P,T,ADR,XR}
+) where {M,N,P,T,AR,XR,DR}
     quote
         $(Expr(:meta,:inline))
         pD = pointer(D)
         pA = pointer(A)
         pX = pointer(X)
-        $(mulquote(AR,N,P,AR,XR,T,init,nothing,DR))
+        $(mulquote(M,N,P,AR,XR,T,init,nothing,DR))
     end
 end
 function mulquote(M,N,P,AR,XR,T,init=:initkernel!,prefetchAX=nothing,DR=AR)
@@ -728,12 +762,12 @@ end
 
 #function block_loop_quote_minbandwidth(
 function block_loop_quote(
-    L1M,L1N,L1P,stride_AD,stride_X,M_iter,M_remain,P_iter,P_remain,
-    T_size,kernel=:kernel!,pA=:pAₙ,pX=:pXₙ,pD=:pD,X_transposed=false
+    L1M::Int,L1N::Int,L1P::Int,stride_A::Int,stride_X::Int,M_iter::Int,M_remain::Int,P_iter::Int,P_remain::Int,
+    T_size::Int,kernel::Symbol=:kernel!,pA::Symbol=:pAₙ,pX::Symbol=:pXₙ,pD::Symbol=:pD,X_transposed::Bool=false,stride_D::Int = stride_A
 )
     
     if M_remain == 0
-        D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_AD)*pᵢ)
+        D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_D)*pᵢ)
         A = :($pA + $(T_size*L1M)*mᵢ)
         X = X_transposed ? pX : :($pX + $(T_size*L1P*stride_X)*pᵢ)
         if P_iter > M_iter + 1 # Excess of 1 is okay.
@@ -741,18 +775,18 @@ function block_loop_quote(
             q = quote
                     for pmᵣ ∈ 1:$PM_ratio, pᵢ ∈ (pmᵣ-1)*$M_iter:$M_iter*pmᵣ - 1
                         for mᵢ ∈ $M_iter*pmᵣ - pᵢ:$(M_iter-1)
-                            $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_AD,$stride_X,$L1N}())
+                            $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
                         end
                         for mᵢ ∈ 0:$M_iter*pmᵣ - pᵢ - 1
-                            $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_AD,$stride_X,$L1N}())
+                            $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
                         end
                     end
                     for pᵢ ∈ $(M_iter*PM_ratio):$(P_iter-1)
                         for mᵢ ∈ $(M_iter*(PM_ratio+1))-pᵢ:$(M_iter-1)
-                            $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_AD,$stride_X,$L1N}())
+                            $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
                         end
                         for mᵢ ∈ 0:$(M_iter*(PM_ratio+1)-1)-pᵢ
-                            $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_AD,$stride_X,$L1N}())
+                            $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
                         end
                     end
             end
@@ -762,10 +796,10 @@ function block_loop_quote(
                 # $prefetch_quote
                 for pᵢ ∈ 0:$(P_iter-1)
                     for mᵢ ∈ $(M_iter)-pᵢ:$(M_iter-1)
-                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_AD,$stride_X,$L1N}())
+                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
                     end
                     for mᵢ ∈ 0:$(M_iter-1)-pᵢ
-                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_AD,$stride_X,$L1N}())
+                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
                     end
                 end # for pᵢ ∈ 0:$(P_iter-1)
             end # quote
@@ -773,10 +807,10 @@ function block_loop_quote(
         end
     else
         ### Here
-        D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_AD)*pᵢ)
+        D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_D)*pᵢ)
         A = :($pA + $(T_size*L1M)*mᵢ)
         X = X_transposed ? pX : :($pX + $(T_size*L1P*stride_X)*pᵢ)
-        D_r = :($pD + $(T_size*L1M*M_iter) + $(T_size*L1P*stride_AD)*pᵢ)
+        D_r = :($pD + $(T_size*L1M*M_iter) + $(T_size*L1P*stride_D)*pᵢ)
         A_r = :($pA + $(T_size*L1M*M_iter))
         if P_iter > M_iter + 2
             # Here, we insert a kernel call to "M_remain" that is of an abridged size.
@@ -785,25 +819,25 @@ function block_loop_quote(
             q = quote
                 # $prefetch_quote
                 for mᵢ ∈ 0:$(M_iter-1)
-                    $(kernel)($pD + $(T_size*L1M)*mᵢ, $A, $pX, Kernel{$L1M,$L1P,$stride_AD,$stride_X,$L1N}())
+                    $(kernel)($pD + $(T_size*L1M)*mᵢ, $A, $pX, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
                 end
-                $(kernel)($pD + $(T_size*L1M*M_iter), $A_r, $pX, Kernel{$M_remain,$L1P,$stride_AD,$stride_X,$L1N}())
+                $(kernel)($pD + $(T_size*L1M*M_iter), $A_r, $pX, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
                 for pᵢ ∈ 1:$(M_iter+1)
                     for mᵢ ∈ $(M_iter+1) - pᵢ:$(M_iter-1)
-                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_AD,$stride_X,$L1N}())
+                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
                     end
-                    $(kernel)($D_r, $A_r, $X, Kernel{$M_remain,$L1P,$stride_AD,$stride_X,$L1N}())
+                    $(kernel)($D_r, $A_r, $X, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
                     for mᵢ ∈ 0:$M_iter - pᵢ
-                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_AD,$stride_X,$L1N}())
+                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
                     end
                 end
                 for pmᵣ ∈ 2:$(PM_ratio+1), pᵢ ∈ (pmᵣ-1)*$(M_iter+1)+1:min($(M_iter+1)*pmᵣ,$(P_iter-1))
                     for mᵢ ∈ $(M_iter+1)*pmᵣ - pᵢ:$(M_iter-1)
-                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_AD,$stride_X,$L1N}())
+                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
                     end
-                    $(kernel)($D_r, $A_r, $X, Kernel{$M_remain,$L1P,$stride_AD,$stride_X,$L1N}())
+                    $(kernel)($D_r, $A_r, $X, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
                     for mᵢ ∈ 0:$(M_iter+1)*pmᵣ - pᵢ - 1
-                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_AD,$stride_X,$L1N}())
+                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
                     end
                 end
             end
@@ -812,16 +846,16 @@ function block_loop_quote(
         else
             q = quote
                 for mᵢ ∈ 0:$(M_iter-1)
-                    $(kernel)($pD + $(T_size*L1M)*mᵢ, $A, $pX, Kernel{$L1M,$L1P,$stride_AD,$stride_X,$L1N}())
+                    $(kernel)($pD + $(T_size*L1M)*mᵢ, $A, $pX, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
                 end
-                $(kernel)($pD + $(T_size*L1M*M_iter), $A_r, $pX, Kernel{$M_remain,$L1P,$stride_AD,$stride_X,$L1N}())
+                $(kernel)($pD + $(T_size*L1M*M_iter), $A_r, $pX, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
                 for pᵢ ∈ 1:$(P_iter-1)
                     for mᵢ ∈ $(M_iter+1)-pᵢ:$(M_iter-1)
-                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_AD,$stride_X,$L1N}())
+                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
                     end
-                    $(kernel)($D_r, $A_r, $X, Kernel{$M_remain,$L1P,$stride_AD,$stride_X,$L1N}())
+                    $(kernel)($D_r, $A_r, $X, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
                     for mᵢ ∈ 0:$M_iter-pᵢ
-                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_AD,$stride_X,$L1N}())
+                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
                     end
                 end
             end
@@ -831,33 +865,33 @@ function block_loop_quote(
 
     if P_remain != 0
         if M_remain == 0
-            D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_AD*P_iter))
+            D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_D*P_iter))
             A = :($pA + $(T_size*L1M)*mᵢ)
             X = X_transposed ? pX : :($pX + $(T_size*L1P*stride_X*P_iter))
             push!(q.args,
             quote
                 for mᵢ ∈ $(MP_terminal):$(M_iter-1)
-                    $(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_AD,$stride_X,$L1N}())
+                    $(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}())
                 end
                 for mᵢ ∈ 0:$(MP_terminal-1)
-                    $(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_AD,$stride_X,$L1N}())
+                    $(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}())
                 end
             end
             )
         else
-            D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_AD*P_iter))
+            D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_D*P_iter))
             A = :($pA + $(T_size*L1M)*mᵢ)
             X = X_transposed ? pX : :($pX + $(T_size*L1P*stride_X*P_iter))
-            D_r = :($pD + $(T_size*L1M*M_iter) + $(T_size*L1P*stride_AD*P_iter))
+            D_r = :($pD + $(T_size*L1M*M_iter) + $(T_size*L1P*stride_D*P_iter))
             A_r = :($pA + $(T_size*L1M*M_iter))
             push!(q.args,
             quote
                 for mᵢ ∈ $(MP_terminal):$(M_iter-1)
-                    $(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_AD,$stride_X,$L1N}())
+                    $(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}())
                 end
-                $(kernel)($D_r, $A_r, $X, Kernel{$M_remain,$P_remain,$stride_AD,$stride_X,$L1N}())
+                $(kernel)($D_r, $A_r, $X, Kernel{$M_remain,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}())
                 for mᵢ ∈ 0:$(MP_terminal-1)
-                    $(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_AD,$stride_X,$L1N}())
+                    $(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}())
                 end
             end
             )
@@ -868,11 +902,11 @@ function block_loop_quote(
 end
 
 function block_loop_quote_test_simple_prefetch(
-    L1M,L1N,L1P,stride_AD,stride_X,M_iter,M_remain,P_iter,P_remain,
-    T_size,kernel=:kernel!,pA=:pAₙ,pX=:pXₙ,pD=:pD,X_transposed=false,prefetch = false
+    L1M::Int,L1N::Int,L1P::Int,stride_A::Int,stride_X::Int,M_iter::Int,M_remain::Int,P_iter::Int,P_remain::Int,
+    T_size::Int,kernel::Symbol=:kernel!,pA::Symbol=:pAₙ,pX::Symbol=:pXₙ,pD::Symbol=:pD,X_transposed::Bool=false,prefetch::Bool = false, stride_D::Int = stride_A
 )
 #    prefetch = true
-    D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_AD)*pᵢ)
+    D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_D)*pᵢ)
     A = :($pA + $(T_size*L1M)*mᵢ)
     X = X_transposed ? pX : :($pX + $(T_size*L1P*stride_X)*pᵢ)
     if prefetch && M_remain == 0
@@ -880,14 +914,14 @@ function block_loop_quote_test_simple_prefetch(
         M_iter -= 1
     end
     kernel_call = if prefetch
-        :($(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_AD,$stride_X,$L1N}(), Val{$(PrefetchA(L1M))}()))
+        :($(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$(PrefetchA(L1M))}()))
     else
-        :($(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_AD,$stride_X,$L1N}()))
+        :($(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}()))
     end
     kernel_call_Mremain = if prefetch
-        :($(kernel)($D, $A, $X, Kernel{$M_remain,$L1P,$stride_AD,$stride_X,$L1N}()),Val{$(PrefetchAX(-L1M*M_iter,L1P*stride_X))}())
+        :($(kernel)($D, $A, $X, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}()),Val{$(PrefetchAX(-L1M*M_iter,L1P*stride_X))}())
     else
-        :($(kernel)($D, $A, $X, Kernel{$M_remain,$L1P,$stride_AD,$stride_X,$L1N}()))
+        :($(kernel)($D, $A, $X, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}()))
     end
     ploopbody = quote
         for mᵢ ∈ 0:$M_iter - 1
@@ -910,11 +944,11 @@ function block_loop_quote_test_simple_prefetch(
 
     if P_remain > 0
         kernel_call = if prefetch
-            :($(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_AD,$stride_X,$L1N}(), Val{$(PrefetchA(L1M))}()))
+            :($(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$(PrefetchA(L1M))}()))
         else
-            :($(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_AD,$stride_X,$L1N}()))
+            :($(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}()))
         end
-        kernel_call_Mremain = :($(kernel)($D, $A, $X, Kernel{$M_remain,$P_remain,$stride_AD,$stride_X,$L1N}()))
+        kernel_call_Mremain = :($(kernel)($D, $A, $X, Kernel{$M_remain,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}()))
         p_remain_quote = quote
             pᵢ = $P_iter
             for mᵢ ∈ 0:$M_iter - 1
@@ -940,28 +974,23 @@ function cache_mulquote(M,N,P,stride_A,stride_X,(L1M,L1N,L1P),::Type{T}, init = 
     if (M_iter == 0 || ((M_iter == 1) && (M_remain == 0))) && (P_iter == 0 || ((P_iter == 1) && (P_remain == 0)))
         return kernel_quote(M,P,stride_A,stride_X,N,T,init == :initkernel!,true,nothing,stride_D)
     end
-    if stride_A == stride_D
-        stride_AD = stride_A
-    else
-        throw("Stride of A == $stride_A != stride of D == $stride_D")
-    end
-
+    
     q = quote
         pD, pA, pX = pointer(D), pointer(A), pointer(X)
 
-        $(block_loop_quote(L1M,L1N,L1P,stride_AD,stride_X,M_iter,M_remain,P_iter,P_remain,T_size,init,:pA,:pX,:pD))
+        $(block_loop_quote(L1M,L1N,L1P,stride_A,stride_X,M_iter,M_remain,P_iter,P_remain,T_size,init,:pA,:pX,:pD,false,stride_D))
     end
 
-    AN_stride = stride_AD * L1N * T_size
+    AN_stride = stride_A * L1N * T_size
     XN_stride = stride_X  * L1N * T_size
 
     if N_iter > 2
         push!(q.args,
         quote
             for n ∈ 1:$(N_iter-1)
-                pAₙ = pA + n*$(L1N * T_size * stride_AD)
+                pAₙ = pA + n*$(L1N * T_size * stride_A)
                 pXₙ = pX + n*$(L1N * T_size)
-                $(block_loop_quote(L1M,L1N,L1P,stride_AD,stride_X,M_iter,M_remain,P_iter,P_remain,T_size,primary,:pAₙ,:pXₙ,:pD))
+                $(block_loop_quote(L1M,L1N,L1P,stride_A,stride_X,M_iter,M_remain,P_iter,P_remain,T_size,primary,:pAₙ,:pXₙ,:pD,false,stride_D))
             end
         end
         )
@@ -969,18 +998,18 @@ function cache_mulquote(M,N,P,stride_A,stride_X,(L1M,L1N,L1P),::Type{T}, init = 
     elseif N_iter == 2
         push!(q.args,
         quote
-            pAₙ = pA + $(L1N * T_size * stride_AD)
+            pAₙ = pA + $(L1N * T_size * stride_A)
             pXₙ = pX + $(L1N * T_size)
-            $(block_loop_quote(L1M,L1N,L1P,stride_AD,stride_X,M_iter,M_remain,P_iter,P_remain,T_size,primary,:pAₙ,:pXₙ,:pD))
+            $(block_loop_quote(L1M,L1N,L1P,stride_A,stride_X,M_iter,M_remain,P_iter,P_remain,T_size,primary,:pAₙ,:pXₙ,:pD,false,stride_D))
         end
         )
     end
     if N_remain > 0 # we need two goes
         push!(q.args,
         quote
-            pAₙ = pA + $(L1N*N_iter * T_size * stride_AD)
+            pAₙ = pA + $(L1N*N_iter * T_size * stride_A)
             pXₙ = pX + $(L1N*N_iter * T_size)
-            $(block_loop_quote(L1M,N_remain,L1P,stride_AD,stride_X,M_iter,M_remain,P_iter,P_remain,T_size,primary,:pAₙ,:pXₙ,:pD))
+            $(block_loop_quote(L1M,N_remain,L1P,stride_A,stride_X,M_iter,M_remain,P_iter,P_remain,T_size,primary,:pAₙ,:pXₙ,:pD,false,stride_D))
         end
         )
     end
@@ -989,7 +1018,7 @@ end
 
 
 
-function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::Type{T}, init = :initkernel!, prefetchAX = nothing) where T
+function cache_mulquote(M,N,P,stride_A,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::Type{T}, init = :initkernel!, prefetchAX = nothing, stride_D = stride_A) where T
     M_iter, M_remain = divrem(M, L2M)
     N_iter, N_remain = divrem(N, L2N)
     P_iter, P_remain = divrem(P, L2P)
@@ -1002,12 +1031,12 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
 
 
         for pᵢ ∈ 0:$(P_iter-1)
-            pd_off = pᵢ*$(L2P*stride_AD*T_size)
+            pd_off = pᵢ*$(L2P*stride_D*T_size)
             px_off = pᵢ*$(L2P*stride_X*T_size)
             for mᵢ ∈ 0:$(M_iter-1)
                 m_off = mᵢ*$(L2M*T_size)
-                pD_temp1 = PtrMatrix{$L2M,$L2P,$T,$stride_AD,$(stride_AD*L2P),false}(pD + m_off + pd_off)
-                pA_temp1 = PtrMatrix{$L2M,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + m_off)
+                pD_temp1 = PtrMatrix{$L2M,$L2P,$T,$stride_D,$(stride_D*L2P),false}(pD + m_off + pd_off)
+                pA_temp1 = PtrMatrix{$L2M,$L2N,$T,$stride_A,$(stride_A*L2N),false}(pA + m_off)
                 pX_temp1 = PtrMatrix{$L2N,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + px_off)
                 $(prefetch_ ? quote
                     prefetch(pD_temp1, Val(1))
@@ -1018,7 +1047,7 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
                      pA_temp1,
                      pX_temp1)
                 for nᵢ ∈ 1:$(N_iter-1)
-                    pA_temp1 = PtrMatrix{$L2M,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + m_off + nᵢ*$(L2N*stride_AD*T_size))
+                    pA_temp1 = PtrMatrix{$L2M,$L2N,$T,$stride_A,$(stride_A*L2N),false}(pA + m_off + nᵢ*$(L2N*stride_A*T_size))
                     pX_temp1 = PtrMatrix{$L2N,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + nᵢ*$(L2N*T_size) + px_off)
                     $(prefetch_ ? quote
                         prefetch(pA_temp1, Val(0))
@@ -1029,7 +1058,7 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
                          pX_temp1)
                 end
                 $(N_remain == 0 ? nothing : quote
-                    pA_temp2 = PtrMatrix{$L2M,$N_remain,$T,$stride_AD,$(stride_AD*N_remain),false}(pA + m_off + $(N_iter*L2N*stride_AD*T_size))
+                    pA_temp2 = PtrMatrix{$L2M,$N_remain,$T,$stride_A,$(stride_A*N_remain),false}(pA + m_off + $(N_iter*L2N*stride_A*T_size))
                     pX_temp2 = PtrMatrix{$N_remain,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + $(N_iter*L2N*T_size) + px_off)
                     $(prefetch_ ? quote
                         prefetch(pA_temp2, Val(0))
@@ -1040,8 +1069,8 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
             end
             ### Check if we need to add an expression for a remainder of M.
             $(M_remain == 0 ? nothing : quote
-                pD_temp3 = PtrMatrix{$M_remain,$L2P,$T,$stride_AD,$(stride_AD*L2P),false}(pD + $(M_iter*L2M*T_size) + pd_off)
-                pA_temp3 = PtrMatrix{$M_remain,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + $(M_iter*L2M*T_size))
+                pD_temp3 = PtrMatrix{$M_remain,$L2P,$T,$stride_D,$(stride_D*L2P),false}(pD + $(M_iter*L2M*T_size) + pd_off)
+                pA_temp3 = PtrMatrix{$M_remain,$L2N,$T,$stride_A,$(stride_A*L2N),false}(pA + $(M_iter*L2M*T_size))
                 pX_temp3 = PtrMatrix{$L2N,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + px_off)
                 $(prefetch_ ? quote
                     prefetch(pD_temp3, Val(1))
@@ -1052,7 +1081,7 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
                      pA_temp3,
                      pX_temp3)
                 for nᵢ ∈ 1:$(N_iter-1)
-                    pA_temp3 = PtrMatrix{$M_remain,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + $(M_iter*L2M*T_size) + nᵢ*$(L2N*stride_AD*T_size))
+                    pA_temp3 = PtrMatrix{$M_remain,$L2N,$T,$stride_A,$(stride_A*L2N),false}(pA + $(M_iter*L2M*T_size) + nᵢ*$(L2N*stride_A*T_size))
                     pX_temp3 = PtrMatrix{$L2N,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + nᵢ*$(L2N*T_size) + px_off)
                     $(prefetch_ ? quote
                         prefetch(pA_temp3, Val(0))
@@ -1063,7 +1092,7 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
                          pX_temp3)
                 end
                 $(N_remain == 0 ? nothing : quote
-                    pA_temp4 = PtrMatrix{$M_remain,$N_remain,$T,$stride_AD,$(stride_AD*N_remain),false}(pA + $(M_iter*L2M*T_size + N_iter*L2N*stride_AD*T_size))
+                    pA_temp4 = PtrMatrix{$M_remain,$N_remain,$T,$stride_A,$(stride_A*N_remain),false}(pA + $(M_iter*L2M*T_size + N_iter*L2N*stride_A*T_size))
                     pX_temp4 = PtrMatrix{$N_remain,$L2P,$T,$stride_X,$(stride_X*L2P),false}(pX + $(N_iter*L2N*T_size) + px_off)
                     $(prefetch_ ? quote
                         prefetch(pA_temp4, Val(0))
@@ -1082,8 +1111,8 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
             quote
                 for mᵢ ∈ 0:$(M_iter-1)
                     m_off = mᵢ*$(L2M*T_size)
-                    pD_temp5 = PtrMatrix{$L2M,$P_remain,$T,$stride_AD,$(stride_AD*P_remain),false}(pD + m_off + $(P_iter*L2P*stride_AD*T_size))
-                    pA_temp5 = PtrMatrix{$L2M,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + m_off)
+                    pD_temp5 = PtrMatrix{$L2M,$P_remain,$T,$stride_D,$(stride_D*P_remain),false}(pD + m_off + $(P_iter*L2P*stride_D*T_size))
+                    pA_temp5 = PtrMatrix{$L2M,$L2N,$T,$stride_A,$(stride_A*L2N),false}(pA + m_off)
                     pX_temp5 = PtrMatrix{$L2N,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + $(P_iter*L2P*stride_X*T_size))
                     $(prefetch_ ? quote
                         prefetch(pD_temp5, Val(1))
@@ -1094,7 +1123,7 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
                          pA_temp5,
                          pX_temp5)
                     for nᵢ ∈ 1:$(N_iter-1)
-                        pA_temp5 = PtrMatrix{$L2M,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + m_off + nᵢ*$(L2N*stride_AD*T_size))
+                        pA_temp5 = PtrMatrix{$L2M,$L2N,$T,$stride_A,$(stride_A*L2N),false}(pA + m_off + nᵢ*$(L2N*stride_A*T_size))
                         pX_temp5 = PtrMatrix{$L2N,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + nᵢ*$(L2N*T_size) + $(P_iter*L2P*stride_X*T_size))
                         $(prefetch_ ? quote
                             prefetch(pA_temp5, Val(0))
@@ -1105,7 +1134,7 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
                              pX_temp5)
                     end
                     $(N_remain == 0 ? nothing : quote
-                        pA_temp6 = PtrMatrix{$L2M,$N_remain,$T,$stride_AD,$(stride_AD*N_remain),false}(pA + m_off + $(N_iter*L2N*stride_AD*T_size))
+                        pA_temp6 = PtrMatrix{$L2M,$N_remain,$T,$stride_A,$(stride_A*N_remain),false}(pA + m_off + $(N_iter*L2N*stride_A*T_size))
                         pX_temp6 = PtrMatrix{$N_remain,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + $(N_iter*L2N*T_size + P_iter*L2P*stride_X*T_size))
                         $(prefetch_ ? quote
                             prefetch(pA_temp5, Val(0))
@@ -1118,8 +1147,8 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
                 end
                 ### Check if we need to add an expression for a remainder of M.
                 $(M_remain == 0 ? nothing : quote
-                    pD_temp7 = PtrMatrix{$M_remain,$P_remain,$T,$stride_AD,$(stride_AD*P_remain),false}(pD + $(M_iter*L2M*T_size + P_iter*L2P*stride_AD*T_size))
-                    pA_temp7 = PtrMatrix{$M_remain,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + $(M_iter*L2M*T_size))
+                    pD_temp7 = PtrMatrix{$M_remain,$P_remain,$T,$stride_D,$(stride_D*P_remain),false}(pD + $(M_iter*L2M*T_size + P_iter*L2P*stride_D*T_size))
+                    pA_temp7 = PtrMatrix{$M_remain,$L2N,$T,$stride_A,$(stride_A*L2N),false}(pA + $(M_iter*L2M*T_size))
                     pX_temp7 = PtrMatrix{$L2N,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + $(P_iter*L2P*stride_X*T_size))
                     $(prefetch_ ? quote
                         prefetch(pD_temp7, Val(1))
@@ -1130,7 +1159,7 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
                          pA_temp7,
                          pX_temp7)
                     for nᵢ ∈ 1:$(N_iter-1)
-                        pA_temp7 = PtrMatrix{$M_remain,$L2N,$T,$stride_AD,$(stride_AD*L2N),false}(pA + $(M_iter*L2M*T_size) + nᵢ*$(L2N*stride_AD*T_size))
+                        pA_temp7 = PtrMatrix{$M_remain,$L2N,$T,$stride_A,$(stride_A*L2N),false}(pA + $(M_iter*L2M*T_size) + nᵢ*$(L2N*stride_A*T_size))
                         pX_temp7 = PtrMatrix{$L2N,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + nᵢ*$(L2N*T_size) + $(P_iter*L2P*stride_X*T_size))
                         $(prefetch_ ? quote
                             prefetch(pA_temp7, Val(0))
@@ -1141,7 +1170,7 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
                              pX_temp7)
                     end
                     $(N_remain == 0 ? nothing : quote
-                        pA_temp8 = PtrMatrix{$M_remain,$N_remain,$T,$stride_AD,$(stride_AD*N_remain),false}(pA + $(M_iter*L2M*T_size + N_iter*L2N*stride_AD*T_size))
+                        pA_temp8 = PtrMatrix{$M_remain,$N_remain,$T,$stride_A,$(stride_A*N_remain),false}(pA + $(M_iter*L2M*T_size + N_iter*L2N*stride_A*T_size))
                         pX_temp8 = PtrMatrix{$N_remain,$P_remain,$T,$stride_X,$(stride_X*P_remain),false}(pX + $(N_iter*L2N*T_size + P_iter*L2P*stride_X*T_size))
                         $(prefetch_ ? quote
                             prefetch(pA_temp8, Val(0))
@@ -1158,9 +1187,284 @@ function cache_mulquote(M,N,P,stride_AD,stride_X,(L1M,L1N,L1P),(L2M,L2N,L2P),::T
 end
 
 
+#function simple_block_quote(Mk, Nk, M, K, f)
+#end
+
+function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D = M; negative::Bool = false)
+    W, rows, cols, aloads = pick_kernel_size(T, M, N)
+    row_reps, row_rem = divrem(M, rows)
+    col_reps, col_rem = divrem(N, cols)
+    row_reps_total = row_reps + (row_rem > 0)
+    col_reps_total = col_reps + (col_rem > 0)
+    if row_reps_total == col_reps_total == 1
+        q = quote pA = pointer(A); pD = pointer(D); pX = pointer(X) end
+        push!(q.args, kernel_nt_quote(M, K, stride_A, stride_X, stride_D, N, T, init, false, nothing, negative = negative))
+        return q
+    end
+    size_T = sizeof(T)
+    if row_reps_total == 1
+        q = quote pA = pointer(A); pD = pointer(D); pX = pointer(X) end
+        kql = kernel_nt_quote(M, cols, stride_A, stride_X, stride_D, N, T, init, false, nothing, negative = negative)
+        if col_reps == 1
+            push!(q.args, kql)
+            push!(q.args, :(pD += $size_T*$stride_D*$cols; pX += $size_T*$cols))
+        else
+            loop = quote
+                for c ∈ 0:$(col_reps-1)
+                    $kql
+                    pD += $size_T*$stride_D*$cols
+                    pX += $size_T*$cols
+                end
+            end
+            push!(q.ags, loop)
+        end
+        col_rem > 0 && push!(q.args, kernel_nt_quote(M, col_rem, stride_A, stride_X, stride_D, N, T, init, false, nothing, negative = negative))
+        return q
+    end
+    if col_reps_total == 1
+        q = quote pA = pointer(A); pD = pointer(D); pX = pointer(X) end
+        kql = kernel_nt_quote(rows, K, stride_A, stride_X, stride_D, N, T, init, false, nothing, negative = negative)
+        if row_reps == 1
+            push!(q.args, kql)
+            push!(q.args, :(pA += $size_T*$rows; pD += $size_T*$rows))
+        else
+            loop = quote
+                for r ∈ 0:$(row_reps-1)
+                    $kql
+                    pA += $size_T*$rows
+                    pD += $size_T*$rows
+                end
+            end
+            push!(q.args, loop)
+        end
+        row_rem > 0 && push!(q.args, kernel_nt_quote(row_rem, K, stride_A, stride_X, stride_D, N, T, init, false, nothing, negative = negative))
+        return q
+    end
+    q = quote pX = pointer(X) end
+    kql = kernel_nt_quote(rows, cols, stride_A, stride_X, stride_D, N, T, init, false, nothing, negative = negative)
+    inner = quote pA = pointer(A) end
+    if col_reps > 1
+        push!(inner.args, :(pD = pointer(D) + c*$size_T*$stride_D*$cols))
+    end
+    if row_reps == 1
+        push!(inner.args, kql)
+        push!(inner.args, :(pA += $size_T*$rows; pD += $size_T*$rows))
+    else
+        loop = quote
+            for r ∈ 0:$(row_reps - 1)
+                $kql
+                pA += $size_T*$rows
+                pD += $size_T*$rows
+            end
+        end
+        push!(inner.args, loop)
+    end
+    if row_rem > 0
+        push!(inner.args, kernel_nt_quote(row_rem, cols, stride_A, stride_X, stride_D, N, T, init, false, nothing, negative = negative))
+        # push!(inner.args, :(pD += $size_T*$row_rem))
+    end
+    push!(inner.args, :(pX += $size_T*$cols))
+    if col_reps == 1
+        push!(q.args, inner)
+    else
+        loop = quote
+            for c ∈ 0:$(col_reps-1)
+                $inner
+            end
+        end
+        push!(q.args, loop)
+    end
+    if col_rem > 0
+        kql = kernel_nt_quote(rows, col_rem, stride_A, stride_X, stride_D, N, T, init, false, nothing, negative = negative)
+        inner = quote pA = pointer(A) end
+        if col_reps > 1
+            push!(inner.args, :(pD = pointer(D) + $size_T*$stride_D*$(cols*col_reps)))
+        end
+        if row_reps == 1
+            push!(inner.args, kql)
+            push!(inner.args, :(pA += $size_T*$rows; pD += $size_T*$rows))
+        else
+            loop = quote
+                for r ∈ 0:$(row_reps - 1)
+                    $kql
+                    pA += $size_T*$rows
+                    pD += $size_T*$rows
+                end
+            end
+            push!(inner.args, loop)
+        end
+        if row_rem > 0
+            push!(inner.args, kernel_nt_quote(row_rem, cols, stride_A, stride_X, stride_D, N, T, init, false, nothing, negative = negative))
+        end
+        push!(q.args, inner)
+    end
+    push!(q.args, :D)
+    q
+end
+
+@generated function LinearAlgebra.mul!(
+    D::AbstractMutableFixedSizePaddedMatrix{M,K,T,PD},
+    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,PA},
+    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedMatrix{K,N,T,PX}}
+) where {M,K,N,T,PD,PA,PX}
+    quote
+        X = X′.parent
+        $(mul_nt_quote(M,K,N,T,true,PA,PX,PD))
+    end
+end
+@generated function nmul!(
+    D::AbstractMutableFixedSizePaddedMatrix{M,K,T,PD},
+    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,PA},
+    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedMatrix{K,N,T,PX}}
+) where {M,K,N,T,PD,PA,PX}
+    quote
+        X = X′.parent
+        $(mul_nt_quote(M,K,N,T,true,PA,PX,PD,negative=true))
+    end
+end
+
+function mul_tn_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D = M; negative::Bool = false)
+    # aloads x cols is the effective kernel size here.
+    W, Wshift = VectorizationBase.pick_vector_width_shift(N, T)
+    W2, rows_times_W, cols, rows = pick_kernel_size(T, M*W, K)
+    row_reps, row_rem = divrem(M, rows)
+    col_reps, col_rem = divrem(N, cols)
+    row_reps_total = row_reps + (row_rem > 0)
+    col_reps_total = col_reps + (col_rem > 0)
+    if row_reps_total == col_reps_total == 1
+        q = quote pA = pointer(A); pD = pointer(D); pX = pointer(X) end
+        push!(q.args, kernel_tn_quote(M, K, stride_A, stride_X, stride_D, N, T, init, false, negative = negative))
+        return q
+    end
+    size_T = sizeof(T)
+    if row_reps_total == 1
+        q = quote pA = pointer(A); pD = pointer(D); pX = pointer(X) end
+        kql = kernel_tn_quote(M, cols, stride_A, stride_X, stride_D, N, T, init, false, negative = negative)
+        if col_reps == 1
+            push!(q.args, kql)
+            push!(q.args, :(pD += $size_T*$stride_D*$cols; pX += $size_T*$stride_X*$cols))
+        else
+            loop = quote
+                for c ∈ 0:$(col_reps-1)
+                    $kql
+                    pD += $size_T*$stride_D*$cols
+                    pX += $size_T*$stride_X*$cols
+                end
+            end
+            push!(q.ags, loop)
+        end
+        col_rem > 0 && push!(q.args, kernel_tn_quote(M, col_rem, stride_A, stride_X, stride_D, N, T, init, false, negative = negative))
+        return q
+    end
+    if col_reps_total == 1
+        q = quote pA = pointer(A); pD = pointer(D); pX = pointer(X) end
+        kql = kernel_tn_quote(rows, K, stride_A, stride_X, stride_D, N, T, init, false, negative = negative)
+        if row_reps == 1
+            push!(q.args, kql)
+            push!(q.args, :(pA += $size_T*$stride_A*$rows; pD += $size_T*$rows))
+        else
+            loop = quote
+                for r ∈ 0:$(row_reps-1)
+                    $kql
+                    pA += $size_T*$stride_A*$rows
+                    pD += $size_T*$rows
+                end
+            end
+            push!(q.args, loop)
+        end
+        row_rem > 0 && push!(q.args, kernel_tn_quote(row_rem, K, stride_A, stride_X, stride_D, N, T, init, false, negative = negative))
+        return q
+    end
+    q = quote pD = pointer(D); pX = pointer(X) end
+    kql = kernel_tn_quote(rows, cols, stride_A, stride_X, stride_D, N, T, init, false, negative = negative)
+    inner = quote pA = pointer(A) end
+    # @show col_reps
+    if col_reps > 1
+        push!(inner.args, :(pD = pointer(D) + c*$size_T*$stride_D*$cols))
+    end
+    # @show inner
+    if row_reps == 1
+        push!(inner.args, kql)
+        push!(inner.args, :(pA += $size_T*$stride_A*$rows; pD += $size_T*$rows))
+    else
+        loop = quote
+            for r ∈ 0:$(row_reps - 1)
+                $kql
+                pA += $size_T*$stride_A*$rows
+                pD += $size_T*$rows
+            end
+        end
+        push!(inner.args, loop)
+    end
+    if row_rem > 0
+        push!(inner.args, kernel_tn_quote(row_rem, cols, stride_A, stride_X, stride_D, N, T, init, false, negative = negative))
+    end
+    push!(inner.args, :(pX += $size_T*$stride_X*$cols))
+    if col_reps == 1
+        # @show col_reps
+        push!(q.args, inner)
+    else
+        # @show col_reps
+        loop = quote
+            for c ∈ 0:$(col_reps-1)
+                $inner
+            end
+        end
+        push!(q.args, loop)
+    end
+    if col_rem > 0
+        kql = kernel_tn_quote(rows, col_rem, stride_A, stride_X, stride_D, N, T, init, false, negative = negative)
+        inner = quote
+            pA = pointer(A)
+            pD = pointer(D) + $size_T*$stride_D*$(cols*col_reps)
+        end
+        if row_reps == 1
+            push!(inner.args, kql)
+        else
+            loop = quote
+                for r ∈ 0:$(row_reps - 1)
+                    $kql
+                    pA += $size_T*$stride_A*$rows
+                    pD += $size_T*$rows
+                end
+            end
+            push!(inner.args, loop)
+        end
+        if row_rem > 0
+            push!(inner.args, kernel_tn_quote(row_rem, cols, stride_A, stride_X, stride_D, N, T, init, false, negative = negative))
+        end
+        push!(q.args, inner)
+    end
+    push!(q.args, :D)
+    q
+end
+
+@generated function LinearAlgebra.mul!(
+    D::AbstractMutableFixedSizePaddedMatrix{M,K,T,PD},
+    A′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedMatrix{N,M,T,PA}},
+    X::AbstractMutableFixedSizePaddedMatrix{N,K,T,PX}
+) where {M,K,N,T,PA,PX,PD}
+# ) where {M,K,N,T,PD,PA,PX}
+    quote
+        A = A′.parent
+        $(mul_tn_quote(M,K,N,T,true,PA,PX,PD))
+    end
+end
+@generated function nmul!(
+    D::AbstractMutableFixedSizePaddedMatrix{M,K,T,PD},
+    A′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedMatrix{N,M,T,PA}},
+    X::AbstractMutableFixedSizePaddedMatrix{N,K,T,PX}
+) where {M,K,N,T,PA,PX,PD}
+# ) where {M,K,N,T,PD,PA,PX}
+    quote
+        A = A′.parent
+        $(mul_tn_quote(M,K,N,T,true,PA,PX,PD,negative = true))
+    end
+end
+
 @generated function Base.:*(A::LinearAlgebra.Diagonal{T,<:AbstractFixedSizePaddedVector{M,T,P}}, B::AbstractFixedSizePaddedMatrix{M,N,T,P}) where {M,N,T,P}
     W, Wshift = VectorizationBase.pick_vector_width_shift(P, T)
-    reps = P >> Wshiftp
+    reps = P >> Wshift
     V = Vec{W,T}
     q = quote
         C = MutableFixedSizePaddedMatrix{$M,$N,$T}(undef)
@@ -1189,7 +1493,7 @@ end
     B::AbstractFixedSizePaddedMatrix{M,N,T,P}
 ) where {M,N,T,P}
     W, Wshift = VectorizationBase.pick_vector_width_shift(P, T)
-    reps = P >> Wshiftp
+    reps = P >> Wshift
     V = Vec{W,T}
     q = quote
         C = PtrMatrix{$M,$N,$T,$P}(pointer(sp,$T))

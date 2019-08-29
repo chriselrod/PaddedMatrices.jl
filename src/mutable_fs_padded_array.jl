@@ -179,18 +179,22 @@ function zero!(A::AbstractMutableFixedSizePaddedArray{S,Vec{W,T},N,P,L}) where {
     end
 end
 
-function Base.copy(A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L}
-    B = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
-    @inbounds for l ∈ 1:L
-        B[l] = A[l]
+@generated function Base.copy(A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L}
+    quote
+        B = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        @vvectorize $T for l ∈ 1:$L
+            B[l] = A[l]
+        end
+        B
     end
-    B
 end
-function Base.copyto!(B::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}, A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L}
-    @inbounds @simd ivdep for l ∈ 1:L
-        B[l] = A[l]
+@generated function Base.copyto!(B::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}, A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L}
+    quote
+        @vvectorize $T for l ∈ 1:$L
+            B[l] = A[l]
+        end
+        B
     end
-    B
 end
 Base.similar(A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L} = MutableFixedSizePaddedArray{S,T,N,P,L}(undef)
 Base.similar(A::AbstractMutableFixedSizePaddedArray{S,T1,N,P,L},::Type{T2}) where {S,T1,T2,N,P,L} = MutableFixedSizePaddedArray{S,T2,N}(undef)
@@ -584,14 +588,11 @@ Perhaps R should be made into a stride-tuple?
     @assert length(inds) == N
     SV = S.parameters
     s2 = Vector{Int}(undef, N)
-    local offset
+    offset = 0
     for n ∈ 1:N
         # @show inds[n], n
         if inds[n] == Colon
             s2[n] = SV[n]
-            if n == 1
-                offset = 0
-            end
         else
             @assert inds[n] <: Static
             s2[n] = staticrangelength(inds[n])
