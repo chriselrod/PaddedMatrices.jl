@@ -739,15 +739,15 @@ function kernel_nt_quote(Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T,init,inline = 
         # q = mulinit(V, WT, Q, Pₖ, X_stride, r, mask, inline_expr, pfA_1)
         if negative
             q = quote
+                @nexprs $Pₖ p -> @nexprs $Q q -> Dx_q_p = vbroadcast($V, zero($T))
+            end
+        else
+            q = quote
                 @nexprs $Q q -> vA_q = vload($V, pA + $WT*(q-1))
                 @nexprs $Pₖ p -> begin
                     vX = vbroadcast($V, VectorizationBase.load(pX + (p-1)*$T_size))
                     @nexprs $Q q -> Dx_q_p = vmul(vA_q, vX)
                 end
-            end
-        else
-            q = quote
-                @nexprs $Pₖ p -> @nexprs $Q q -> Dx_q_p = vbroadcast($V, zero($T))
             end
         end
         nstart = negative ? 0 : 1

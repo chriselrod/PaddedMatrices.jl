@@ -414,7 +414,7 @@ end
     r = L & ((W << 2) - 1)
     riter = r >> Wshift
     remainder_quote = quote
-        Base.Cartesian.@nexprs $riter j -> begin
+            Base.Cartesian.@nexprs $riter j -> begin
             offset_j = $(4WT*iterations) + $WT*(j-1)
             x_j = SIMDPirates.vbroadcast($V, zero($T))
         end
@@ -428,6 +428,7 @@ end
     end
 
     quote
+        # $(Expr(:meta,:inline))
         # x̄ = zero(PaddedMatrices.MutableFixedSizePaddedVector{P,T})
         # s = PaddedMatrices.MutableFixedSizePaddedVector{$P,$T}(undef)
         ptrs = pointer(s)
@@ -480,6 +481,7 @@ end
     end
 
     quote
+        # $(Expr(:meta,:inline))
         # x̄ = zero(PaddedMatrices.MutableFixedSizePaddedVector{P,T})
         # s = PaddedMatrices.MutableFixedSizePaddedVector{$P,$T}(undef)
         ptrs = pointer(s)
@@ -1190,21 +1192,22 @@ end
 #function simple_block_quote(Mk, Nk, M, K, f)
 #end
 
-function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D = M; negative::Bool = false)
+function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D = M; negative::Bool = false, force_inline = false)
     W, rows, cols, aloads = pick_kernel_size(T, M, N)
     row_reps, row_rem = divrem(M, rows)
     col_reps, col_rem = divrem(N, cols)
     row_reps_total = row_reps + (row_rem > 0)
     col_reps_total = col_reps + (col_rem > 0)
+    q = force_inline ? quote $(Expr(:meta,:inline)) end : quote end
     if row_reps_total == col_reps_total == 1
-        q = quote pA = pointer(A); pD = pointer(D); pX = pointer(X) end
-        push!(q.args, kernel_nt_quote(M, K, stride_A, stride_X, stride_D, N, T, init, false, nothing, negative = negative))
+        push!(q.args, :(pA = pointer(A); pD = pointer(D); pX = pointer(X)))
+        push!(q.args, kernel_nt_quote(M, N, stride_A, stride_X, stride_D, K, T, init, false, nothing, negative = negative))
         return q
     end
     size_T = sizeof(T)
     if row_reps_total == 1
-        q = quote pA = pointer(A); pD = pointer(D); pX = pointer(X) end
-        kql = kernel_nt_quote(M, cols, stride_A, stride_X, stride_D, N, T, init, false, nothing, negative = negative)
+        push!(q.args, :(pA = pointer(A); pD = pointer(D); pX = pointer(X)))
+        kql = kernel_nt_quote(M, cols, stride_A, stride_X, stride_D, K, T, init, false, nothing, negative = negative)
         if col_reps == 1
             push!(q.args, kql)
             push!(q.args, :(pD += $size_T*$stride_D*$cols; pX += $size_T*$cols))
@@ -1218,11 +1221,11 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
             end
             push!(q.ags, loop)
         end
-        col_rem > 0 && push!(q.args, kernel_nt_quote(M, col_rem, stride_A, stride_X, stride_D, N, T, init, false, nothing, negative = negative))
+        col_rem > 0 && push!(q.args, kernel_nt_quote(M, col_rem, stride_A, stride_X, stride_D, K, T, init, false, nothing, negative = negative))
         return q
     end
     if col_reps_total == 1
-        q = quote pA = pointer(A); pD = pointer(D); pX = pointer(X) end
+        push!(q.args, :(pA = pointer(A); pD = pointer(D); pX = pointer(X)))
         kql = kernel_nt_quote(rows, K, stride_A, stride_X, stride_D, N, T, init, false, nothing, negative = negative)
         if row_reps == 1
             push!(q.args, kql)
@@ -1237,11 +1240,11 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
             end
             push!(q.args, loop)
         end
-        row_rem > 0 && push!(q.args, kernel_nt_quote(row_rem, K, stride_A, stride_X, stride_D, N, T, init, false, nothing, negative = negative))
+        row_rem > 0 && push!(q.args, kernel_nt_quote(row_rem, N, stride_A, stride_X, stride_D, K, T, init, false, nothing, negative = negative))
         return q
     end
-    q = quote pX = pointer(X) end
-    kql = kernel_nt_quote(rows, cols, stride_A, stride_X, stride_D, N, T, init, false, nothing, negative = negative)
+    push!(q.args, :(pX = pointer(X)))
+    kql = kernel_nt_quote(rows, cols, stride_A, stride_X, stride_D, K, T, init, false, nothing, negative = negative)
     inner = quote pA = pointer(A) end
     if col_reps > 1
         push!(inner.args, :(pD = pointer(D) + c*$size_T*$stride_D*$cols))
@@ -1260,7 +1263,7 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
         push!(inner.args, loop)
     end
     if row_rem > 0
-        push!(inner.args, kernel_nt_quote(row_rem, cols, stride_A, stride_X, stride_D, N, T, init, false, nothing, negative = negative))
+        push!(inner.args, kernel_nt_quote(row_rem, cols, stride_A, stride_X, stride_D, K, T, init, false, nothing, negative = negative))
         # push!(inner.args, :(pD += $size_T*$row_rem))
     end
     push!(inner.args, :(pX += $size_T*$cols))
@@ -1275,7 +1278,7 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
         push!(q.args, loop)
     end
     if col_rem > 0
-        kql = kernel_nt_quote(rows, col_rem, stride_A, stride_X, stride_D, N, T, init, false, nothing, negative = negative)
+        kql = kernel_nt_quote(rows, col_rem, stride_A, stride_X, stride_D, K, T, init, false, nothing, negative = negative)
         inner = quote pA = pointer(A) end
         if col_reps > 1
             push!(inner.args, :(pD = pointer(D) + $size_T*$stride_D*$(cols*col_reps)))
@@ -1294,7 +1297,7 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
             push!(inner.args, loop)
         end
         if row_rem > 0
-            push!(inner.args, kernel_nt_quote(row_rem, cols, stride_A, stride_X, stride_D, N, T, init, false, nothing, negative = negative))
+            push!(inner.args, kernel_nt_quote(row_rem, cols, stride_A, stride_X, stride_D, K, T, init, false, nothing, negative = negative))
         end
         push!(q.args, inner)
     end
@@ -1303,42 +1306,64 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
 end
 
 @generated function LinearAlgebra.mul!(
-    D::AbstractMutableFixedSizePaddedMatrix{M,K,T,PD},
-    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,PA},
-    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedMatrix{K,N,T,PX}}
+    D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
+    A::AbstractMutableFixedSizePaddedMatrix{M,K,T,PA},
+    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedMatrix{N,K,T,PX}}
 ) where {M,K,N,T,PD,PA,PX}
     quote
         X = X′.parent
-        $(mul_nt_quote(M,K,N,T,true,PA,PX,PD))
+        $(mul_nt_quote(M,K,N,T,true,PA,PX,PD,force_inline=false))
     end
 end
 @generated function nmul!(
-    D::AbstractMutableFixedSizePaddedMatrix{M,K,T,PD},
-    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,PA},
-    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedMatrix{K,N,T,PX}}
+    D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
+    A::AbstractMutableFixedSizePaddedMatrix{M,K,T,PA},
+    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedMatrix{N,K,T,PX}}
 ) where {M,K,N,T,PD,PA,PX}
     quote
         X = X′.parent
-        $(mul_nt_quote(M,K,N,T,true,PA,PX,PD,negative=true))
+        $(mul_nt_quote(M,K,N,T,true,PA,PX,PD,negative=true,force_inline=false))
+    end
+end
+@generated function LinearAlgebra.mul!(
+    D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
+    A::AbstractMutableFixedSizePaddedMatrix{M,K,T,PA},
+    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedVector{N,T,PX}}
+) where {M,K,N,T,PD,PA,PX}
+# ) where {M,K,N,T,PX,PA,PD}
+    quote
+        X = X′.parent
+        $(mul_nt_quote(M,K,N,T,true,PA,0,PD,force_inline=false))
+    end
+end
+@generated function nmul!(
+    D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
+    A::AbstractMutableFixedSizePaddedMatrix{M,K,T,PA},
+    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedVector{N,T,PX}}
+) where {M,K,N,T,PD,PA,PX}
+    quote
+        X = X′.parent
+        $(mul_nt_quote(M,K,N,T,true,PA,0,PD,negative=true,force_inline=false))
     end
 end
 
-function mul_tn_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D = M; negative::Bool = false)
+function mul_tn_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D = M; negative::Bool = false, force_inline = false)
     # aloads x cols is the effective kernel size here.
     W, Wshift = VectorizationBase.pick_vector_width_shift(N, T)
-    W2, rows_times_W, cols, rows = pick_kernel_size(T, M*W, K)
+    W2, rows_times_W, cols, rows = pick_kernel_size(T, M*W, N)
     row_reps, row_rem = divrem(M, rows)
     col_reps, col_rem = divrem(N, cols)
     row_reps_total = row_reps + (row_rem > 0)
     col_reps_total = col_reps + (col_rem > 0)
+    q = force_inline ? quote $(Expr(:meta,:inline)) end : quote end
     if row_reps_total == col_reps_total == 1
-        q = quote pA = pointer(A); pD = pointer(D); pX = pointer(X) end
-        push!(q.args, kernel_tn_quote(M, K, stride_A, stride_X, stride_D, N, T, init, false, negative = negative))
+        push!(q.args, :(pA = pointer(A); pD = pointer(D); pX = pointer(X)))
+        push!(q.args, kernel_tn_quote(M, N, stride_A, stride_X, stride_D, K, T, init, false, negative = negative))
         return q
     end
     size_T = sizeof(T)
     if row_reps_total == 1
-        q = quote pA = pointer(A); pD = pointer(D); pX = pointer(X) end
+        push!(q.args, :(pA = pointer(A); pD = pointer(D); pX = pointer(X)))
         kql = kernel_tn_quote(M, cols, stride_A, stride_X, stride_D, N, T, init, false, negative = negative)
         if col_reps == 1
             push!(q.args, kql)
@@ -1353,12 +1378,12 @@ function mul_tn_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
             end
             push!(q.ags, loop)
         end
-        col_rem > 0 && push!(q.args, kernel_tn_quote(M, col_rem, stride_A, stride_X, stride_D, N, T, init, false, negative = negative))
+        col_rem > 0 && push!(q.args, kernel_tn_quote(M, col_rem, stride_A, stride_X, stride_D, K, T, init, false, negative = negative))
         return q
     end
     if col_reps_total == 1
-        q = quote pA = pointer(A); pD = pointer(D); pX = pointer(X) end
-        kql = kernel_tn_quote(rows, K, stride_A, stride_X, stride_D, N, T, init, false, negative = negative)
+        push!(q.args, :(pA = pointer(A); pD = pointer(D); pX = pointer(X)))
+        kql = kernel_tn_quote(rows, N, stride_A, stride_X, stride_D, K, T, init, false, negative = negative)
         if row_reps == 1
             push!(q.args, kql)
             push!(q.args, :(pA += $size_T*$stride_A*$rows; pD += $size_T*$rows))
@@ -1372,11 +1397,11 @@ function mul_tn_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
             end
             push!(q.args, loop)
         end
-        row_rem > 0 && push!(q.args, kernel_tn_quote(row_rem, K, stride_A, stride_X, stride_D, N, T, init, false, negative = negative))
+        row_rem > 0 && push!(q.args, kernel_tn_quote(row_rem, N, stride_A, stride_X, stride_D, K, T, init, false, negative = negative))
         return q
     end
-    q = quote pD = pointer(D); pX = pointer(X) end
-    kql = kernel_tn_quote(rows, cols, stride_A, stride_X, stride_D, N, T, init, false, negative = negative)
+    push!(q.args, :(pD = pointer(D); pX = pointer(X)))
+    kql = kernel_tn_quote(rows, cols, stride_A, stride_X, stride_D, K, T, init, false, negative = negative)
     inner = quote pA = pointer(A) end
     # @show col_reps
     if col_reps > 1
@@ -1397,7 +1422,7 @@ function mul_tn_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
         push!(inner.args, loop)
     end
     if row_rem > 0
-        push!(inner.args, kernel_tn_quote(row_rem, cols, stride_A, stride_X, stride_D, N, T, init, false, negative = negative))
+        push!(inner.args, kernel_tn_quote(row_rem, cols, stride_A, stride_X, stride_D, K, T, init, false, negative = negative))
     end
     push!(inner.args, :(pX += $size_T*$stride_X*$cols))
     if col_reps == 1
@@ -1413,7 +1438,7 @@ function mul_tn_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
         push!(q.args, loop)
     end
     if col_rem > 0
-        kql = kernel_tn_quote(rows, col_rem, stride_A, stride_X, stride_D, N, T, init, false, negative = negative)
+        kql = kernel_tn_quote(rows, col_rem, stride_A, stride_X, stride_D, K, T, init, false, negative = negative)
         inner = quote
             pA = pointer(A)
             pD = pointer(D) + $size_T*$stride_D*$(cols*col_reps)
@@ -1431,7 +1456,7 @@ function mul_tn_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
             push!(inner.args, loop)
         end
         if row_rem > 0
-            push!(inner.args, kernel_tn_quote(row_rem, cols, stride_A, stride_X, stride_D, N, T, init, false, negative = negative))
+            push!(inner.args, kernel_tn_quote(row_rem, cols, stride_A, stride_X, stride_D, K, T, init, false, negative = negative))
         end
         push!(q.args, inner)
     end
@@ -1440,25 +1465,25 @@ function mul_tn_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
 end
 
 @generated function LinearAlgebra.mul!(
-    D::AbstractMutableFixedSizePaddedMatrix{M,K,T,PD},
-    A′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedMatrix{N,M,T,PA}},
-    X::AbstractMutableFixedSizePaddedMatrix{N,K,T,PX}
-) where {M,K,N,T,PA,PX,PD}
-# ) where {M,K,N,T,PD,PA,PX}
+    D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
+    A′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedMatrix{K,M,T,PA}},
+    X::AbstractMutableFixedSizePaddedMatrix{K,N,T,PX}
+# ) where {M,K,N,T,PA,PX,PD}
+) where {M,K,N,T,PD,PA,PX}
     quote
         A = A′.parent
-        $(mul_tn_quote(M,K,N,T,true,PA,PX,PD))
+        $(mul_tn_quote(M,K,N,T,true,PA,PX,PD,fore_inline=false))
     end
 end
 @generated function nmul!(
-    D::AbstractMutableFixedSizePaddedMatrix{M,K,T,PD},
-    A′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedMatrix{N,M,T,PA}},
-    X::AbstractMutableFixedSizePaddedMatrix{N,K,T,PX}
+    D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
+    A′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedMatrix{K,M,T,PA}},
+    X::AbstractMutableFixedSizePaddedMatrix{K,N,T,PX}
 ) where {M,K,N,T,PA,PX,PD}
 # ) where {M,K,N,T,PD,PA,PX}
     quote
         A = A′.parent
-        $(mul_tn_quote(M,K,N,T,true,PA,PX,PD,negative = true))
+        $(mul_tn_quote(M,K,N,T,true,PA,PX,PD,negative = true,force_inline=false))
     end
 end
 
