@@ -342,7 +342,7 @@ end
 end
 @generated function Base.:+(a::T, Badj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}) where {S,T<:Number,N,P,L}
     quote
-        # $(Expr(:meta,:inline))
+        $(Expr(:meta,:inline))
         mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = a + B[i]
@@ -352,7 +352,7 @@ end
 end
 @generated function Base.:+(Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}, b::T) where {S,T<:Number,N,P,L}
     quote
-        # $(Expr(:meta,:inline))
+        $(Expr(:meta,:inline))
         mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] + b
@@ -525,6 +525,7 @@ end
 end
 @generated function Base.:*(Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,P,L}
     quote
+        $(Expr(:meta,:inlne))
         mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
         A = Aadj.parent
         b = extract_λ(bλ)
@@ -554,6 +555,7 @@ end
     bλ::Union{T,UniformScaling{T}}
 ) where {S,T<:Real,N,P,L}
     quote
+        $(Expr(:meta,:inline))
         mv = PtrArray{$S,$T,$N,$P,$L}(pointer(sp,$T))
         A = Aadj.parent
         b = extract_λ(bλ)
@@ -588,7 +590,7 @@ end
     y::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{N,T,L,L}}
 ) where {N,T,L}
     quote
-        # $(Expr(:meta,:inline))
+        $(Expr(:meta,:inline))
         mv = MutableFixedSizePaddedVector{$N,T,$L,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = a * x[i] + y[i]
@@ -1305,46 +1307,60 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
     q
 end
 
-@generated function LinearAlgebra.mul!(
+# Adjoints determine dispatch.
+# Inlining the wrapper avoids allocating the "Adjoint" type when the arrays are heap allocated
+# without requiring that we have to actually inline the entire matrix multiplication.
+@generated function A_mul_Xt!(
     D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
     A::AbstractMutableFixedSizePaddedMatrix{M,K,T,PA},
-    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedMatrix{N,K,T,PX}}
+    X::AbstractMutableFixedSizePaddedMatrix{N,K,T,PX}
 ) where {M,K,N,T,PD,PA,PX}
     quote
-        X = X′.parent
         $(mul_nt_quote(M,K,N,T,true,PA,PX,PD,force_inline=false))
     end
 end
-@generated function nmul!(
+@generated function A_nmul_Xt!(
     D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
     A::AbstractMutableFixedSizePaddedMatrix{M,K,T,PA},
-    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedMatrix{N,K,T,PX}}
+    X::AbstractMutableFixedSizePaddedMatrix{N,K,T,PX}
 ) where {M,K,N,T,PD,PA,PX}
     quote
-        X = X′.parent
         $(mul_nt_quote(M,K,N,T,true,PA,PX,PD,negative=true,force_inline=false))
     end
 end
-@generated function LinearAlgebra.mul!(
+@generated function A_mul_Xt!(
     D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
     A::AbstractMutableFixedSizePaddedMatrix{M,K,T,PA},
-    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedVector{N,T,PX}}
+    X::AbstractMutableFixedSizePaddedVector{N,T,PX}
 ) where {M,K,N,T,PD,PA,PX}
 # ) where {M,K,N,T,PX,PA,PD}
     quote
-        X = X′.parent
         $(mul_nt_quote(M,K,N,T,true,PA,0,PD,force_inline=false))
     end
 end
-@generated function nmul!(
+@generated function A_nmul_Xt!(
     D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
     A::AbstractMutableFixedSizePaddedMatrix{M,K,T,PA},
-    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedVector{N,T,PX}}
+    X::AbstractMutableFixedSizePaddedVector{N,T,PX}
 ) where {M,K,N,T,PD,PA,PX}
     quote
-        X = X′.parent
         $(mul_nt_quote(M,K,N,T,true,PA,0,PD,negative=true,force_inline=false))
     end
+end
+@inline function LinearAlgebra.mul!(
+    D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
+    A::AbstractMutableFixedSizePaddedMatrix{M,K,T,PA},
+    X′::LinearAlgebra.Adjoint{T,<:Union{AbstractMutableFixedSizePaddedVector{N,T,PX},AbstractMutableFixedSizePaddedMatrix{N,K,T,PX}}}
+) where {M,K,N,T,PD,PA,PX}
+# ) where {M,K,N,T,PX,PA,PD}
+    A_mul_Xt!(D, A, X′.parent)
+end
+@inline function nmul!(
+    D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
+    A::AbstractMutableFixedSizePaddedMatrix{M,K,T,PA},
+    X′::LinearAlgebra.Adjoint{T,<:Union{AbstractMutableFixedSizePaddedVector{N,T,PX},AbstractMutableFixedSizePaddedMatrix{N,K,T,PX}}}
+) where {M,K,N,T,PD,PA,PX}
+    A_nmul_Xt!(D, A, X′.parent)
 end
 
 function mul_tn_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D = M; negative::Bool = false, force_inline = false)
@@ -1464,27 +1480,41 @@ function mul_tn_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
     q
 end
 
-@generated function LinearAlgebra.mul!(
+@generated function At_mul_X!(
+    D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
+    A::AbstractMutableFixedSizePaddedMatrix{K,M,T,PA},
+    X::AbstractMutableFixedSizePaddedMatrix{K,N,T,PX}
+# ) where {M,K,N,T,PA,PX,PD}
+) where {M,K,N,T,PD,PA,PX}
+    quote
+        $(mul_tn_quote(M,K,N,T,true,PA,PX,PD,fore_inline=false))
+    end
+end
+@inline function LinearAlgebra.mul!(
     D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
     A′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedMatrix{K,M,T,PA}},
     X::AbstractMutableFixedSizePaddedMatrix{K,N,T,PX}
 # ) where {M,K,N,T,PA,PX,PD}
 ) where {M,K,N,T,PD,PA,PX}
+    At_mul_X!(D, A′.parent, X)
+end
+@generated function At_nmul_X!(
+    D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
+    A::AbstractMutableFixedSizePaddedMatrix{K,M,T,PA},
+    X::AbstractMutableFixedSizePaddedMatrix{K,N,T,PX}
+) where {M,K,N,T,PA,PX,PD}
+# ) where {M,K,N,T,PD,PA,PX}
     quote
-        A = A′.parent
-        $(mul_tn_quote(M,K,N,T,true,PA,PX,PD,fore_inline=false))
+        $(mul_tn_quote(M,K,N,T,true,PA,PX,PD,negative = true,force_inline=false))
     end
 end
-@generated function nmul!(
+@inline function nmul!(
     D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
     A′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedMatrix{K,M,T,PA}},
     X::AbstractMutableFixedSizePaddedMatrix{K,N,T,PX}
 ) where {M,K,N,T,PA,PX,PD}
 # ) where {M,K,N,T,PD,PA,PX}
-    quote
-        A = A′.parent
-        $(mul_tn_quote(M,K,N,T,true,PA,PX,PD,negative = true,force_inline=false))
-    end
+    At_nmul_X!(D, A′.parent, X)
 end
 
 @generated function Base.:*(A::LinearAlgebra.Diagonal{T,<:AbstractFixedSizePaddedVector{M,T,P}}, B::AbstractFixedSizePaddedMatrix{M,N,T,P}) where {M,N,T,P}
