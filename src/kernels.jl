@@ -666,24 +666,28 @@ function kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,init,inline = true, pf = n
     q
 end
 
-@generated function kernel!(pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_AD,stride_X,N}) where {Mₖ,Pₖ,stride_AD,stride_X,N,T}
-    kernel_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,false,true)
-end
-
-@generated function initkernel!(pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, K::Kernel{Mₖ,Pₖ,stride_AD,stride_X,N}) where {Mₖ,Pₖ,stride_AD,stride_X,N,T}
-    kernel_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,true,true)
-end
-
 @generated function kernel!(
-    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_AD,stride_X,N},::Val{PF}
-) where {Mₖ,Pₖ,stride_AD,stride_X,N,T,PF}
-    kernel_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,false,true,PF)
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}
+) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T}
+    kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,false,true,nothing,stride_D)
 end
 
 @generated function initkernel!(
-    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, K::Kernel{Mₖ,Pₖ,stride_AD,stride_X,N},::Val{PF}
-) where {Mₖ,Pₖ,stride_AD,stride_X,N,T,PF}
-    kernel_quote(Mₖ,Pₖ,stride_AD,stride_X,N,T,true,true,PF)
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, K::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}
+) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T}
+    kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,true,true,nothing,stride_D)
+end
+
+@generated function kernel!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N},::Val{PF}
+) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T,PF}
+    kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,false,true,PF,stride_D)
+end
+
+@generated function initkernel!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, K::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N},::Val{PF}
+) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T,PF}
+    kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,true,true,PF,stride_D)
 end
 
 

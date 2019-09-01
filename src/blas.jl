@@ -764,8 +764,8 @@ function initkernel_quote(D::AbstractMutableFixedSizePaddedMatrix{M,Pₖ,T,strid
     kernel_quote(M,Pₖ,stride_AD,stride_X,N,T,true,true)
 end
 
-#function block_loop_quote_minbandwidth(
-function block_loop_quote(
+function block_loop_quote_minbandwidth(
+#function block_loop_quote(
     L1M::Int,L1N::Int,L1P::Int,stride_A::Int,stride_X::Int,M_iter::Int,M_remain::Int,P_iter::Int,P_remain::Int,
     T_size::Int,kernel::Symbol=:kernel!,pA::Symbol=:pAₙ,pX::Symbol=:pXₙ,pD::Symbol=:pD,X_transposed::Bool=false,stride_D::Int = stride_A
 )
@@ -905,11 +905,13 @@ function block_loop_quote(
     q
 end
 
-function block_loop_quote_test_simple_prefetch(
+#function block_loop_quote_test_simple_prefetch(
+function block_loop_quote(
     L1M::Int,L1N::Int,L1P::Int,stride_A::Int,stride_X::Int,M_iter::Int,M_remain::Int,P_iter::Int,P_remain::Int,
     T_size::Int,kernel::Symbol=:kernel!,pA::Symbol=:pAₙ,pX::Symbol=:pXₙ,pD::Symbol=:pD,X_transposed::Bool=false,prefetch::Bool = false, stride_D::Int = stride_A
 )
-#    prefetch = true
+    #    prefetch = true
+#    @show T_size, L1P, stride_D
     D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_D)*pᵢ)
     A = :($pA + $(T_size*L1M)*mᵢ)
     X = X_transposed ? pX : :($pX + $(T_size*L1P*stride_X)*pᵢ)
@@ -917,6 +919,7 @@ function block_loop_quote_test_simple_prefetch(
         M_remain = L1M
         M_iter -= 1
     end
+    # Mₖ,Pₖ,stride_A,stride_X,stride_D,N
     kernel_call = if prefetch
         :($(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$(PrefetchA(L1M))}()))
     else
@@ -927,9 +930,24 @@ function block_loop_quote_test_simple_prefetch(
     else
         :($(kernel)($D, $A, $X, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}()))
     end
-    ploopbody = quote
-        for mᵢ ∈ 0:$M_iter - 1
-            $kernel_call
+    ploopbody = if M_iter isa Integer
+        if M_iter == 1
+            quote
+                mᵢ = 0
+                $kernel_call
+            end
+        else
+            quote
+                for mᵢ ∈ 0:$(M_iter - 1)
+                    $kernel_call
+                end
+            end
+        end
+    else
+        quote
+            for mᵢ ∈ 0:$M_iter - 1
+                $kernel_call
+            end
         end
     end
     if M_remain > 0
@@ -940,12 +958,26 @@ function block_loop_quote_test_simple_prefetch(
         push!(ploopbody.args, remain_expr)
     end
 
-    q = quote
-        for pᵢ ∈ 0:$P_iter - 1
-            $ploopbody
+    q = if P_iter isa Integer
+        if P_iter == 1
+            quote
+                pᵢ = 0
+                $ploopbody
+            end
+        else
+            quote
+                for pᵢ ∈ 0:$(P_iter - 1)
+                    $ploopbody
+                end
+            end
+        end
+    else
+        quote
+            for pᵢ ∈ 0:$P_iter - 1
+                $ploopbody
+            end
         end
     end
-
     if P_remain > 0
         kernel_call = if prefetch
             :($(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$(PrefetchA(L1M))}()))
@@ -953,11 +985,28 @@ function block_loop_quote_test_simple_prefetch(
             :($(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}()))
         end
         kernel_call_Mremain = :($(kernel)($D, $A, $X, Kernel{$M_remain,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}()))
-        p_remain_quote = quote
-            pᵢ = $P_iter
-            for mᵢ ∈ 0:$M_iter - 1
-                $kernel_call
-            end            
+        p_remain_quote = if M_iter isa Integer
+            if M_iter == 1
+                quote
+                    pᵢ = $P_iter
+                    mᵢ = 0
+                    $kernel_call
+                end
+            else
+                quote
+                    pᵢ = $P_iter
+                    for mᵢ ∈ 0:$(M_iter - 1)
+                        $kernel_call
+                    end
+                end
+            end
+        else
+            quote
+                pᵢ = $P_iter
+                for mᵢ ∈ 0:$M_iter - 1
+                    $kernel_call
+                end
+            end
         end
         if M_remain > 0
             push!(p_remain_quote.args, :(mᵢ = $M_iter))
@@ -982,7 +1031,7 @@ function cache_mulquote(M,N,P,stride_A,stride_X,(L1M,L1N,L1P),::Type{T}, init = 
     q = quote
         pD, pA, pX = pointer(D), pointer(A), pointer(X)
 
-        $(block_loop_quote(L1M,L1N,L1P,stride_A,stride_X,M_iter,M_remain,P_iter,P_remain,T_size,init,:pA,:pX,:pD,false,stride_D))
+        $(block_loop_quote(L1M,L1N,L1P,stride_A,stride_X,M_iter,M_remain,P_iter,P_remain,T_size,init,:pA,:pX,:pD,false,false,stride_D))
     end
 
     AN_stride = stride_A * L1N * T_size
@@ -994,7 +1043,7 @@ function cache_mulquote(M,N,P,stride_A,stride_X,(L1M,L1N,L1P),::Type{T}, init = 
             for n ∈ 1:$(N_iter-1)
                 pAₙ = pA + n*$(L1N * T_size * stride_A)
                 pXₙ = pX + n*$(L1N * T_size)
-                $(block_loop_quote(L1M,L1N,L1P,stride_A,stride_X,M_iter,M_remain,P_iter,P_remain,T_size,primary,:pAₙ,:pXₙ,:pD,false,stride_D))
+                $(block_loop_quote(L1M,L1N,L1P,stride_A,stride_X,M_iter,M_remain,P_iter,P_remain,T_size,primary,:pAₙ,:pXₙ,:pD,false,false,stride_D))
             end
         end
         )
@@ -1004,7 +1053,7 @@ function cache_mulquote(M,N,P,stride_A,stride_X,(L1M,L1N,L1P),::Type{T}, init = 
         quote
             pAₙ = pA + $(L1N * T_size * stride_A)
             pXₙ = pX + $(L1N * T_size)
-            $(block_loop_quote(L1M,L1N,L1P,stride_A,stride_X,M_iter,M_remain,P_iter,P_remain,T_size,primary,:pAₙ,:pXₙ,:pD,false,stride_D))
+            $(block_loop_quote(L1M,L1N,L1P,stride_A,stride_X,M_iter,M_remain,P_iter,P_remain,T_size,primary,:pAₙ,:pXₙ,:pD,false,false,stride_D))
         end
         )
     end
@@ -1013,7 +1062,7 @@ function cache_mulquote(M,N,P,stride_A,stride_X,(L1M,L1N,L1P),::Type{T}, init = 
         quote
             pAₙ = pA + $(L1N*N_iter * T_size * stride_A)
             pXₙ = pX + $(L1N*N_iter * T_size)
-            $(block_loop_quote(L1M,N_remain,L1P,stride_A,stride_X,M_iter,M_remain,P_iter,P_remain,T_size,primary,:pAₙ,:pXₙ,:pD,false,stride_D))
+            $(block_loop_quote(L1M,N_remain,L1P,stride_A,stride_X,M_iter,M_remain,P_iter,P_remain,T_size,primary,:pAₙ,:pXₙ,:pD,false,false,stride_D))
         end
         )
     end
