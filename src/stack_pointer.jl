@@ -14,6 +14,8 @@ end
 @inline Base.:+(i::Integer, sp::StackPointer) = StackPointer(sp.ptr + i)
 @inline Base.:-(sp::StackPointer, i::Integer) = StackPointer(sp.ptr - i)
 
+VectorizationBase.align(s::StackPointer) = StackPointer(VectorizationBase.align(s.ptr))
+
 # (Module, function) pairs supported by StackPointer.
 #const STACK_POINTER_SUPPORTED_MODMETHODS = Set{Tuple{Symbol,Symbol}}()
 const STACK_POINTER_SUPPORTED_METHODS = Set{Symbol}()
