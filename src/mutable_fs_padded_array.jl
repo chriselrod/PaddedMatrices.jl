@@ -30,7 +30,7 @@ function calc_NPL(SV, T)
     for n ∈ 2:N
         L *= SV[n]
     end
-    N, padded_rows, L
+    N, padded_rows, VectorizationBase.align(L,T)
 end
 
 function init_mutable_fs_padded_array_quote(S, T)

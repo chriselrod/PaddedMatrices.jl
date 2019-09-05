@@ -1536,7 +1536,7 @@ end
 # ) where {M,K,N,T,PA,PX,PD}
 ) where {M,K,N,T,PD,PA,PX}
     quote
-        $(mul_tn_quote(M,K,N,T,true,PA,PX,PD,fore_inline=false))
+        $(mul_tn_quote(M,K,N,T,true,PA,PX,PD,force_inline=false))
     end
 end
 @inline function LinearAlgebra.mul!(

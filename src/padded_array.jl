@@ -112,11 +112,11 @@ end
 
 function DynamicPtrArray{T}(sp::StackPointer, size::NTuple{N,<:Integer}, stride::Integer) where {T,N}
     L = full_length(size, stride)
-    sp + L*sizeof(T), DynamicPtrArray(pointer(sp, T), size, stride)    
+    sp + VectorizationBase.align(L*sizeof(T)), DynamicPtrArray(pointer(sp, T), size, stride)    
 end
 function DynamicPtrArray{T,N}(sp::StackPointer, size::NTuple{N,<:Integer}, stride::Integer) where {T,N}
     L = full_length(size, stride)
-    sp + L*sizeof(T), DynamicPtrArray(pointer(sp, T), size, stride)    
+    sp + VectorizationBase.align(L*sizeof(T)), DynamicPtrArray(pointer(sp, T), size, stride)    
 end
 
 @support_stack_pointer PaddedMatrices DynamicPtrVector;

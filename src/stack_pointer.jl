@@ -62,24 +62,26 @@ function ∂materialize end
 
 @support_stack_pointer vexp
 
-function stack_pointer_pass(expr, stacksym, blacklist = nothing)
+function stack_pointer_pass(expr, stacksym, blacklist = nothing, verbose = false)
     if blacklist == nothing
         whitelist = STACK_POINTER_SUPPORTED_METHODS
     else
         whitelist = setdiff(STACK_POINTER_SUPPORTED_METHODS, blacklist)
     end
-    verbose = false
+#    verbose = true
     postwalk(expr) do ex
         if @capture(ex, B_ = mod_.func_(args__)) && func ∈ whitelist
             if verbose
-                return :(($stacksym, $B) = $mod.$func($stacksym, $(args...)); println($(string(func))); @show pointer($stacksym); @show (reinterpret(Int, pointer($stacksym)) - reinterpret(Int, pointer(ProbabilityModels.STACK_POINTER)))/8)
+                str = "Args: $args"
+                return :(println($(string(func))); println($str); (@show typeof.($(Expr(:tuple,args...)))); ($stacksym, $B) = $mod.$func($stacksym::PaddedMatrices.StackPointer, $(args...)); @show pointer($stacksym); @show (reinterpret(Int, pointer($stacksym)) - reinterpret(Int, pointer(ProbabilityModels.STACK_POINTER)))/8)
             else
                 return :(($stacksym, $B) = $mod.$func($stacksym, $(args...)))
             end
         elseif @capture(ex, B_ = func_(args__)) && func ∈ whitelist
             ##            if func ∈ whitelist
             if verbose
-                return :(($stacksym, $B) = $func($stacksym, $(args...)); println($(string(func))); @show pointer($stacksym); @show (reinterpret(Int, pointer($stacksym)) - reinterpret(Int, pointer(ProbabilityModels.STACK_POINTER)))/8)
+                str = "Args: $args"
+                return :(println($(string(func))); println($str);  (@show typeof.($(Expr(:tuple,args...)))); ($stacksym, $B) = $func($stacksym::PaddedMatrices.StackPointer, $(args...)); @show pointer($stacksym); @show (reinterpret(Int, pointer($stacksym)) - reinterpret(Int, pointer(ProbabilityModels.STACK_POINTER)))/8)
             else
                 return :(($stacksym, $B) = $func($stacksym, $(args...)))
             end
@@ -88,13 +90,15 @@ function stack_pointer_pass(expr, stacksym, blacklist = nothing)
 ##            end
         elseif @capture(ex, B_ = mod_.func_{T__}(args__)) && func ∈ whitelist
             if verbose
-                return :(($stacksym, $B) = $mod.$func{$(T...)}($stacksym, $(args...)); println($(string(func))); @show pointer($stacksym); @show (reinterpret(Int, pointer($stacksym)) - reinterpret(Int, pointer(ProbabilityModels.STACK_POINTER)))/8)
+                str = "Args: $args"
+                return :(println($(string(func))); println($str);  (@show typeof.($(Expr(:tuple,args...)))); ($stacksym, $B) = $mod.$func{$(T...)}($stacksym::PaddedMatrices.StackPointer, $(args...)); @show pointer($stacksym); @show (reinterpret(Int, pointer($stacksym)) - reinterpret(Int, pointer(ProbabilityModels.STACK_POINTER)))/8)
             else
                 return :(($stacksym, $B) = $mod.$func{$(T...)}($stacksym, $(args...)))
             end
         elseif @capture(ex, B_ = func_{T__}(args__)) && func ∈ whitelist
             if verbose
-                return :(($stacksym, $B) = $func{$(T...)}($stacksym, $(args...)); println($(string(func))); @show pointer($stacksym); @show (reinterpret(Int, pointer($stacksym)) - reinterpret(Int, pointer(ProbabilityModels.STACK_POINTER)))/8)
+                str = "Args: $args"
+                return :(println($(string(func))); println($str);  (@show typeof.($(Expr(:tuple,args...)))); ($stacksym, $B) = $func{$(T...)}($stacksym::PaddedMatrices.StackPointer, $(args...)); @show pointer($stacksym); @show (reinterpret(Int, pointer($stacksym)) - reinterpret(Int, pointer(ProbabilityModels.STACK_POINTER)))/8)
             else
                 return :(($stacksym, $B) = $func{$(T...)}($stacksym, $(args...)))
             end
