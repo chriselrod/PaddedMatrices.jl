@@ -1253,6 +1253,7 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
     if row_reps_total == col_reps_total == 1
         push!(q.args, :(pA = pointer(A); pD = pointer(D); pX = pointer(X)))
         push!(q.args, kernel_nt_quote(M, N, stride_A, stride_X, stride_D, K, T, init, false, nothing, negative = negative))
+        push!(q.args, :D)
         return q
     end
     size_T = sizeof(T)
@@ -1273,11 +1274,12 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
             push!(q.ags, loop)
         end
         col_rem > 0 && push!(q.args, kernel_nt_quote(M, col_rem, stride_A, stride_X, stride_D, K, T, init, false, nothing, negative = negative))
+        push!(q.args, :D)
         return q
     end
     if col_reps_total == 1
         push!(q.args, :(pA = pointer(A); pD = pointer(D); pX = pointer(X)))
-        kql = kernel_nt_quote(rows, K, stride_A, stride_X, stride_D, N, T, init, false, nothing, negative = negative)
+        kql = kernel_nt_quote(rows, N, stride_A, stride_X, stride_D, K, T, init, false, nothing, negative = negative)
         if row_reps == 1
             push!(q.args, kql)
             push!(q.args, :(pA += $size_T*$rows; pD += $size_T*$rows))
@@ -1292,6 +1294,7 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
             push!(q.args, loop)
         end
         row_rem > 0 && push!(q.args, kernel_nt_quote(row_rem, N, stride_A, stride_X, stride_D, K, T, init, false, nothing, negative = negative))
+        push!(q.args, :D)
         return q
     end
     push!(q.args, :(pX = pointer(X)))
@@ -1424,6 +1427,7 @@ function mul_tn_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
     if row_reps_total == col_reps_total == 1
         push!(q.args, :(pA = pointer(A); pD = pointer(D); pX = pointer(X)))
         push!(q.args, kernel_tn_quote(M, N, stride_A, stride_X, stride_D, K, T, init, false, negative = negative))
+        push!(q.args, :D)
         return q
     end
     size_T = sizeof(T)
@@ -1444,6 +1448,7 @@ function mul_tn_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
             push!(q.ags, loop)
         end
         col_rem > 0 && push!(q.args, kernel_tn_quote(M, col_rem, stride_A, stride_X, stride_D, K, T, init, false, negative = negative))
+        push!(q.args, :D)
         return q
     end
     if col_reps_total == 1
@@ -1463,6 +1468,7 @@ function mul_tn_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
             push!(q.args, loop)
         end
         row_rem > 0 && push!(q.args, kernel_tn_quote(row_rem, N, stride_A, stride_X, stride_D, K, T, init, false, negative = negative))
+        push!(q.args, :D)
         return q
     end
     push!(q.args, :(pD = pointer(D); pX = pointer(X)))
@@ -1561,8 +1567,8 @@ end
     D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
     A′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedMatrix{K,M,T,PA}},
     X::AbstractMutableFixedSizePaddedMatrix{K,N,T,PX}
-) where {M,K,N,T,PA,PX,PD}
-# ) where {M,K,N,T,PD,PA,PX}
+# ) where {M,K,N,T,PA,PX,PD}
+) where {M,K,N,T,PD,PA,PX}
     At_nmul_X!(D, A′.parent, X)
 end
 
