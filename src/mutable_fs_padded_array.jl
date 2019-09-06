@@ -357,6 +357,12 @@ end
 #        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
 end
+@generated function PtrArray(A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {S,T,N,R,L}
+    quote
+        $(Expr(:meta,:inline))
+        PtrArray{$S,$T,$N,$R,$L,true}(pointer(A))
+    end
+end
 
 
 const PtrVector{N,T,R,L,P} = PtrArray{Tuple{N},T,1,R,L,P} # R and L will always be the same...
@@ -631,12 +637,16 @@ This function is not safe -- make sure the underlying data is protected!!!
     N == 1 || S.parameters[1] == R || throw("vec-ing multidimensional arrays with padding would lead to weird behavior.")
     :(PtrVector{$L,$T,$L}(pointer(a)))
 end
-@generated function Base.reshape(A::AbstractMutableFixedSizePaddedArray{S1,T,N,R,L}, ::Val{S2}) where {S1,S2,T,N,R,L}
+@generated function Base.reshape(A::AbstractMutableFixedSizePaddedArray{S1,T,N,R,L}, ::Union{Val{S2},Static{S2}}) where {S1,S2,T,N,R,L}
     N == 1 || S1.parameters[1] == R || throw("Reshaping multidimensional arrays with padding would lead to weird behavior.")
     prod(S2.parameters) == prod(S1.parameters) || throw("Total length of reshaped array should equal original length\n\n$(S1)\n\n$(S2)\n\n.")
     N2 = length(S2.parameters)
     R2 = S2.parameters[1]
     :(PtrArray{$S2,$T,$N2,$R2,$L}(pointer(A)))
+end
+@generated function Base.reshape(A::AbstractArray, ::Static{S}) where {S}
+    tupexpr = Expr(:tuple, S.parameters...)
+    :(reshape(A, $tupexpr))
 end
 
 #@generated function Base.view(A::AbstractMutableFixedSizePaddedArray{S,T,N,P}, args...) where {S,T,N,P}

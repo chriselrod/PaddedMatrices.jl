@@ -56,6 +56,9 @@ const AbstractMutableFixedSizePaddedMatrix{M,N,T,P,L} = AbstractMutableFixedSize
 const AbstractConstantFixedSizePaddedVector{M,T,P,L} = AbstractConstantFixedSizePaddedArray{Tuple{M},T,1,P,L}
 const AbstractConstantFixedSizePaddedMatrix{M,N,T,P,L} = AbstractConstantFixedSizePaddedArray{Tuple{M,N},T,2,P,L}
 
+maybe_static_size(::AbstractFixedSizePaddedArray{S}) where {S} = Static{S}()
+maybe_static_size(A::AbstractArray) = size(A)
+
 struct StaticUnitRange{L,S} <: AbstractFixedSizePaddedVector{L,Int,L,L} end
 Base.getindex(::StaticUnitRange{L,S}, i::Integer) where {L,S} = Int(i+S-1)
 Base.size(::StaticUnitRange{L}) where {L} = (L,)
