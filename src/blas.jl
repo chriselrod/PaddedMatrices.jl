@@ -746,12 +746,6 @@ end
 #     end
 # end
 
-function initkernel_quote(D::AbstractMutableFixedSizePaddedMatrix{M,Pₖ,T,stride_AD},
-                            A::AbstractMutableFixedSizePaddedMatrix{M,N,T,stride_AD},
-                            X::AbstractMutableFixedSizePaddedMatrix{N,Pₖ,T,stride_X}) where {M,Pₖ,stride_AD,stride_X,N,T}
-    kernel_quote(M,Pₖ,stride_AD,stride_X,N,T,true,true)
-end
-
 function block_loop_quote_minbandwidth(
 #function block_loop_quote(
     L1M::Int,L1N::Int,L1P::Int,stride_A::Int,stride_X::Int,M_iter::Int,M_remain::Int,P_iter::Int,P_remain::Int,
@@ -1015,7 +1009,10 @@ function cache_mulquote(M,N,P,stride_A,stride_X,(L1M,L1N,L1P),::Type{T}, init = 
     P_iter, P_remain = divrem(P, L1P)
     T_size = sizeof(T)
     if (M_iter == 0 || ((M_iter == 1) && (M_remain == 0))) && (P_iter == 0 || ((P_iter == 1) && (P_remain == 0)))
-        return kernel_quote(M,P,stride_A,stride_X,N,T,init == :initkernel!,true,nothing,stride_D)
+        kernel = DynamicKernel(
+            M, P, N, stride_D, stride_A, stride_X, T, X_transposed = false
+        )
+        return kernel_quote(kernel, init = true, force_inline = true, mask_ops = true, runtime_mask = false)
     end
     
     q = quote
