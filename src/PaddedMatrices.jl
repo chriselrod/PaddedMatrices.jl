@@ -160,6 +160,37 @@ end
     :(@inbounds i[1] + P * $ex)
 end
 
+function evaluate_integers(expr)
+    p::Int = 0
+    MacroTools.postwalk(expr) do x
+        if @capture(x, +(args__))
+            p = 0
+            args2 = Any[]
+            for a ∈ args
+                if a isa Integer
+                    p += a
+                else
+                    push!(args2, a)
+                end
+            end
+            return length(args2) == 0 ? p : :(+($p, $(args2...)))
+        elseif @capture(x, *(args__))
+            p = 1
+            args2 = Any[]
+            for a ∈ args
+                if a isa Integer
+                    p *= a
+                else
+                    push!(args2, a)
+                end
+            end
+            return length(args2) == 0 ? p : :(*($p, $(args2...)))
+        else
+            return x
+        end
+    end
+end
+
 ## WHAT IS THIS FOR?
 ## ADD DOCS FOR STUBS
 function vload! end

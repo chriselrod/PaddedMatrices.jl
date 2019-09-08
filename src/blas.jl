@@ -86,7 +86,7 @@ end
         pD = pointer(D)
         pA = pointer(A)
         pX = pointer(X)
-        $(mulquote(AR,N,P,AR,XR,T,:initkernel!,nothing,DR))
+        $(evaluate_integers(mulquote(AR,N,P,AR,XR,T,:initkernel!,nothing,DR)))
         D
     end
 end

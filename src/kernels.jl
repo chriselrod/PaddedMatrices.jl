@@ -426,6 +426,7 @@ function mulinit(
             push!(q.args, Expr(:(=), Symbol(:vA_,r), :(vload($V, pA + $size_T*$W*$r))))
         end
     end
+    # push!(q.args, :($Xsym = vbroadcast($V, pX)))
     for c ∈ 1:C
         for r ∈ 0:Riterl
             Dsym = Symbol(:vD_,r,:_,c-1); Asym = Symbol(:vA_,r)
@@ -600,6 +601,7 @@ function kernel_quote(kernel::DynamicKernel; init::Bool = true, force_inline::Bo
         for $n ∈ $min_loop_iter:$max_loop_iter
             vX_0 = SIMDPirates.vbroadcast($V, pX + $size_T * $(X_transposed ? :($n * $stride_X) : n))
             $A_load_expr
+            # vX_0 = SIMDPirates.vbroadcast($V, pX + $size_T * $(X_transposed ? :($n * $stride_X) : n))
             $mul_q
         end
     end
