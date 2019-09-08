@@ -4,26 +4,46 @@ Base.@pure Kernel(Mₖ,N,Pₖ,stride_AD,stride_X) = Kernel{Mₖ,Pₖ,stride_AD,s
 The kernel is typed based on M and P. M is a critical component of vector length,
 while the kernel is unrolled across P. It simply loops over N.
 """
-abstract type AbstractKernel{Mₖ,Pₖ} end
-struct Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N} <: AbstractKernel{Mₖ,Pₖ} end
+abstract type AbstractKernel end
+abstract type AbstractSizedKernel{Mₖ,Pₖ} <: AbstractKernel end
+struct Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N} <: AbstractSizedKernel{Mₖ,Pₖ} end
 Base.@pure Kernel(Mₖ,N,Pₖ,stride_A,stride_X,stride_D) = Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}()
-struct DKernel{Mₖ,Pₖ,stride_A,stride_X,stride_D} <: AbstractKernel{Mₖ,Pₖ} N::Int end
-Base.@pure DKernel(Mₖ,N,Pₖ,stride_A,stride_X,stride_D) = Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D}(N)
-
-@inline tuple_join(x) = x
-@inline tuple_join(x, y) = (x..., y...)
-@inline tuple_join(x, y, z...) = (x..., tuple_join(y, z...)...)
-@generated function to_tuple(x::NTuple{N,Core.VecElement{T}}) where {N,T}
-    quote
-        $(Expr(:meta,:inline))
-        @inbounds $(Expr(:tuple, [:(x[$n].value) for n ∈ 1:N]...))
-    end
+struct DKernel{Mₖ,Pₖ} <: AbstractSizedKernel{Mₖ,Pₖ}
+    N::Int
+    stride_D::Int
+    stride_A::Int
+    stride_X::Int
 end
-@inline to_tuple(x::NTuple{N}) where {N} = x
-@inline extract_value(x::Core.VecElement{T}) where {T} = x.value
-@inline extract_value(x) = x
-@inline to_tuple2(x::NTuple{N,Core.VecElement{T}}) where {N,T} = extract_value.(x)
+Base.@pure DKernel(Mₖ,Pₖ,N,stride_D,stride_A,stride_X) = Kernel{Mₖ,Pₖ}(N,stride_D,stride_A,stride_X)
 
+@with_kw struct DynamicKernel <: AbstractKernel
+    R::Int
+    C::Int
+    N::Union{Symbol,Int}
+    stride_D::Union{Symbol,Int}
+    stride_A::Union{Symbol,Int}
+    stride_X::Union{Symbol,Int}
+    T::DataType = Float64
+    X_transposed::Bool = false
+    negative::Bool = false
+end
+
+function reps_and_rem(kernel::DynamicKernel)
+    @unpack R, T = kernel
+    W, Wshift = VectorizationBase.pick_vector_width_shift(R, T)
+    Riter = R >> Wshift
+    Rrem = R & (W-1)
+    Riter, Rrem
+end
+
+@nospecialize
+function DynamicKernel(
+    R::Int, C::Int, N::Union{Symbol,Int},
+    stride_D::Union{Symbol,Int}, stride_A::Union{Symbol,Int}, stride_X::Union{Symbol,Int},
+    T::DataType; X_transposed::Bool = false, negative::Bool = false
+)
+    DynamicKernel(R, C, N, stride_D, stride_A, stride_X, T, X_transposed, negative)
+end
 function mul_block(V, W, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B, gemm = nothing)
     Prange = (1 + poffset):(P + poffset)
     loop_max = isa(N, Number) ? N - 1 : :($N - 1)
@@ -95,11 +115,11 @@ end
 The suffix: _nt
 stands for
     n - not transposed
-    t - tranposed
+    t - transposed
 
 Meaning the operation is
 A * B′
-ie, A is not transposed, and B is tranposed.
+ie, A is not transposed, and B is transposed.
 """
 function mul_block_nt(V, W, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B, gemm = nothing)
     Prange = (1 + poffset):(P + poffset)
@@ -375,513 +395,230 @@ end
 #     q
 # end
 
-function mulinit(V, WT, Q, Pₖ, X_stride, r, mask_expr, inline_expr, pfA_1, X_transposed = false)
-    q_load_expr = :(@nexprs $Q q -> vA_q = vload($V, pA + $WT*(q-1)))
-    if X_transposed
-        X_load_expr = :(pX + (p-1))
+function mulinit(
+    kernel::DynamicKernel, mask_expr::Union{Symbol,Unsigned} = 0x00, force_inline::Bool = false, mask_ops::Bool = true
+)
+    @unpack T, R, C, stride_X, X_transposed, negative = kernel
+    W = VectorizationBase.pick_vector_width(kernel.R, T)
+    V = Vec{W,T}
+    size_T = sizeof(T)::Int
+    q = force_inline ? quote $(Expr(:meta,:inline)) end : quote end
+    Riter, Rrem = reps_and_rem(kernel)
+    if mask_expr isa Symbol
+        mask_ops = true
+        Riterl = Riter - 1
     else
-        X_load_expr = :(pX + (p-1)*$X_stride)
+        mask_ops &= Rrem > 0
+        Riterl = mask_ops ? Riter : Riter - 1
     end
-    q = quote
-        $q_load_expr
-        @nexprs $Pₖ p -> begin
-            vX = vbroadcast($V, VectorizationBase.load($X_load_expr))
-            @nexprs $Q q -> Dx_q_p = SIMDPirates.vmul(vA_q, vX)
+    if negative
+        for c ∈ 0:C-1, r ∈ 0:Riterl
+            push!(q.args, :($(Symbol(:vD_,r,:_,c)) = SIMDPirates.vbroadcast($V, zero($T))))
+        end
+        return q
+    end
+    Xsym = :vX_0
+    push!(q.args, :($Xsym = vbroadcast($V, pX)))
+    for r ∈ 0:Riterl
+        if mask_ops && r == Riterl
+            push!(q.args, Expr(:(=), Symbol(:vA_,r), :(vload($V, pA + $size_T*$W*$r, $mask_expr))))
+        else
+            push!(q.args, Expr(:(=), Symbol(:vA_,r), :(vload($V, pA + $size_T*$W*$r))))
         end
     end
-    inline_expr == :nothing || pushfirst!(q.args, inline_expr)
-    pfA_1 == :nothing || push!(q.args, pfA_1)
+    for c ∈ 1:C
+        for r ∈ 0:Riterl
+            Dsym = Symbol(:vD_,r,:_,c-1); Asym = Symbol(:vA_,r)
+            push!(q.args, :($Dsym = vmul($Asym, $Xsym)))
+        end
+        Xsym = Symbol(:vX_,c)
+        c < C && push!(q.args, :($Xsym = vbroadcast($V, pX + $size_T*$(X_transposed ? c : :($c*$stride_X)  ) )))
+    end
     q
-
 end
-function gemminit(V, WT, Q, Pₖ, D_stride, r, mask_expr, inline_expr, X_transposed = false)
-    if r == 0
-        expr = quote
-            @nexprs $Pₖ p -> @nexprs $Q q -> Dx_q_p = vload($V, pD + $WT*(q-1) + $D_stride*(p-1))
-        end
+function gemminit(
+    kernel::DynamicKernel, mask_expr::Union{Symbol,Unsigned} = 0x00, force_inline::Bool = false, mask_ops::Bool = true
+)
+    @unpack T, R, C, stride_X = kernel
+    W = VectorizationBase.pick_vector_width(kernel.R, T)
+    V = Vec{W,T}
+    size_T = sizeof(T)
+    q = force_inline ? quote $(Expr(:meta,:inline)) end : quote end
+    Riter, Rrem = reps_and_rem(kernel)
+    if mask_expr isa Symbol
+        mask_ops = true
+        Riterl = Riter - 1
     else
-        expr = quote
-            @nexprs $(Pₖ-1) p -> @nexprs $Q q -> Dx_q_p = vload($V, pD + $WT*(q-1) + $D_stride*(p-1))
-        end
-        for q ∈ 1:Q-1
-            push!(expr.args, :($(Symbol(:Dx_,q,:_,Pₖ)) = vload($V, pD + $(WT*(q-1) + D_stride*(Pₖ-1)))))
-        end
-        push!(expr.args, :($(Symbol(:Dx_,Q,:_,Pₖ)) = vload($V, pD + $(WT*(Q-1) + D_stride*(Pₖ-1)),$mask_expr)))
+        mask_ops &= Rrem > 0
+        Riterl = mask_ops ? Riter : Riter - 1
     end
-    inline_expr == :nothing || pushfirst!(expr.args, inline_expr)
-    expr
-end
-function create_mask(W, r)
-    if W <= 8
-        mask = :(UInt8($(UInt8(2)^r-UInt8(1))))
-    elseif W <= 16
-        mask = :(UInt16($(UInt16(2)^r-UInt16(1))))
-    elseif W <= 32
-        mask = :(UInt32($(UInt32(2)^r-UInt32(1))))
-    elseif W <= 64
-        mask = :(UInt64($(UInt64(2)^r-UInt64(1))))
-    else #W <= 128
-        mask = :(UInt128($(UInt128(2)^r-UInt128(1))))
+    for c ∈ 0:C-1
+        for r ∈ 0:Riterl
+            Dsym = Symbol(:vD_,r,:_,c)
+            Dpointer = :(pD + $size_T * ($W*$r + $stride_D*$c))
+            if mask_ops && r == Riterl && c == C - 1
+                push!(q.args, :($Dsym = vload($V, $Dpointer, $mask_expr)))
+            else
+                push!(q.args, :($Dsym = vload($V, $Dpointer)))
+            end
+        end
     end
-    mask
+    q
 end
-using Core.Intrinsics: llvmcall
 
-struct PrefetchA
-    A::Int
-end
-struct PrefetchX
-    X::Int
-end
-struct PrefetchAX
-    A::Int
-    X::Int
-end
-prefetch_A(::Any, ::Any, ::Any, ::Any)    = (nothing, nothing, nothing)
-prefetch_X(::Any, ::Any, ::Any, ::Any, ::Any)    = (nothing, nothing, nothing, nothing)
-function prefetch_A(::Type{PF}, N, Qₚ, AD_stride) where {PF <: Union{PrefetchA, PrefetchAX}}
-    (
-        :(@nexprs $Qₚ q -> prefetch(pA + (pf.A + $(VectorizationBase.CACHELINE_SIZE))*(q-1), Val(3), Val(0))),
-        :(@nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $(VectorizationBase.CACHELINE_SIZE)*(q-1), Val(3), Val(0))),
-        :(@nexprs $Qₚ q -> prefetch(pA + pf.A + $((N-1)*AD_stride) + $(VectorizationBase.CACHELINE_SIZE)*(q-1), Val(3), Val(0)))
-    )
-end
-function prefetch_X(::Type{PF}, N, Pₖ, X_stride, T_size) where {PF <: Union{PrefetchA, PrefetchAX}}
-    (
-        :(@nexprs $Pₖ p -> prefetch(pX + pf.X + (p-1)*$X_stride, Val(3), Val(0))),
-        :(@nexprs $Pₖ p -> prefetch(pX + pf.X + n₁*$T_size + (p-1)*$X_stride, Val(3), Val(0))),
-        :(prefetch(pX + pf.X + $(N*T_size) + (p-1)*$X_stride, Val(3), Val(0))),
-        :(prefetch(pX + pf.X + $(N*T_size + (Pₖ-1)*X_stride), Val(3), Val(0)))
-    )
-end
+
+# using Core.Intrinsics: llvmcall
+# struct PrefetchA
+    # A::Int
+# end
+# struct PrefetchX
+    # X::Int
+# end
+# struct PrefetchAX
+    # A::Int
+    # X::Int
+# end
+# prefetch_A(::Any, ::Any, ::Any, ::Any)    = (nothing, nothing, nothing)
+# prefetch_X(::Any, ::Any, ::Any, ::Any, ::Any)    = (nothing, nothing, nothing, nothing)
+# function prefetch_A(::Type{PF}, N, Qₚ, AD_stride) where {PF <: Union{PrefetchA, PrefetchAX}}
+    # (
+        # :(@nexprs $Qₚ q -> prefetch(pA + (pf.A + $(VectorizationBase.CACHELINE_SIZE))*(q-1), Val(3), Val(0))),
+        # :(@nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $(VectorizationBase.CACHELINE_SIZE)*(q-1), Val(3), Val(0))),
+        # :(@nexprs $Qₚ q -> prefetch(pA + pf.A + $((N-1)*AD_stride) + $(VectorizationBase.CACHELINE_SIZE)*(q-1), Val(3), Val(0)))
+    # )
+# end
+# function prefetch_X(::Type{PF}, N, Pₖ, X_stride, T_size) where {PF <: Union{PrefetchA, PrefetchAX}}
+    # (
+        # :(@nexprs $Pₖ p -> prefetch(pX + pf.X + (p-1)*$X_stride, Val(3), Val(0))),
+        # :(@nexprs $Pₖ p -> prefetch(pX + pf.X + n₁*$T_size + (p-1)*$X_stride, Val(3), Val(0))),
+        # :(prefetch(pX + pf.X + $(N*T_size) + (p-1)*$X_stride, Val(3), Val(0))),
+        # :(prefetch(pX + pf.X + $(N*T_size + (Pₖ-1)*X_stride), Val(3), Val(0)))
+    # )
+# end
+
+
 
 # Base.:+(ptr::Ptr, offset::Prefetch) = ptr + offset.offset
 # Base.:+(offset::Prefetch, ptr::Ptr) = ptr + offset.offset
 
 # args are address, read/write, locality, cache type
 
+# """
+# prefetch(address, Val(Locality), Val(ReadOrWrite))
+# Locality gives locality of the prefetch.
+# Read = 0, write = 1.
+
+# From LLVM documentation:
+
+# address is the address to be prefetched, rw is the specifier
+# determining if the fetch should be for a read (0) or write (1),
+# and locality is a temporal locality specifier ranging
+# from (0) - no locality, to (3) - extremely local keep in cache.
+# The cache type specifies whether the prefetch is performed on
+# the data (1) or instruction (0) cache. The rw, locality and
+# cache type arguments must be constant integers.
+# """
+# @generated function prefetch(address, ::Val{Locality} = Val(1), ::Val{RorW} = Val(0)) where {Locality, RorW}
+    # prefetch_call_string = """%addr = inttoptr i64 %0 to i8*
+    # call void @llvm.prefetch(i8* %addr, i32 $RorW, i32 $Locality, i32 1)
+    # ret void"""
+    # quote
+        # $(Expr(:meta, :inline))
+        # llvmcall(("declare void @llvm.prefetch(i8* , i32 , i32 , i32 )",
+        # $prefetch_call_string), Cvoid, Tuple{Ptr{Cvoid}}, address)
+    # end
+# end
+
 """
-prefetch(address, Val(Locality), Val(ReadOrWrite))
-Locality gives locality of the prefetch.
-Read = 0, write = 1.
 
-From LLVM documentation:
+pD, pA, and pX must be defined as Ptr{T}.
+Similarly, to use a runtime mask, it must be named `__mask__`, and the expression to define it must be placed somewhere.
 
-address is the address to be prefetched, rw is the specifier
-determining if the fetch should be for a read (0) or write (1),
-and locality is a temporal locality specifier ranging
-from (0) - no locality, to (3) - extremely local keep in cache.
-The cache type specifies whether the prefetch is performed on
-the data (1) or instruction (0) cache. The rw, locality and
-cache type arguments must be constant integers.
 """
-@generated function prefetch(address, ::Val{Locality} = Val(1), ::Val{RorW} = Val(0)) where {Locality, RorW}
-    prefetch_call_string = """%addr = inttoptr i64 %0 to i8*
-    call void @llvm.prefetch(i8* %addr, i32 $RorW, i32 $Locality, i32 1)
-    ret void"""
-    quote
-        $(Expr(:meta, :inline))
-        llvmcall(("declare void @llvm.prefetch(i8* , i32 , i32 , i32 )",
-        $prefetch_call_string), Cvoid, Tuple{Ptr{Cvoid}}, address)
+function kernel_quote(kernel::DynamicKernel; init::Bool = true, force_inline::Bool = true, mask_ops::Bool = true, runtime_mask::Bool = false)
+    @unpack R, C, N, T, stride_D, stride_A, stride_X, X_transposed, negative = kernel
+    size_T = sizeof(T)
+    W, Wshift = VectorizationBase.pick_vector_width_shift(R, T)
+    Wm1 = W - 1
+    Riter = R >>> Wshift
+    rem = R & Wm1
+    if runtime_mask == true
+        Riterl = Riter - 1
+        mask_ops = true
+        mask = :__mask__
+    else
+        Riterl = rem > 0 ? Riter : Riter - 1
+        mask_ops &= (rem > 0)
+        mask = VectorizationBase.mask(T, rem)
     end
-end
-
-function kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,init,inline = true, pf = nothing, stride_D = stride_A)
-    T_size = sizeof(T)
-    A_stride = stride_A * T_size
-    D_stride = stride_D * T_size
-    X_stride = stride_X * T_size
-    W = VectorizationBase.REGISTER_SIZE ÷ T_size
-    while W >= 2Mₖ
-        W >>= 1
-    end
-    WT = W * T_size
-    Q, r = divrem(Mₖ, W) #In case Mₖ is not a multiple of W
-
     V = Vec{W,T}
-    if r == 0
-        mask = create_mask(W, 0)
-        A_load_expr = :(@nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1)))
-        D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $D_stride*(p-1), Dx_q_p))
-        D_store2 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $(D_stride*(Pₖ-1)),$(Symbol(:Dx_q,:_,Pₖ))))
+    n = gensym(:n)
+    A_load_expr = quote $([Expr(:(=), Symbol(:vA_,r), :(vload($V, pA + $size_T*($W*$r + $n*$stride_A)))) for r ∈ 0:Riterl]...) end
+    if mask_ops
+        A_load_expr_mask = quote $([Expr(:(=), Symbol(:vA_,r), :(vload($V, pA + $size_T*($W*$r + $n*$stride_A)))) for r ∈ 0:Riter]...) end
+        push!(A_load_expr_mask.args, Expr(:(=), Symbol(:vA_,Riterl), :(vload($V, pA + $size_T*($W*$Riterl + $n*$stride_A),$mask))))
     else
-        mask = create_mask(W, r)
-        if Q == 0
-            Q = 1
-            A_load_expr = :($(Symbol(:vA_, Q)) = vload($V, pA + $((N-1)*A_stride) + $(WT*(Q-1)), $mask))
-        else
-            A_load_expr = quote
-                @nexprs $Q q -> vA_q = vload($V, pA + $((N-1)*A_stride) + $WT*(q-1))
-            end
-            Q += 1
-            push!(A_load_expr.args, :($(Symbol(:vA_, Q)) = vload($V, pA + $((N-1)*A_stride) + $(WT*(Q-1)), $mask)))
-        end
-
-        # D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $A_stride*(p-1), Dx_q_p))
-        D_store1 = quote
-            @nexprs $(Q-1) q -> vstore!(pD + $WT*(q-1) + $A_stride*(p-1), Dx_q_p)
-            vstore!(pD + $(WT*(Q-1)) + $D_stride*(p-1), $(Symbol(:Dx_, Q, :_p)), $mask)
-        end
-        
-        # if stride_D == Mₖ
-            # if stride_D == Mₖ, successive stores will overwrite the trailing elements from previous
-            # stores. Therefore, we only have to mask the last store.
-        D_store2 = quote
-            @nexprs $(Q-1) q -> vstore!(pD + $WT*(q-1) + $(A_stride*(Pₖ-1)), $(Symbol(:Dx_q_,Pₖ)))
-            vstore!(pD + $(WT*(Q-1) + D_stride*(Pₖ-1)), $(Symbol(:Dx_, Q, :_, Pₖ)), $mask)
-        end
-        # else
-        #     # Otherwise, we mask every store.
-        #     D_store2 = quote
-        #         @nexprs $Q q -> vstore!(pD + $WT*(q-1) + $(A_stride*(Pₖ-1)), $(Symbol(:Dx_q_,Pₖ)), $mask)
-        #     end
-        # end
+        A_load_expr_mask = A_load_expr
     end
-    C = min(VectorizationBase.CACHELINE_SIZE ÷ T_size,N)
-    Qₚ = cld(Mₖ, C)
-    # Check whether we are prefetching A and/or X.
-    pfA_1, pfA_2, pfA_3 = prefetch_A(pf, N, Qₚ, A_stride)
-    pfX_1, pfX_2, pfX_3, pfX_4 = prefetch_X(pf, N, Pₖ, X_stride, T_size)
-    inline_expr = inline ? Expr(:meta, :inline) : :(nothing)
-    if init
-        q = mulinit(V, WT, Q, Pₖ, X_stride, r, mask, inline_expr, pfA_1)
+    D_store_expr = quote end
+    for c ∈ 0:C-1
+        for r ∈ 0:Riterl
+            if mask_ops && r == Riterl
+                push!(D_store_expr.args, :(vstore!(pD + $size_T*($W*$r + $stride_D*$c), $(Symbol(:vD_,r,:_,c)), $mask)))
+            else
+                push!(D_store_expr.args, :(vstore!(pD + $size_T*($W*$r + $stride_D*$c), $(Symbol(:vD_,r,:_,c)))))
+            end
+        end
+    end
+    # Not bothering with prefetching for now
+    q = if init
+        mulinit(kernel, mask, force_inline, mask_ops)
     else
-        q = gemminit(V, WT, Q, Pₖ, A_stride, r, mask, inline_expr)
+        gemminit(kernel, mask, force_inline, mask_ops)
     end
+    loop_iter_sub = mask_ops ? 2 : 1
+    max_loop_iter = N isa Int ? N - loop_iter_sub : :($N - $loop_iter_sub)
+    min_loop_iter = Int(init & !negative) # only 1 if we're using mulinit without calculating the negative product
 
-    if pfX_1 === nothing
-        push!(q.args,
-        quote
-            for n ∈ $(Int(init)):$(r == 0 ? N-1 : N-2 )
-                @nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1))
-                @nexprs $Pₖ p -> begin
-                    vX = vbroadcast($V, VectorizationBase.load(pX + n*$T_size + (p-1)*$X_stride))
-                    @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
-                end
-                $pfA_2
-                # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$A_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
-            end
-        end)
-        if r > 0
-            push!(q.args,
-            quote
-                $A_load_expr
-                @nexprs $Pₖ p -> begin
-                    vX = vbroadcast($V, VectorizationBase.load(pX + $((N-1)*T_size) + (p-1)*$X_stride))
-                    @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
-                end
-                $pfA_3
-                @nexprs $(Pₖ-1) p -> $D_store1
-                $D_store2
-                # @nexprs $(Pₖ-1) p -> $D_store2
-                nothing
-            end )
-        else
-            push!(q.args,
-            quote
-                @nexprs $Pₖ p -> $D_store1
-                nothing
-            end)
+    f = negative ? :vfnmadd : :vmuladd
+    
+    mul_q = quote end
+    Xsym = :vX_0
+    for c ∈ 1:C
+        for r ∈ 0:Riterl
+            Dsym = Symbol(:vD_,r,:_,c-1)
+            Asym = Symbol(:vA_,r)
+            push!(mul_q.args, :($Dsym = SIMDPirates.$f($Asym, $Xsym, $Dsym)))
         end
-    else
-        push!(q.args,
-        quote
-            # @nexprs $Qₚ q -> prefetch(pA + pf.A + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
-            for n ∈ $(Int(init)):$(C-1)
-                @nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1))
-                @nexprs $Pₖ p -> begin
-                    vX = vbroadcast($V, VectorizationBase.load(pX + n*$T_size + (p-1)*$X_stride))
-                    @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
-                end
-                $pfA_2
-                # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$A_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
-            end
-            # @nexprs $Pₖ p -> prefetch(pX + pf.X + (p-1)*$X_stride, Val(3), Val(0))
-            $pfX_1
-        end)
-        if (N - (N % C) == N) && (r > 0)
-            C_upper_bound = N - 2C
-            must_finish_iter = true
-            remaining_iterations = N-2C+1:N-C-1
-        else
-            C_upper_bound = N - C
-            must_finish_iter = N - (N % C) < (r == 0 ? N-1 : N-2 )
-            remaining_iterations = (N - (N % C)):(r == 0 ? N-1 : N-2 )
+        if c < C
+            Xsym = Symbol(:vX_,c)
+            X_linear_index = X_transposed ? :($c + $n*$stride_X) : :($n + $c*$stride_X)
+            push!(mul_q.args, :($Xsym = SIMDPirates.vbroadcast($V, pX + $size_T * ($X_linear_index))))
         end
-        push!(q.args,
-        quote
-            for n₁ ∈ $C:$C:$C_upper_bound
-                for n ∈ n₁:n₁+$(C-1)
-                    @nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1))
-                    @nexprs $Pₖ p -> begin
-                        vX = vbroadcast($V, VectorizationBase.load(pX + n*$T_size + (p-1)*$X_stride))
-                        @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
-                    end
-                    $pfA_2
-                    # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$A_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
-                end
-                # @nexprs $Pₖ p -> prefetch(pX + pf.X + n₁*$T_size + (p-1)*$X_stride, Val(3), Val(0))
-                $pfX_2
-            end
-        end)
-        if must_finish_iter
-            push!(q.args,
-            quote
-                for n ∈ $remaining_iterations
-                    @nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1))
-                    @nexprs $Pₖ p -> begin
-                        vX = vbroadcast($V, VectorizationBase.load(pX + n*$T_size + (p-1)*$X_stride))
-                        @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
-                    end
-                    $pfA_2
-                    # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$A_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
-                end
-            end)
-        end
-        if r > 0
-            push!(q.args,
-            quote
-                $A_load_expr
-                @nexprs $Pₖ p -> begin
-                    vX = vbroadcast($V, VectorizationBase.load(pX + $((N-1)*T_size) + (p-1)*$X_stride))
-                    @nexprs $Q q -> Dx_q_p = vmuladd(vA_q, vX, Dx_q_p)
-                end
-                $pfA_3
-            end )
-        end
-
-        push!(q.args,
-        quote
-            @nexprs $(Pₖ-1) p -> begin
-                # prefetch(pX + pf.X + $(N*T_size) + (p-1)*$X_stride, Val(3), Val(0))
-                $pfX_3
-                $D_store1
-                # $D_store2
-            end
-            $pfX_4
-            $D_store2
-            nothing
-        end)
     end
+    loop_quote = quote
+        for $n ∈ $min_loop_iter:$max_loop_iter
+            vX_0 = SIMDPirates.vbroadcast($V, pX + $size_T * $(X_transposed ? :($n * $stride_X) : n))
+            $A_load_expr
+            $mul_q
+        end
+    end
+    push!(q.args, loop_quote)
+    if mask_ops
+        final_n = N isa Int ? N - 1 : :($N-1)
+        masked_iter_quote = quote
+            $n = $final_n
+            vX_0 = SIMDPirates.vbroadcast($V, pX + $size_T * $(X_transposed ? :($final_n * $stride_X) : final_n))
+            $A_load_expr_mask
+            $mul_q
+        end
+        push!(q.args, masked_iter_quote)
+    end
+    push!(q.args, D_store_expr)
     q
 end
 
-@generated function kernel!(
-    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}
-) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T}
-    kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,false,true,nothing,stride_D)
-end
 
-@generated function initkernel!(
-    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, K::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}
-) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T}
-    kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,true,true,nothing,stride_D)
-end
-
-@generated function kernel!(
-    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N},::Val{PF}
-) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T,PF}
-    kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,false,true,PF,stride_D)
-end
-
-@generated function initkernel!(
-    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, K::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N},::Val{PF}
-) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T,PF}
-    kernel_quote(Mₖ,Pₖ,stride_A,stride_X,N,T,true,true,PF,stride_D)
-end
-
-
-
-"""
-quote for
-    D (+)= A * X'
-"""
-function kernel_nt_quote(Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T,init,inline = false, pf = nothing; negative::Bool = false)
-    T_size = sizeof(T)
-    A_stride = stride_A * T_size
-    D_stride = stride_D * T_size
-    X_stride = stride_X * T_size
-    W = VectorizationBase.REGISTER_SIZE ÷ T_size
-    while W >= 2Mₖ
-        W >>= 1
-    end
-    WT = W * T_size
-    Q, r = divrem(Mₖ, W) #Assuming Mₖ is a multiple of W
-    V = Vec{W,T}
-    f = negative ? :(SIMDPirates.vfnmadd) : :(SIMDPirates.vmuladd)
-    if r == 0
-        mask = create_mask(W, 0)
-        A_load_expr = :(@nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1)))
-        D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $D_stride*(p-1), Dx_q_p))
-        D_store2 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $(D_stride*(Pₖ-1)),$(Symbol(:Dx_q_,Pₖ))))
-    else
-        mask = create_mask(W, r)
-        if Q == 0
-            Q = 1
-            A_load_expr = :($(Symbol(:vA_, Q)) = vload($V, pA + $((N-1)*A_stride) + $(WT*(Q-1)), $mask))
-        else
-            A_load_expr = quote
-                @nexprs $Q q -> vA_q = vload($V, pA + $((N-1)*A_stride) + $WT*(q-1))
-            end
-            Q += 1
-            push!(A_load_expr.args, :($(Symbol(:vA_, Q)) = vload($V, pA + $((N-1)*A_stride) + $(WT*(Q-1)), $mask)))
-        end
-
-        D_store1 = :(@nexprs $Q q -> vstore!(pD + $WT*(q-1) + $D_stride*(p-1), Dx_q_p))
-        D_store2 = quote
-            @nexprs $(Q-1) q -> vstore!(pD + $WT*(q-1) + $(D_stride*(Pₖ-1)), $(Symbol(:Dx_q_,Pₖ)))
-            vstore!(pD + $(WT*(Q-1) + D_stride*(Pₖ-1)), $(Symbol(:Dx_, Q, :_, Pₖ)), $mask)
-        end
-    end
-    C = min(VectorizationBase.CACHELINE_SIZE ÷ T_size,N)
-    Qₚ = cld(Mₖ, C)
-    # Check whether we are prefetching A and/or X.
-    pfA_1, pfA_2, pfA_3 = prefetch_A(pf, N, Qₚ, A_stride)
-    pfX_1, pfX_2, pfX_3, pfX_4 = prefetch_X(pf, N, Pₖ, X_stride, T_size)
-    inline_expr = inline ? Expr(:meta, :inline) : :(nothing)
-    if init
-        # q = mulinit(V, WT, Q, Pₖ, X_stride, r, mask, inline_expr, pfA_1)
-        if negative
-            q = quote
-                @nexprs $Pₖ p -> @nexprs $Q q -> Dx_q_p = vbroadcast($V, zero($T))
-            end
-        else
-            q = quote
-                @nexprs $Q q -> vA_q = vload($V, pA + $WT*(q-1))
-                @nexprs $Pₖ p -> begin
-                    vX = vbroadcast($V, VectorizationBase.load(pX + (p-1)*$T_size))
-                    @nexprs $Q q -> Dx_q_p = vmul(vA_q, vX)
-                end
-            end
-        end
-        nstart = negative ? 0 : 1
-    else
-        q = gemminit(V, WT, Q, Pₖ, D_stride, r, mask, inline_expr)
-        nstart = 0
-    end
-
-    if pfX_1 === nothing
-        push!(q.args,
-        quote
-            for n ∈ $nstart:$(r == 0 ? N-1 : N-2 )
-                @nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1))
-                @nexprs $Pₖ p -> begin
-                    vX = vbroadcast($V, VectorizationBase.load(pX + n*$X_stride + (p-1)*$T_size))
-                    @nexprs $Q q -> Dx_q_p = $f(vA_q, vX, Dx_q_p)
-                end
-                $pfA_2
-                # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
-            end
-        end)
-        if r > 0
-            push!(q.args,
-            quote
-                $A_load_expr
-                @nexprs $Pₖ p -> begin
-                    vX = vbroadcast($V, VectorizationBase.load(pX + $((N-1)*X_stride) + (p-1)*$T_size))
-                    @nexprs $Q q -> Dx_q_p = $f(vA_q, vX, Dx_q_p)
-                end
-                $pfA_3
-                @nexprs $Pₖ p -> $D_store1
-                nothing
-            end )
-        else
-            push!(q.args,
-            quote
-                @nexprs $(Pₖ-1) p -> $D_store1
-                $D_store2
-                nothing
-            end)
-        end
-    else
-        push!(q.args,
-        quote
-            # @nexprs $Qₚ q -> prefetch(pA + pf.A + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
-            for n ∈ $nstart:$(C-1)
-                @nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1))
-                @nexprs $Pₖ p -> begin
-                    vX = vbroadcast($V, VectorizationBase.load(pX + n*$X_stride + (p-1)*$T_size))
-                    @nexprs $Q q -> Dx_q_p = $f(vA_q, vX, Dx_q_p)
-                end
-                $pfA_2
-                # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
-            end
-            # @nexprs $Pₖ p -> prefetch(pX + pf.X + (p-1)*$X_stride, Val(3), Val(0))
-            $pfX_1
-        end)
-        if (N - (N % C) == N) && (r > 0)
-            C_upper_bound = N - 2C
-            must_finish_iter = true
-            remaining_iterations = N-2C+1:N-C-1
-        else
-            C_upper_bound = N - C
-            must_finish_iter = N - (N % C) < (r == 0 ? N-1 : N-2 )
-            remaining_iterations = (N - (N % C)):(r == 0 ? N-1 : N-2 )
-        end
-        push!(q.args,
-        quote
-            for n₁ ∈ $C:$C:$C_upper_bound
-                for n ∈ n₁:n₁+$(C-1)
-                    @nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1))
-                    @nexprs $Pₖ p -> begin
-                        vX = vbroadcast($V, VectorizationBase.load(pX + n*$X_stride + (p-1)*$T_size))
-                        @nexprs $Q q -> Dx_q_p = $f(vA_q, vX, Dx_q_p)
-                    end
-                    $pfA_2
-                    # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
-                end
-                # @nexprs $Pₖ p -> prefetch(pX + pf.X + n₁*$T_size + (p-1)*$X_stride, Val(3), Val(0))
-                $pfX_2
-            end
-        end)
-        if must_finish_iter
-            push!(q.args,
-            quote
-                for n ∈ $remaining_iterations
-                    @nexprs $Q q -> vA_q = vload($V, pA + n*$A_stride + $WT*(q-1))
-                    @nexprs $Pₖ p -> begin
-                        vX = vbroadcast($V, VectorizationBase.load(pX + n*$X_stride + (p-1)*$T_size))
-                        @nexprs $Q q -> Dx_q_p = $f(vA_q, vX, Dx_q_p)
-                    end
-                    $pfA_2
-                    # @nexprs $Qₚ q -> prefetch(pA + pf.A + n*$AD_stride + $CACHELINE_SIZE*(q-1), Val(3), Val(0))
-                end
-            end)
-        end
-        if r > 0
-            push!(q.args,
-            quote
-                $A_load_expr
-                @nexprs $Pₖ p -> begin
-                    vX = vbroadcast($V, VectorizationBase.load(pX + $((N-1)*X_stride) + (p-1)*$T_size))
-                    @nexprs $Q q -> Dx_q_p = $f(vA_q, vX, Dx_q_p)
-                end
-                $pfA_3
-            end )
-        end
-
-        push!(q.args,
-        quote
-            @nexprs $(Pₖ-1) p -> begin
-                # prefetch(pX + pf.X + $(N*T_size) + (p-1)*$X_stride, Val(3), Val(0))
-                $pfX_3
-                $D_store1
-            end
-            $pfX_4
-            $D_store2
-            nothing
-        end)
-    end
-    q
-end
-
-@generated function kernel_nt!(pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T}
-    kernel_nt_quote(Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T,false,true,stride_D)
-end
-
-@generated function initkernel_nt!(pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, K::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T}
-    kernel_nt_quote(Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T,true,true,stride_D)
-end
 
 function kernel_tn_quote(Mₖ,Pₖ,stride_A,stride_X,stride_D,N::Union{Int,Symbol},T,init,inline = false, Asym = :pA, Xsym = :pX, Dsym = :pD, d_isa_ptr = true; negative::Bool = false)
     if N isa Symbol
@@ -938,9 +675,198 @@ function kernel_tn_quote(Mₖ,Pₖ,stride_A,stride_X,stride_D,N::Union{Int,Symbo
     inline && pushfirst!(q.args, Expr(:meta,:inline))
     q
 end
-@generated function kernel_tn!(pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}) where {T,Mₖ,Pₖ,stride_A,stride_X,stride_D,N}
+
+@specialize
+
+@generated function kernel!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}
+) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T}
+    kernel = DynamicKernel(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = false
+    )
+    kernel_quote(kernel, init = false, force_inline = false, mask_ops = true, runtime_mask = false)
+end
+
+@generated function initkernel!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}
+) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T}
+    kernel = DynamicKernel(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = false
+    )
+    kernel_quote(kernel, init = true, force_inline = false, mask_ops = true, runtime_mask = false)
+end
+@generated function kernel_nt!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}
+) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T}
+    kernel = DynamicKernel(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = true
+    )
+    kernel_quote(kernel, init = false, force_inline = false, mask_ops = true, runtime_mask = false)
+end
+
+@generated function initkernel_nt!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}
+) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T}
+    kernel = DynamicKernel(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = true
+    )
+    kernel_quote(kernel, init = true, force_inline = false, mask_ops = true, runtime_mask = false)
+end
+
+@generated function initkernel_tn!(pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}) where {T,Mₖ,Pₖ,stride_A,stride_X,stride_D,N}
+    kernel_tn_quote(Mₖ, Pₖ, stride_A, stride_X, stride_D, N, T, true, false, :pA, :pX, :pD)
+end
+
+@generated function kernel!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, kernel::DKernel{Mₖ,Pₖ}
+) where {Mₖ,Pₖ,T}
+    kernel = DynamicKernel(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = false
+    )
+    kq = kernel_quote(kernel, init = false, force_inline = false, mask_ops = true, runtime_mask = false)
+    quote
+        @unpack N,stride_D,stride_A,stride_X = kernel
+        $kq
+    end
+end
+
+@generated function initkernel!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, kernel::DKernel{Mₖ,Pₖ}
+) where {Mₖ,Pₖ,T}
+    kernelq = DynamicKernel(
+        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, T, X_transposed = false
+    )
+    kq = kernel_quote(kernelq, init = true, force_inline = false, mask_ops = true, runtime_mask = false)
+    quote
+        @unpack N,stride_D,stride_A,stride_X = kernel
+        $kq
+    end
+end
+@generated function kernel_nt!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, kernel::DKernel{Mₖ,Pₖ}
+) where {Mₖ,Pₖ,T}
+    kernelq = DynamicKernel(
+        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, T, X_transposed = true
+    )
+    kq = kernel_quote(kernelq, init = false, force_inline = false, mask_ops = true, runtime_mask = false)
+    quote
+        @unpack N,stride_D,stride_A,stride_X = kernel
+        $kq
+    end
+end
+
+@generated function initkernel_nt!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, kernel::DKernel{Mₖ,Pₖ}
+) where {Mₖ,Pₖ,T}
+    kernelq = DynamicKernel(
+        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, T, X_transposed = true
+    )
+    kq = kernel_quote(kernelq, init = true, force_inline = false, mask_ops = true, runtime_mask = false)
+    quote
+        @unpack N,stride_D,stride_A,stride_X = kernel
+        $kq
+    end
+end
+@generated function kernel!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, kernel::DKernel{Mₖ,Pₖ}, __mask__::Unsigned
+) where {Mₖ,Pₖ,T}
+    kernelq = DynamicKernel(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = false
+    )
+    kq = kernel_quote(kernelq, init = false, force_inline = false, mask_ops = true, runtime_mask = true)
+    quote
+        @unpack N,stride_D,stride_A,stride_X = kernel
+        $kq
+    end
+end
+
+@generated function initkernel!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, kernel::DKernel{Mₖ,Pₖ}, __mask__::Unsigned
+) where {Mₖ,Pₖ,T}
+    kernelq = DynamicKernel(
+        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, T, X_transposed = false
+    )
+    kq = kernel_quote(kernelq, init = true, force_inline = false, mask_ops = true, runtime_mask = true)
+    quote
+        @unpack N,stride_D,stride_A,stride_X = kernel
+        $kq
+    end
+end
+@generated function kernel_nt!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, kernel::DKernel{Mₖ,Pₖ}, __mask__::Unsigned
+) where {Mₖ,Pₖ,T}
+    kernelq = DynamicKernel(
+        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, T, X_transposed = true
+    )
+    kq = kernel_quote(kernelq, init = false, force_inline = false, mask_ops = true, runtime_mask = true)
+    quote
+        @unpack N,stride_D,stride_A,stride_X = kernel
+        $kq
+    end
+end
+
+@generated function initkernel_nt!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, kernel::DKernel{Mₖ,Pₖ}, __mask__::Unsigned
+) where {Mₖ,Pₖ,T}
+    kernelq = DynamicKernel(
+        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, T, X_transposed = true
+    )
+    kq = kernel_quote(kernelq, init = true, force_inline = false, mask_ops = true, runtime_mask = true)
+    quote
+        @unpack N,stride_D,stride_A,stride_X = kernel
+        $kq
+    end
+end
+@generated function initkernel_tn!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, kernel::DKernel{Mₖ,Pₖ}
+) where {T,Mₖ,Pₖ}
+    quote
+        @unpack N,stride_D,stride_A,stride_X = kernel
+        $(kernel_tn_quote(Mₖ, Pₖ, :stride_A, :stride_X, :stride_D, :N, T, true, false, :pA, :pX, :pD))
+    end
+end
+
+
+
+@generated function inline_kernel!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}
+) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T}
+    kernel = DynamicKernel(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = false
+    )
+    kernel_quote(kernel, init = false, force_inline = true, mask_ops = true, runtime_mask = false)
+end
+
+@generated function inline_initkernel!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}
+) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T}
+    kernel = DynamicKernel(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = false
+    )
+    kernel_quote(kernel, init = true, force_inline = true, mask_ops = true, runtime_mask = false)
+end
+@generated function inline_kernel_nt!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}
+) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T}
+    kernel = DynamicKernel(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = true
+    )
+    kernel_quote(kernel, init = false, force_inline = true, mask_ops = true, runtime_mask = false)
+end
+
+@generated function inline_initkernel_nt!(
+    pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}
+) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T}
+    kernel = DynamicKernel(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = true
+    )
+    kernel_quote(kernel, init = true, force_inline = true, mask_ops = true, runtime_mask = false)
+end
+
+@generated function inline_initkernel_tn!(pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}) where {T,Mₖ,Pₖ,stride_A,stride_X,stride_D,N}
     kernel_tn_quote(Mₖ, Pₖ, stride_A, stride_X, stride_D, N, T, true, true, :pA, :pX, :pD)
 end
+
 
 # """
 # num_cols = elements_per_register * ( REGISTER_COUNT - 2 ) / num_rows - 1

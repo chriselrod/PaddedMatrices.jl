@@ -1,10 +1,13 @@
+
+
+
 module PaddedMatrices
 
 using VectorizationBase, SIMDPirates,
-        Base.Cartesian, UnsafeArrays,
-        SLEEFPirates, VectorizedRNG,
-        LoopVectorization, LinearAlgebra,
-        Random, MacroTools
+    SLEEFPirates, VectorizedRNG,
+    LoopVectorization, LinearAlgebra,
+    Random, MacroTools, Parameters,
+    Base.Cartesian
 
 using MacroTools: @capture, prettify, postwalk
 using LoopVectorization: @vvectorize
