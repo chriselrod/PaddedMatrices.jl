@@ -10,47 +10,107 @@ function calculate_L_from_size(S, T)
     end
     P, L
 end
-
-function rand_mutable_fixed_size_expr(L, T, P, randfunc, args...)
+function rand_iter_expr(V, mulwith_B, addto_C, rand_extract_expr, iter_offset, rrepiter = 0)
+    if addto_C == -1 && mulwith_B == -1
+        rem_expr = rand_extract_expr
+    elseif addto_C == -1
+        if mulwith_B == 0
+            rem_expr = :( vmul(vB, $rand_extract_expr) )
+        elseif mulwith_B == 1
+            rem_expr = :( vmul(vload($V, ptr_B + $iter_offset), $rand_extract_expr) )
+        end
+    elseif mulwith_B == -1
+        if addto_C == 0
+            rem_expr = :( vadd(vC, $rand_extract_expr) )
+        elseif addto_C == 1
+            rem_expr = :( vadd(vload($V, ptr_C + $iter_offset), $rand_extract_expr) )
+        end
+    else
+        vB = mulwith_B == 0 ? :vB : Symbol(:vB_, rrepiter)
+        vC = addto_C == 0 ? :vC : Symbol(:vB_, rrepiter)
+        rem_expr = :(vmuladd($vB, $rand_extract_expr, $vC))
+    end
+    rem_expr
+end
+function rand_mutable_fixed_size_expr(L, T, P, randfunc, mulwith_B::Int = -1, addto_C::Int = -1, args...)
     size_T = sizeof(T)
     W, Wshift = VectorizationBase.pick_vector_width_shift(L, T)
+    V = Vec{W,T}
     PW = P*W
     if PW > L
         P = (L+W-1) >> Wshift
         PW = P*W
     end
     nrep, r = divrem(L, PW)
-    float_q = :($randfunc(rng, NTuple{$P,Vec{$W,$T}}, $(args...), VectorizedRNG.RXS_M_XS))
+    float_q = :($randfunc(rng, NTuple{$P,$V}, $(args...), VectorizedRNG.RXS_M_XS))
     store_expr = quote end
-    for p ∈ 1:P
-        push!(store_expr.args, :(@inbounds vstore!(ptr_A + $(sizeof(T)*W) * (i*$(P) + $(p-1)), u[$p])))
+    pointer_quote = quote ptr_A = pointer(A) end
+    if mulwith_B == 1
+        push!(pointer_quote.args, :(ptr_B = pointer(B)))
+        for p ∈ 1:P
+            vB = Symbol(:vB_,p)
+            push!(store_expr.args, :($vB = vload($V, ptr_B + $(sizeof(T)*W) * (i*$(P) + $(p-1)))))
+        end
+    elseif mulwith_B == 0
+        push!(pointer_quote.args, :(vB = vbroadcast($V, B)))
+    end
+    if addto_C == 1
+        push!(pointer_quote.args, :(ptr_C = pointer(C)))
+        for p ∈ 1:P
+            vC = Symbol(:vC_,p)
+            push!(store_expr.args, :($vC = vload($V, ptr_C + $(sizeof(T)*W) * (i*$(P) + $(p-1)))))
+        end
+    elseif addto_C == 0
+        push!(pointer_quote.args, :(vC = vbroadcast($V, C)))
+    end
+    if mulwith_B >= 0 && addto_C >= 0
+        for p ∈ 1:P
+            vB = mulwith_B == 0 ? :vB : Symbol(:vB_,p)
+            vC = addto_C == 0 ? :vC : Symbol(:vC_,p)
+            push!(store_expr.args, :(@inbounds vstore!(ptr_A + $(sizeof(T)*W) * (i*$(P) + $(p-1)), vmuladd($vB, u[$p], $vC))))
+        end
+    elseif mulwith_B >= 0 && addto_C == -1
+        for p ∈ 1:P
+            vB = mulwith_B == 0 ? :vB : Symbol(:vB_,p)
+            push!(store_expr.args, :(@inbounds vstore!(ptr_A + $(sizeof(T)*W) * (i*$(P) + $(p-1)), vmul($vB,u[$p]))))
+        end
+    elseif addto_C == 1 && mulwith_B == -1
+        for p ∈ 1:P
+            vC = addto_C == 0 ? :vC : Symbol(:vC_,p)
+            push!(store_expr.args, :(@inbounds vstore!(ptr_A + $(sizeof(T)*W) * (i*$(P) + $(p-1)), vadd($vC, u[$p]))))
+        end
+    else
+        for p ∈ 1:P
+            push!(store_expr.args, :(@inbounds vstore!(ptr_A + $(sizeof(T)*W) * (i*$(P) + $(p-1)), u[$p])))
+        end
     end
     if nrep > 0
         q = quote
-            ptr_A = pointer(A)
+            $pointer_quote
             for i ∈ 0:$(nrep-1)
                 u = $float_q
                 $store_expr
             end
         end
     else
-        q = quote ptr_A = pointer(A) end
+        q = pointer_quote
     end
     if r > 0
         rrep, rrem = divrem(r, W)
-        if rrem > 0
-            Nremv = rrep + 1
-        else
-            Nremv = rrep
-        end
+        Nremv = rrep + ( rrem > 0 )
         u_sym = gensym(:u_rem)
-        push!(q.args, :($u_sym = $randfunc(rng, NTuple{$Nremv,Vec{$W,$T}}, $(args...))))#VectorizedRNG.RXS_M_XS)))
+        push!(q.args, :($u_sym = $randfunc(rng, NTuple{$Nremv,$V}, $(args...))))#VectorizedRNG.RXS_M_XS)))
         for rrepiter ∈ 0:rrep-1
-            push!(q.args, :( vstore!(ptr_A + $(sizeof(T)*W*(nrep*P + rrepiter)), $u_sym[$(rrepiter+1)]) ))
+            iter_offset = sizeof(T)*W*(nrep*P + rrepiter)
+            rand_extract_expr = :($u_sym[$(rrepiter+1)])
+            rem_expr = rand_iter_expr(V, mulwith_B, addto_C, rand_extract_expr, iter_offset, rrepiter)
+            push!(q.args, :(vstore!(ptr_A + $iter_offset, $rem_expr)))
         end
         if rrem > 0
+            iter_offset = sizeof(T)*W*(nrep*P + rrep)
+            rem_expr = rand_iter_expr(V, mulwith_B, addto_C, :($u_sym[$Nremv]), iter_offset, 0)
             mask = VectorizationBase.mask(T, rrem)
-            push!(q.args, :( vstore!(ptr_A + $(sizeof(T)*W*(nrep*P + rrep)), $u_sym[$Nremv], $mask) ))
+            push!(q.args, :( vstore!(ptr_A + $iter_offset, $rem_expr, $mask) ))
         end
     end
     push!(q.args, :A)
@@ -63,7 +123,7 @@ end
 end
 Random.rand!(A::AbstractMutableFixedSizePaddedArray) = rand!(VectorizedRNG.GLOBAL_vPCG, A)
 @generated function Random.rand!(rng::VectorizedRNG.AbstractPCG{P}, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}, l::T, u::T) where {P,S,T<:Union{Float32,Float64},N,R,L}
-    rand_mutable_fixed_size_expr(L, T, P, :rand, :l, :u)
+    rand_mutable_fixed_size_expr(L, T, P, :rand, -1, -1, :l, :u)
 end
 Random.rand!(A::AbstractMutableFixedSizePaddedArray{S,T}, l::T, u::T) where {S,T} = rand!(VectorizedRNG.GLOBAL_vPCG, A, l, u)
 @generated function Random.rand(rng::VectorizedRNG.AbstractPCG{P}, ::Type{ <: ConstantFixedSizePaddedArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
@@ -78,10 +138,28 @@ function Random.rand(::Type{ <: ConstantFixedSizePaddedArray{S,T}}) where {S,T<:
     rand(VectorizedRNG.GLOBAL_vPCG, ConstantFixedSizePaddedArray{S,T})
 end
 
+# @generated function Random.randn!(rng::VectorizedRNG.AbstractPCG{P}, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {S,P,T<:Union{Float32,Float64},N,R,L}
+#     rand_mutable_fixed_size_expr(L, T, P, :randn)
+# end
 @generated function Random.randn!(rng::VectorizedRNG.AbstractPCG{P}, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {S,P,T<:Union{Float32,Float64},N,R,L}
     rand_mutable_fixed_size_expr(L, T, P, :randn)
 end
-Random.randn!(A::AbstractMutableFixedSizePaddedArray) = randn!(VectorizedRNG.GLOBAL_vPCG, A)
+@generated function Random.randn!(
+    rng::VectorizedRNG.AbstractPCG{P},
+    A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L},
+    B::Union{T,<:AbstractMutableFixedSizePaddedArray{S,T,N,R,L}},
+    C::Union{T,<:AbstractMutableFixedSizePaddedArray{S,T,N,R,L}}
+) where {S,P,T<:Union{Float32,Float64},N,R,L}
+    rand_mutable_fixed_size_expr(L, T, P, :randn, B === T ? 0 : 1, C === T ? 0 : 1)
+end
+@generated function Random.randn!(
+    rng::VectorizedRNG.AbstractPCG{P},
+    A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L},
+    B::Union{T,<:AbstractMutableFixedSizePaddedArray{S,T,N,R,L}}
+) where {S,P,T<:Union{Float32,Float64},N,R,L}
+    rand_mutable_fixed_size_expr(L, T, P, :randn, B === T ? 0 : 1)
+end
+Random.randn!(A::AbstractMutableFixedSizePaddedArray, args...) = randn!(VectorizedRNG.GLOBAL_vPCG, A, args...)
 
 @generated function Random.randn(rng::VectorizedRNG.AbstractPCG{P}, ::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
     N,R,L = calc_NPL(S.parameters, T)
@@ -102,7 +180,8 @@ end
     end
     quote
         $(Expr(:meta,:inline))
-        randn(rng, ConstantFixedSizePaddedArray{$ST,Float64})
+        #randn(rng, ConstantFixedSizePaddedArray{$ST,Float64})
+        randn(rng, MutableFixedSizePaddedArray{$ST,Float64})
     end
 end
 @generated function Random.randn(::Static{S}) where {S}
@@ -113,7 +192,7 @@ end
     end
     quote
         $(Expr(:meta,:inline))
-        randn(VectorizedRNG.GLOBAL_vPCG, ConstantFixedSizePaddedArray{$ST,Float64})
+        randn(VectorizedRNG.GLOBAL_vPCG, MutableFixedSizePaddedArray{$ST,Float64})
     end
 end
 
@@ -121,7 +200,22 @@ end
 @generated function Random.randexp!(rng::VectorizedRNG.AbstractPCG{P}, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {P,S,T<:Union{Float32,Float64},N,R,L}
     rand_mutable_fixed_size_expr(L, T, P, :randexp)
 end
-Random.randexp!(A::AbstractMutableFixedSizePaddedArray) = randexp!(VectorizedRNG.GLOBAL_vPCG, A)
+@generated function Random.randexp!(
+    rng::VectorizedRNG.AbstractPCG{P},
+    A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L},
+    B::Union{T,<:AbstractMutableFixedSizePaddedArray{S,T,N,R,L}},
+    C::Union{T,<:AbstractMutableFixedSizePaddedArray{S,T,N,R,L}}
+) where {P,S,T<:Union{Float32,Float64},N,R,L}
+    rand_mutable_fixed_size_expr(L, T, P, :randexp, B === T ? 0 : 1, C === T ? 0 : 1)
+end
+@generated function Random.randexp!(
+    rng::VectorizedRNG.AbstractPCG{P},
+    A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L},
+    B::Union{T,<:AbstractMutableFixedSizePaddedArray{S,T,N,R,L}}
+) where {P,S,T<:Union{Float32,Float64},N,R,L}
+    rand_mutable_fixed_size_expr(L, T, P, :randexp, B === T ? 0 : 1)
+end
+Random.randexp!(A::AbstractMutableFixedSizePaddedArray, args...) = randexp!(VectorizedRNG.GLOBAL_vPCG, A, args...)
 
 
 @generated function Random.randexp(rng::VectorizedRNG.AbstractPCG{P}, ::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
@@ -136,27 +230,30 @@ function Random.randexp(::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {S,T<
     randexp(VectorizedRNG.GLOBAL_vPCG, ConstantFixedSizePaddedArray{S,T})
 end
 
-function Random.rand(::Type{<: MutableFixedSizePaddedArray{S,T}}) where {S,T}
-    rand!(MutableFixedSizePaddedArray{S,T}(undef))
+function Random.rand(::Type{<: MutableFixedSizePaddedArray{S,T}}, args...) where {S,T}
+    rand!(MutableFixedSizePaddedArray{S,T}(undef), args...)
 end
-function Random.randn(::Type{<: MutableFixedSizePaddedArray{S,T}}) where {S,T}
-    randn!(MutableFixedSizePaddedArray{S,T}(undef))
+function Random.randn(::Type{<: MutableFixedSizePaddedArray{S,T}}, args...) where {S,T}
+    randn!(MutableFixedSizePaddedArray{S,T}(undef), args...)
 end
-function Random.randexp(::Type{<: MutableFixedSizePaddedArray{S,T}}) where {S,T}
-    randexp!(MutableFixedSizePaddedArray{S,T}(undef))
+function Random.randexp(::Type{<: MutableFixedSizePaddedArray{S,T}}, args...) where {S,T}
+    randexp!(MutableFixedSizePaddedArray{S,T}(undef), args...)
 end
-function Random.rand(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}) where {S,T}
-    rand!(rng, MutableFixedSizePaddedArray{S,T}(undef))
+function Random.rand(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}, args...) where {S,T}
+    rand!(rng, MutableFixedSizePaddedArray{S,T}(undef), args...)
 end
-function Random.randn(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}) where {S,T}
-    randn!(rng, MutableFixedSizePaddedArray{S,T}(undef))
+function Random.randn(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}, args...) where {S,T}
+    randn!(rng, MutableFixedSizePaddedArray{S,T}(undef), args...)
 end
-function Random.randexp(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}) where {S,T}
-    randexp!(rng, MutableFixedSizePaddedArray{S,T}(undef))
+function Random.randexp(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}, args...) where {S,T}
+    randexp!(rng, MutableFixedSizePaddedArray{S,T}(undef), args...)
 end
 
-
-function rand_expr(expr, R)
+compatible(::Type{T}, x::T) where {T} = T
+compatible(::Type{T}, x::AbstractArray{T}) where {T} = T
+compatible(::Type{T}, x::AbstractArray) where {T} = convert(Array{T}, x)
+compatible(::Type{T}, x) where {T} = convert(T, x)
+function rand_expr(expr, R, args...)
     # @show expr.args
     N = length(expr.args)
     n = 2
@@ -167,14 +264,20 @@ function rand_expr(expr, R)
     else
         T = Float64
     end
-    return :( $(expr.args[1])( $(R){Tuple{$(esc.(expr.args[n:end])...)}, $T}  )  )
+    return :( $(expr.args[1])( $(R){Tuple{$(esc.(expr.args[n:end])...)}, $T}, $([:(PaddedMatrices.compatible($T,$arg)) for arg in args]...)  )  )
 end
 
-macro Mutable(expr)
+# macro Mutable(expr)
+#     rand_expr(expr, :MutableFixedSizePaddedArray)
+# end
+# macro Constant(expr)
+#     rand_expr(expr, :ConstantFixedSizePaddedArray)
+# end
+
+macro Mutable(expr, args...)
     rand_expr(expr, :MutableFixedSizePaddedArray)
 end
-macro Constant(expr)
+macro Constant(expr, args...)
     rand_expr(expr, :ConstantFixedSizePaddedArray)
 end
-
 
