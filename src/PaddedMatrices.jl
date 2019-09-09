@@ -131,7 +131,7 @@ end
     end
     L
 end
-@generated param_type_length(::AbstractFixedSizePaddedArray{S}) where {S} = prod(SV.parameters)
+@generated param_type_length(::AbstractFixedSizePaddedArray{S}) where {S} = prod(S.parameters)
 @generated param_type_length(::Type{<:AbstractFixedSizePaddedArray{S}}) where {S} = prod(S.parameters)
 @inline is_sized(::Any) = false
 

@@ -11,7 +11,7 @@ function calculate_L_from_size(S, T)
     P, L
 end
 
-function rand_mutable_fixed_size_expr(L, T, P, randfunc)
+function rand_mutable_fixed_size_expr(L, T, P, randfunc, args...)
     size_T = sizeof(T)
     W, Wshift = VectorizationBase.pick_vector_width_shift(L, T)
     PW = P*W
@@ -20,7 +20,7 @@ function rand_mutable_fixed_size_expr(L, T, P, randfunc)
         PW = P*W
     end
     nrep, r = divrem(L, PW)
-    float_q = :($randfunc(rng, NTuple{$P,Vec{$W,$T}}, VectorizedRNG.RXS_M_XS))
+    float_q = :($randfunc(rng, NTuple{$P,Vec{$W,$T}}, $(args...), VectorizedRNG.RXS_M_XS))
     store_expr = quote end
     for p ∈ 1:P
         push!(store_expr.args, :(@inbounds vstore!(ptr_A + $(sizeof(T)*W) * (i*$(P) + $(p-1)), u[$p])))
@@ -44,12 +44,12 @@ function rand_mutable_fixed_size_expr(L, T, P, randfunc)
             Nremv = rrep
         end
         u_sym = gensym(:u_rem)
-        push!(q.args, :($u_sym = $randfunc(rng, NTuple{$Nremv,Vec{$W,$T}}, VectorizedRNG.RXS_M_XS)))
+        push!(q.args, :($u_sym = $randfunc(rng, NTuple{$Nremv,Vec{$W,$T}}, $(args...))))#VectorizedRNG.RXS_M_XS)))
         for rrepiter ∈ 0:rrep-1
             push!(q.args, :( vstore!(ptr_A + $(sizeof(T)*W*(nrep*P + rrepiter)), $u_sym[$(rrepiter+1)]) ))
         end
         if rrem > 0
-            mask = (VectorizationBase.mask_type(W))(2^rrem - 1)
+            mask = VectorizationBase.mask(T, rrem)
             push!(q.args, :( vstore!(ptr_A + $(sizeof(T)*W*(nrep*P + rrep)), $u_sym[$Nremv], $mask) ))
         end
     end
@@ -58,11 +58,15 @@ function rand_mutable_fixed_size_expr(L, T, P, randfunc)
 end
 
 
-@generated function Random.rand!(rng::VectorizedRNG.PCG{P}, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {P,S,T<:Union{Float32,Float64},N,R,L}
+@generated function Random.rand!(rng::VectorizedRNG.AbstractPCG{P}, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {P,S,T<:Union{Float32,Float64},N,R,L}
     rand_mutable_fixed_size_expr(L, T, P, :rand)
 end
 Random.rand!(A::AbstractMutableFixedSizePaddedArray) = rand!(VectorizedRNG.GLOBAL_vPCG, A)
-@generated function Random.rand(rng::VectorizedRNG.PCG{P}, ::Type{ <: ConstantFixedSizePaddedArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
+@generated function Random.rand!(rng::VectorizedRNG.AbstractPCG{P}, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}, l::T, u::T) where {P,S,T<:Union{Float32,Float64},N,R,L}
+    rand_mutable_fixed_size_expr(L, T, P, :rand, :l, :u)
+end
+Random.rand!(A::AbstractMutableFixedSizePaddedArray{S,T}, l::T, u::T) where {S,T} = rand!(VectorizedRNG.GLOBAL_vPCG, A, l, u)
+@generated function Random.rand(rng::VectorizedRNG.AbstractPCG{P}, ::Type{ <: ConstantFixedSizePaddedArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
     N,R,L = calc_NPL(S.parameters, T)
     quote
         A = MutableFixedSizePaddedArray{$S,$T,$N,$R,$L}(undef)
@@ -74,12 +78,12 @@ function Random.rand(::Type{ <: ConstantFixedSizePaddedArray{S,T}}) where {S,T<:
     rand(VectorizedRNG.GLOBAL_vPCG, ConstantFixedSizePaddedArray{S,T})
 end
 
-@generated function Random.randn!(rng::VectorizedRNG.PCG{P}, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {S,P,T<:Union{Float32,Float64},N,R,L}
+@generated function Random.randn!(rng::VectorizedRNG.AbstractPCG{P}, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {S,P,T<:Union{Float32,Float64},N,R,L}
     rand_mutable_fixed_size_expr(L, T, P, :randn)
 end
 Random.randn!(A::AbstractMutableFixedSizePaddedArray) = randn!(VectorizedRNG.GLOBAL_vPCG, A)
 
-@generated function Random.randn(rng::VectorizedRNG.PCG{P}, ::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
+@generated function Random.randn(rng::VectorizedRNG.AbstractPCG{P}, ::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
     N,R,L = calc_NPL(S.parameters, T)
     quote
         A = MutableFixedSizePaddedArray{$S,$T,$N,$R,$L}(undef)
@@ -90,7 +94,7 @@ end
 function Random.randn(::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {S,T<:Union{Float32,Float64}}
     randn(VectorizedRNG.GLOBAL_vPCG, ConstantFixedSizePaddedArray{S,T})
 end
-@generated function Random.randn(rng::VectorizedRNG.PCG, ::Static{S}) where {S}
+@generated function Random.randn(rng::VectorizedRNG.AbstractPCG, ::Static{S}) where {S}
     if isa(S, Integer)
         ST = Tuple{S}
     else
@@ -114,13 +118,13 @@ end
 end
 
 
-@generated function Random.randexp!(rng::VectorizedRNG.PCG{P}, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {P,S,T<:Union{Float32,Float64},N,R,L}
+@generated function Random.randexp!(rng::VectorizedRNG.AbstractPCG{P}, A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}) where {P,S,T<:Union{Float32,Float64},N,R,L}
     rand_mutable_fixed_size_expr(L, T, P, :randexp)
 end
 Random.randexp!(A::AbstractMutableFixedSizePaddedArray) = randexp!(VectorizedRNG.GLOBAL_vPCG, A)
 
 
-@generated function Random.randexp(rng::VectorizedRNG.PCG{P}, ::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
+@generated function Random.randexp(rng::VectorizedRNG.AbstractPCG{P}, ::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
     N,R,L = calc_NPL(S.parameters, T)
     quote
         A = MutableFixedSizePaddedArray{$S,$T,$N,$R,$L}(undef)
@@ -174,29 +178,3 @@ macro Constant(expr)
 end
 
 
-# Not sure where these should live.
-# They are not vectorized, which is why they aren't in
-# VectorizedRNG - that'd be misleading.
-function randgamma_g1(rng::AbstractRNG, α::T) where {T}
-    # @show α
-    OneThird = one(T)/T(3)
-    d = α - OneThird
-    @fastmath c = OneThird / sqrt(d)
-    @fastmath while true
-        x = randn(rng, T)
-        v = one(T) + c*x
-        v < zero(T) && continue
-        v3 = v^3
-        dv3 = d*v3
-        randexp(rng, T) > T(-0.5)*x^2 - d + dv3 - d*log(v3) && return dv3
-    end
-end
-function randgamma(rng::AbstractRNG, α::T) where {T}
-    α < one(T) ? exp(-randexp(rng, T)/α) * randgamma_g1(rng, α+one(T)) : randgamma_g1(rng, α)
-end
-randgamma(rng::AbstractRNG, α::T, β::T) where {T} = β * randgamma(rng, α)
-randgamma(α::Real, β::Real) = randgamma(Random.GLOBAL_RNG, α, β)
-randgamma(α::Real) = randgamma(Random.GLOBAL_RNG, α)
-
-randbeta(rng::AbstractRNG, α::Real, β::Real) = (x = randgamma(rng, α); x / (x + randgamma(rng, β)))
-randbeta(α::Real, β::Real) = randbeta(Random.GLOBAL_RNG, α, β)

@@ -5,6 +5,9 @@ end
 #@inline Base.pointer(s::StackPointer, ::Type{T}) where {T} = Base.unsafe_convert(Ptr{T}, s.ptr)
 @inline Base.pointer(s::StackPointer, ::Type{T}) where {T} = reinterpret(Ptr{T}, s.ptr)
 
+@inline Base.convert(::Type{Ptr{T}}, s::StackPointer) where {T} = pointer(s, T)
+@inline Base.unsafe_convert(::Type{Ptr{T}}, s::StackPointer) where {T} = pointer(s, T)
+
 # These are for "fuzzing" offsets; answers shouldn't change for SPO ≥ 0, so if they do, there's a bug!
 #const SPO = Ref{Int}(800);
 #@inline Base.:+(sp::StackPointer, i::Integer) = StackPointer(sp.ptr + i + SPO[])
@@ -62,7 +65,7 @@ function ∂materialize end
 
 @support_stack_pointer vexp
 
-function stack_pointer_pass(expr, stacksym, blacklist = nothing, verbose = false)
+function stack_pointer_pass(expr, stacksym, blacklist = nothing, verbose::Bool = false)
     if blacklist == nothing
         whitelist = STACK_POINTER_SUPPORTED_METHODS
     else
@@ -73,7 +76,8 @@ function stack_pointer_pass(expr, stacksym, blacklist = nothing, verbose = false
         if @capture(ex, B_ = mod_.func_(args__)) && func ∈ whitelist
             if verbose
                 str = "Args: $args"
-                return :(println($(string(func))); println($str); (@show typeof.($(Expr(:tuple,args...)))); ($stacksym, $B) = $mod.$func($stacksym::PaddedMatrices.StackPointer, $(args...)); @show pointer($stacksym); @show (reinterpret(Int, pointer($stacksym)) - reinterpret(Int, pointer(ProbabilityModels.STACK_POINTER)))/8)
+                W = VectorizationBase.REGISTER_SIZE
+                return :(println($(string(func))); println($str); (@show typeof.($(Expr(:tuple,args...)))); ($stacksym, $B) = $mod.$func($stacksym::PaddedMatrices.StackPointer, $(args...)); @show reinterpret(Int, pointer($stacksym))/$(VectorizationBase.REGISTER_SIZE))
             else
                 return :(($stacksym, $B) = $mod.$func($stacksym, $(args...)))
             end
@@ -81,7 +85,7 @@ function stack_pointer_pass(expr, stacksym, blacklist = nothing, verbose = false
             ##            if func ∈ whitelist
             if verbose
                 str = "Args: $args"
-                return :(println($(string(func))); println($str);  (@show typeof.($(Expr(:tuple,args...)))); ($stacksym, $B) = $func($stacksym::PaddedMatrices.StackPointer, $(args...)); @show pointer($stacksym); @show (reinterpret(Int, pointer($stacksym)) - reinterpret(Int, pointer(ProbabilityModels.STACK_POINTER)))/8)
+                return :(println($(string(func))); println($str);  (@show typeof.($(Expr(:tuple,args...)))); ($stacksym, $B) = $func($stacksym::PaddedMatrices.StackPointer, $(args...)); @show reinterpret(Int, pointer($stacksym))/$(VectorizationBase.REGISTER_SIZE))
             else
                 return :(($stacksym, $B) = $func($stacksym, $(args...)))
             end
@@ -91,14 +95,14 @@ function stack_pointer_pass(expr, stacksym, blacklist = nothing, verbose = false
         elseif @capture(ex, B_ = mod_.func_{T__}(args__)) && func ∈ whitelist
             if verbose
                 str = "Args: $args"
-                return :(println($(string(func))); println($str);  (@show typeof.($(Expr(:tuple,args...)))); ($stacksym, $B) = $mod.$func{$(T...)}($stacksym::PaddedMatrices.StackPointer, $(args...)); @show pointer($stacksym); @show (reinterpret(Int, pointer($stacksym)) - reinterpret(Int, pointer(ProbabilityModels.STACK_POINTER)))/8)
+                return :(println($(string(func))); println($str);  (@show typeof.($(Expr(:tuple,args...)))); ($stacksym, $B) = $mod.$func{$(T...)}($stacksym::PaddedMatrices.StackPointer, $(args...)); @show reinterpret(Int, pointer($stacksym))/$(VectorizationBase.REGISTER_SIZE))
             else
                 return :(($stacksym, $B) = $mod.$func{$(T...)}($stacksym, $(args...)))
             end
         elseif @capture(ex, B_ = func_{T__}(args__)) && func ∈ whitelist
             if verbose
                 str = "Args: $args"
-                return :(println($(string(func))); println($str);  (@show typeof.($(Expr(:tuple,args...)))); ($stacksym, $B) = $func{$(T...)}($stacksym::PaddedMatrices.StackPointer, $(args...)); @show pointer($stacksym); @show (reinterpret(Int, pointer($stacksym)) - reinterpret(Int, pointer(ProbabilityModels.STACK_POINTER)))/8)
+                return :(println($(string(func))); println($str);  (@show typeof.($(Expr(:tuple,args...)))); ($stacksym, $B) = $func{$(T...)}($stacksym::PaddedMatrices.StackPointer, $(args...)); @show reinterpret(Int, pointer($stacksym))/$(VectorizationBase.REGISTER_SIZE))
             else
                 return :(($stacksym, $B) = $func{$(T...)}($stacksym, $(args...)))
             end
