@@ -42,7 +42,7 @@ function rand_mutable_fixed_size_expr(L, T, P, randfunc, mulwith_B::Int = -1, ad
         PW = P*W
     end
     nrep, r = divrem(L, PW)
-    float_q = :($randfunc(rng, NTuple{$P,$V}, $(args...), VectorizedRNG.RXS_M_XS))
+    float_q = :($randfunc(rng, NTuple{$P,$V}, $(args...), Val{VectorizedRNG.RXS_M_XS}()))
     store_expr = quote end
     pointer_quote = quote ptr_A = pointer(A) end
     if mulwith_B == 1
@@ -147,8 +147,8 @@ end
 @generated function Random.randn!(
     rng::VectorizedRNG.AbstractPCG{P},
     A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L},
-    B::Union{T,<:AbstractMutableFixedSizePaddedArray{S,T,N,R,L}},
-    C::Union{T,<:AbstractMutableFixedSizePaddedArray{S,T,N,R,L}}
+    C::Union{T,<:AbstractMutableFixedSizePaddedArray{S,T,N,R,L}},
+    B::Union{T,<:AbstractMutableFixedSizePaddedArray{S,T,N,R,L}}
 ) where {S,P,T<:Union{Float32,Float64},N,R,L}
     rand_mutable_fixed_size_expr(L, T, P, :randn, B === T ? 0 : 1, C === T ? 0 : 1)
 end
@@ -159,7 +159,21 @@ end
 ) where {S,P,T<:Union{Float32,Float64},N,R,L}
     rand_mutable_fixed_size_expr(L, T, P, :randn, B === T ? 0 : 1)
 end
-Random.randn!(A::AbstractMutableFixedSizePaddedArray, args...) = randn!(VectorizedRNG.GLOBAL_vPCG, A, args...)
+# Specific to avoid ambiguities
+Random.randn!(A::AbstractMutableFixedSizePaddedArray) = randn!(VectorizedRNG.GLOBAL_vPCG, A)
+function Random.randn!(
+    A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L},
+    B::Union{T,<:AbstractMutableFixedSizePaddedArray{S,T,N,R,L}}
+) where {S,T,N,R,L}
+    randn!(VectorizedRNG.GLOBAL_vPCG, A, B)
+end
+function Random.randn!(
+    A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L},
+    B::Union{T,<:AbstractMutableFixedSizePaddedArray{S,T,N,R,L}},
+    C::Union{T,<:AbstractMutableFixedSizePaddedArray{S,T,N,R,L}}
+) where {S,T,N,R,L}
+    randn!(VectorizedRNG.GLOBAL_vPCG, A, B, C)
+end
 
 @generated function Random.randn(rng::VectorizedRNG.AbstractPCG{P}, ::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
     N,R,L = calc_NPL(S.parameters, T)
@@ -215,7 +229,20 @@ end
 ) where {P,S,T<:Union{Float32,Float64},N,R,L}
     rand_mutable_fixed_size_expr(L, T, P, :randexp, B === T ? 0 : 1)
 end
-Random.randexp!(A::AbstractMutableFixedSizePaddedArray, args...) = randexp!(VectorizedRNG.GLOBAL_vPCG, A, args...)
+Random.randexp!(A::AbstractMutableFixedSizePaddedArray) = randexp!(VectorizedRNG.GLOBAL_vPCG, A, args...)
+function Random.randexp!(
+    A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L},
+    B::Union{T,<:AbstractMutableFixedSizePaddedArray{S,T,N,R,L}},
+    C::Union{T,<:AbstractMutableFixedSizePaddedArray{S,T,N,R,L}}
+) where {P,S,T<:Union{Float32,Float64},N,R,L}
+    randexp!(VectorizedRNG.GLOBAL_vPCG, A, B, C)
+end
+function Random.randexp!(
+    A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L},
+    B::Union{T,<:AbstractMutableFixedSizePaddedArray{S,T,N,R,L}}
+) where {P,S,T<:Union{Float32,Float64},N,R,L}
+    randexp!(VectorizedRNG.GLOBAL_vPCG, A, B)
+end
 
 
 @generated function Random.randexp(rng::VectorizedRNG.AbstractPCG{P}, ::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
@@ -230,27 +257,59 @@ function Random.randexp(::Type{<:ConstantFixedSizePaddedArray{S,T}}) where {S,T<
     randexp(VectorizedRNG.GLOBAL_vPCG, ConstantFixedSizePaddedArray{S,T})
 end
 
-function Random.rand(::Type{<: MutableFixedSizePaddedArray{S,T}}, args...) where {S,T}
-    rand!(MutableFixedSizePaddedArray{S,T}(undef), args...)
+function Random.rand(::Type{<: MutableFixedSizePaddedArray{S,T}}) where {S,T}
+    rand!(MutableFixedSizePaddedArray{S,T}(undef))
 end
-function Random.randn(::Type{<: MutableFixedSizePaddedArray{S,T}}, args...) where {S,T}
-    randn!(MutableFixedSizePaddedArray{S,T}(undef), args...)
+function Random.randn(::Type{<: MutableFixedSizePaddedArray{S,T}}) where {S,T}
+    randn!(MutableFixedSizePaddedArray{S,T}(undef))
 end
-function Random.randexp(::Type{<: MutableFixedSizePaddedArray{S,T}}, args...) where {S,T}
-    randexp!(MutableFixedSizePaddedArray{S,T}(undef), args...)
+function Random.randexp(::Type{<: MutableFixedSizePaddedArray{S,T}}) where {S,T}
+    randexp!(MutableFixedSizePaddedArray{S,T}(undef))
 end
-function Random.rand(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}, args...) where {S,T}
-    rand!(rng, MutableFixedSizePaddedArray{S,T}(undef), args...)
+function Random.rand(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}) where {S,T}
+    rand!(rng, MutableFixedSizePaddedArray{S,T}(undef))
 end
-function Random.randn(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}, args...) where {S,T}
-    randn!(rng, MutableFixedSizePaddedArray{S,T}(undef), args...)
+function Random.randn(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}) where {S,T}
+    randn!(rng, MutableFixedSizePaddedArray{S,T}(undef))
 end
-function Random.randexp(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}, args...) where {S,T}
-    randexp!(rng, MutableFixedSizePaddedArray{S,T}(undef), args...)
+function Random.randexp(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}) where {S,T}
+    randexp!(rng, MutableFixedSizePaddedArray{S,T}(undef))
 end
 
-compatible(::Type{T}, x::T) where {T} = T
-compatible(::Type{T}, x::AbstractArray{T}) where {T} = T
+function Random.rand(::Type{<: MutableFixedSizePaddedArray{S,T}}, l::T, u::T) where {S,T}
+    rand!(MutableFixedSizePaddedArray{S,T}(undef), l, u)
+end
+function Random.randn(::Type{<: MutableFixedSizePaddedArray{S,T}}, μ::T, σ::T) where {S,T}
+    randn!(MutableFixedSizePaddedArray{S,T}(undef), μ, σ)
+end
+function Random.randexp(::Type{<: MutableFixedSizePaddedArray{S,T}}, β::T, l::T) where {S,T}
+    randexp!(MutableFixedSizePaddedArray{S,T}(undef), β, l)
+end
+function Random.rand(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}, l::T, u::T) where {S,T}
+    rand!(rng, MutableFixedSizePaddedArray{S,T}(undef), l, u)
+end
+function Random.randn(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}, μ::T, σ::T) where {S,T}
+    randn!(rng, MutableFixedSizePaddedArray{S,T}(undef), μ, σ)
+end
+function Random.randexp(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}, β::T, l::T) where {S,T}
+    randexp!(rng, MutableFixedSizePaddedArray{S,T}(undef), β, l)
+end
+function Random.randn(::Type{<: MutableFixedSizePaddedArray{S,T}}, σ::T) where {S,T}
+    randn!(MutableFixedSizePaddedArray{S,T}(undef), σ)
+end
+function Random.randexp(::Type{<: MutableFixedSizePaddedArray{S,T}}, β::T) where {S,T}
+    randexp!(MutableFixedSizePaddedArray{S,T}(undef), β)
+end
+function Random.randn(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}, σ::T) where {S,T}
+    randn!(rng, MutableFixedSizePaddedArray{S,T}(undef), σ)
+end
+function Random.randexp(rng, ::Type{<: MutableFixedSizePaddedArray{S,T}}, β::T) where {S,T}
+    randexp!(rng, MutableFixedSizePaddedArray{S,T}(undef), β)
+end
+
+
+compatible(::Type{T}, x::T) where {T} = x
+compatible(::Type{T}, x::AbstractArray{T}) where {T} = x
 compatible(::Type{T}, x::AbstractArray) where {T} = convert(Array{T}, x)
 compatible(::Type{T}, x) where {T} = convert(T, x)
 function rand_expr(expr, R, args...)
@@ -275,9 +334,9 @@ end
 # end
 
 macro Mutable(expr, args...)
-    rand_expr(expr, :MutableFixedSizePaddedArray)
+    rand_expr(expr, :MutableFixedSizePaddedArray, args...)
 end
 macro Constant(expr, args...)
-    rand_expr(expr, :ConstantFixedSizePaddedArray)
+    rand_expr(expr, :ConstantFixedSizePaddedArray, args...)
 end
 
