@@ -75,17 +75,40 @@ function stack_pointer_pass(expr, stacksym, blacklist = nothing, verbose::Bool =
     postwalk(expr) do ex
         if @capture(ex, B_ = mod_.func_(args__)) && func ∈ whitelist
             if verbose
-                str = "Args: $args"
-                W = VectorizationBase.REGISTER_SIZE
-                return :(println($(string(func))); println($str); (@show typeof.($(Expr(:tuple,args...)))); ($stacksym, $B) = $mod.$func($stacksym::PaddedMatrices.StackPointer, $(args...)); @show reinterpret(Int, pointer($stacksym))/$(VectorizationBase.REGISTER_SIZE))
+                str = "Args: $args; output: $B"
+                q = quote
+                    println($(string(func)))
+                    println($str)
+                end
+                for arg in args
+                    push!(q.args, :(@show $arg))
+                end
+                push!(q.args, :(@show typeof.($(Expr(:tuple,args...)))))
+                push!(q.args, :(($stacksym, $B) = $mod.$func($stacksym::PaddedMatrices.StackPointer, $(args...))))
+                push!(q.args, :(@show divrem(reinterpret(Int, pointer($stacksym)), $(VectorizationBase.REGISTER_SIZE))))
+                push!(q.args, :(println("Result: ")))
+                push!(q.args, :(@show $B))
+                return q
             else
                 return :(($stacksym, $B) = $mod.$func($stacksym, $(args...)))
             end
         elseif @capture(ex, B_ = func_(args__)) && func ∈ whitelist
             ##            if func ∈ whitelist
             if verbose
-                str = "Args: $args"
-                return :(println($(string(func))); println($str);  (@show typeof.($(Expr(:tuple,args...)))); ($stacksym, $B) = $func($stacksym::PaddedMatrices.StackPointer, $(args...)); @show reinterpret(Int, pointer($stacksym))/$(VectorizationBase.REGISTER_SIZE))
+                str = "Args: $args; output: $B"
+                q = quote
+                    println($(string(func)))
+                    println($str)
+                end
+                for arg in args
+                    push!(q.args, :(@show $arg))
+                end
+                push!(q.args, :(@show typeof.($(Expr(:tuple,args...)))))
+                push!(q.args, :(($stacksym, $B) = $func($stacksym::PaddedMatrices.StackPointer, $(args...))))
+                push!(q.args, :(@show divrem(reinterpret(Int, pointer($stacksym)), $(VectorizationBase.REGISTER_SIZE))))
+                push!(q.args, :(println("Result: ")))
+                push!(q.args, :(@show $B))
+                return q
             else
                 return :(($stacksym, $B) = $func($stacksym, $(args...)))
             end
@@ -94,15 +117,39 @@ function stack_pointer_pass(expr, stacksym, blacklist = nothing, verbose::Bool =
 ##            end
         elseif @capture(ex, B_ = mod_.func_{T__}(args__)) && func ∈ whitelist
             if verbose
-                str = "Args: $args"
-                return :(println($(string(func))); println($str);  (@show typeof.($(Expr(:tuple,args...)))); ($stacksym, $B) = $mod.$func{$(T...)}($stacksym::PaddedMatrices.StackPointer, $(args...)); @show reinterpret(Int, pointer($stacksym))/$(VectorizationBase.REGISTER_SIZE))
+                str = "Args: $args; output: $B"
+                q = quote
+                    println($(string(func)))
+                    println($str)
+                end
+                for arg in args
+                    push!(q.args, :(@show $arg))
+                end
+                push!(q.args, :(@show typeof.($(Expr(:tuple,args...)))))
+                push!(q.args, :(($stacksym, $B) = $mod.$func{$(T...)}($stacksym::PaddedMatrices.StackPointer, $(args...))))
+                push!(q.args, :(@show divrem(reinterpret(Int, pointer($stacksym)), $(VectorizationBase.REGISTER_SIZE))))
+                push!(q.args, :(println("Result: ")))
+                push!(q.args, :(@show $B))
+                return q
             else
                 return :(($stacksym, $B) = $mod.$func{$(T...)}($stacksym, $(args...)))
             end
         elseif @capture(ex, B_ = func_{T__}(args__)) && func ∈ whitelist
             if verbose
-                str = "Args: $args"
-                return :(println($(string(func))); println($str);  (@show typeof.($(Expr(:tuple,args...)))); ($stacksym, $B) = $func{$(T...)}($stacksym::PaddedMatrices.StackPointer, $(args...)); @show reinterpret(Int, pointer($stacksym))/$(VectorizationBase.REGISTER_SIZE))
+                str = "Args: $args; output: $B"
+                q = quote
+                    println($(string(func)))
+                    println($str)
+                end
+                for arg in args
+                    push!(q.args, :(@show $arg))
+                end
+                push!(q.args, :(@show typeof.($(Expr(:tuple,args...)))))
+                push!(q.args, :(($stacksym, $B) = $func{$(T...)}($stacksym::PaddedMatrices.StackPointer, $(args...))))
+                push!(q.args, :(@show divrem(reinterpret(Int, pointer($stacksym)), $(VectorizationBase.REGISTER_SIZE))))
+                push!(q.args, :(println("Result: ")))
+                push!(q.args, :(@show $B))
+                return q
             else
                 return :(($stacksym, $B) = $func{$(T...)}($stacksym, $(args...)))
             end

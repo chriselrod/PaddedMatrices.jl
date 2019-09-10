@@ -1240,7 +1240,7 @@ function add_row_rem_expression!(q::Expr, row_rem, kernel::DynamicKernel; mask_o
             push!(q.args, kernel_quote(kernel, init = init, force_inline = false, mask_ops = mask_ops, runtime_mask = runtime_mask))
         end
     else
-        row_rem_quote = quote initkernel_nt!(pD, pA, pX, DKernel{$R, $C}($N, $stride_D, $stride_A, $stride_X)) end
+        row_rem_quote = quote initkernel_nt!(pD, pA, pX, DKernel{$R, $C}($N, $stride_D, $stride_A, $stride_X), mask, Val{$negative}()) end
         for r ∈ 1:(R >> Wshift)
             new_nrows = R - (r << Wshift)
             row_rem_quote = quote
@@ -1323,7 +1323,7 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
             for c ∈ 1:cols - 1
                 col_rem_quote = quote
                     if col_rem == $c
-                        initkernel_nt!(pD, pA, pX, DKernel{$M,$c}($N, $stride_D, $stride_A, $stride_X))
+                        initkernel_nt!(pD, pA, pX, DKernel{$M,$c}($N, $stride_D, $stride_A, $stride_X), Val{$negatuve}())
                         nothing
                     else
                         $col_rem_quote
@@ -1528,8 +1528,8 @@ end
     D::AbstractMatrix{T},
     A::AbstractMatrix{T},
     X::AbstractMutableFixedSizePaddedMatrix{K,N,T,PX}
-) where {N,K,T,PX}
-# ) where {N,K,PX,T}
+# ) where {N,K,T,PX}
+) where {N,K,PX,T}
     quote
         M = size(D,1)
         PD = stride(D,2)
@@ -1542,6 +1542,7 @@ end
     A::AbstractMatrix{T},
     X::AbstractMutableFixedSizePaddedMatrix{K,N,T,PX}
 ) where {N,K,T,PX}
+# ) where {N,K,PX,T}
     quote
         M = size(D,1)
         PD = stride(D,2)
