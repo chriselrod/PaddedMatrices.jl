@@ -212,7 +212,7 @@ end
 
 
 
-function triangle_vsum_quote(T::DataType,M::Int,L::Int,Lfull::Int)
+function triangle_vsum_quote(@nospecialize(T), M::Int, L::Int, Lfull::Int)
     quote
         @inbounds for l ∈ 1:$L
             out[l] = SIMDPirates.vsum(triangle[$l])

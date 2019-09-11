@@ -2,7 +2,7 @@
 abstract type AbstractProdct{T,N} end
 abstract type AbstractSizedProduct{M,P,K,T,N} <: AbstractProdct{T,N} end
 
-function reduce_size(S::DataType, ::Val{N}) where {N}
+function reduce_size(@nospecialize(S), ::Val{N}) where {N}
     s = fill!(MutableFixedSizePaddedVector{N,Int}(undef),1)
     SV = S.parameters
     j = SV[1]::Union{Int,DataType}
@@ -29,7 +29,7 @@ function reduce_size(S::DataType, ::Val{N}) where {N}
     ConstantFixedSizePaddedVector(s)
 end
 
-function reduce_size(S::DataType)
+function reduce_size(@nospecialize S)
     reduce_size!(Int[1], S)
 end
 function pick_size(s1::Int, s2::Int)
@@ -43,7 +43,7 @@ function pick_size(s1::Int, s2::Int)
     s3
 end
 
-function reduce_size!(s::Vector{Int}, S::DataType)
+function reduce_size!(s::Vector{Int}, @nospecialize(S))
     SV = S.parameters
     length(SV) == 0 && return s
     j = SV[1]::Union{Int,DataType}

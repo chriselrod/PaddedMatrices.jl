@@ -9,7 +9,6 @@ function calc_padding(nrow, T)
     # rem = nrow & Wm1
     (nrow + Wm1) & ~Wm1
 end
-calc_NPL(S::DataType, T) = calc_NPL(S.parameters, T)
 
 function calc_NPL(SV, T)
     # N, padded_rows, L = calc_NPL(S, T)
@@ -33,8 +32,7 @@ function calc_NPL(SV, T)
     N, padded_rows, VectorizationBase.align(L,T)
 end
 
-function init_mutable_fs_padded_array_quote(S, T)
-    SV = S.parameters
+function init_mutable_fs_padded_array_quote(SV, T)
     N = length(SV)
 
     nrow = SV[1]
@@ -50,7 +48,7 @@ function init_mutable_fs_padded_array_quote(S, T)
         end
         q = quote
             $(Expr(:meta,:inline))
-            out = MutableFixedSizePaddedArray{$S,$T,$N,$padded_rows,$L}(undef)
+            out = MutableFixedSizePaddedArray{Tuple{$(SV...)},$T,$N,$padded_rows,$L}(undef)
         end
 #        if rem > 0
 #            push!(q.args, quote
@@ -76,7 +74,7 @@ function init_mutable_fs_padded_array_quote(S, T)
     end
     quote
         $(Expr(:meta,:inline))
-        MutableFixedSizePaddedArray{$S,$T,$N,$padded_rows,$L}(undef)
+        MutableFixedSizePaddedArray{Tuple{$(SV...)},$T,$N,$padded_rows,$L}(undef)
 #        out = MutableFixedSizePaddedArray{$S,$T,$N,$padded_rows,$L}(undef)
 #        for l ∈ 1:$L
 #            out[l] = zero($T)
@@ -104,10 +102,10 @@ mutable struct MutableFixedSizePaddedArray{S,T,N,P,L} <: AbstractMutableFixedSiz
     end
 end
 @generated function MutableFixedSizePaddedArray{S,T}(::UndefInitializer) where {S,T}
-    init_mutable_fs_padded_array_quote(S, T)
+    init_mutable_fs_padded_array_quote(S.parameters, T)
 end
 @generated function MutableFixedSizePaddedArray{S,T,N}(::UndefInitializer) where {S,T,N}
-    init_mutable_fs_padded_array_quote(S, T)
+    init_mutable_fs_padded_array_quote(S.parameters, T)
 end
 const MutableFixedSizePaddedVector{M,T,P,L} = MutableFixedSizePaddedArray{Tuple{M},T,1,P,L}
 const MutableFixedSizePaddedMatrix{M,N,T,P,L} = MutableFixedSizePaddedArray{Tuple{M,N},T,2,P,L}
@@ -120,7 +118,7 @@ const MutableFixedSizePaddedMatrix{M,N,T,P,L} = MutableFixedSizePaddedArray{Tupl
 
 @generated function MutableFixedSizePaddedArray(::UndefInitializer, ::Val{S}, ::Type{T1}=Float64) where {S,T1}
     SD = Tuple{S...}
-    init_mutable_fs_padded_array_quote(SD, T1)
+    init_mutable_fs_padded_array_quote(SD.parameters, T1)
 end
 @generated function MutableFixedSizePaddedArray{S,T,N,P}(::UndefInitializer) where {S,T,N,P}
     L = P
@@ -316,14 +314,14 @@ end
     N,R,L = calc_NPL(S,Float64)
     quote
         $(Expr(:meta,:inline))
-        sp + $(8L), PtrArray{$S,Float64,$N,$R,$L,$P}(pointer(sp, Float64))
+        sp + $(VectorizationBase.align(8L)), PtrArray{$S,Float64,$N,$R,$L,$P}(pointer(sp, Float64))
     end
 end
 @generated function PtrArray{S,T}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,T,P}
     N,R,L = calc_NPL(S,T)
     quote
         $(Expr(:meta,:inline))
-        sp + $(sizeof(T)*L), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
+        sp + $(VectorizationBase.align(sizeof(T)*L)), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
     end
 end
 @generated function PtrArray{S,T,N}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,T,N,P}
@@ -334,7 +332,7 @@ end
     end
     quote
         $(Expr(:meta,:inline))
-        sp + $(sizeof(T)*L), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
+        sp + $(VectorizationBase.align(sizeof(T)*L)), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
     end
 end
 @generated function PtrArray{S,T,N,R}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,T,N,R,P}
@@ -345,7 +343,7 @@ end
     quote
         $(Expr(:meta,:inline))
         ptr = Base.unsafe_convert(Ptr{$T}, sp.ptr)
-        sp + $(sizeof(T)*L), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
+        sp + $(VectorizationBase.align(sizeof(T)*L)), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
 #        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
 end
@@ -353,7 +351,7 @@ end
     quote
         $(Expr(:meta,:inline))
         ptr = Base.unsafe_convert(Ptr{$T}, sp.ptr)
-        sp + $(sizeof(T)*L), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
+        sp + $(VectorizationBase.align(sizeof(T)*L)), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
 #        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
 end
