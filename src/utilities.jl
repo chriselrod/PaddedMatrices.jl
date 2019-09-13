@@ -181,3 +181,41 @@ end
         sp + $(sizeof(T)*L), B
     end
 end
+
+function pointer_vector_expr(
+    outsym::Symbol, @nospecialize(M::Union{Int,Symbol}), T, sp::Bool = true, ptrsym::Symbol = :sptr#; align_dynamic::Bool=true
+)
+    vector_expr = if M isa Int
+        if sp
+            :(PtrVector{$M,$T}($ptrsym))
+        else
+            :(MutableFixedSizePaddedVector{$M,$T}(undef))
+        end
+    else
+        if sp
+            :(DynamicPointerArray{$T}($ptrsym, ($M,), VectorizationBase.align($M, $T)))# $(align_dynamic ? :(VectorizationBase.align($M, $T)) : $M) ))
+        else
+            :(Vector{$T}(undef, $M))
+        end
+    end
+    Expr(:(=), sp ? :($ptrsym,$outsym) : outsym, vector_expr)
+end
+
+function pointer_matrix_expr(
+    outsym::Symbol, @nospecialize(M::Union{Int,Symbol}), @nospecialize(N::Union{Int,Symbol}), T sp::Bool = true, ptrsym::Symbol = :sptr#; align_dynamic::Bool=true
+)
+    matrix_expr = if M isa Int && N isa Int
+        if sp
+            :(PtrMatrix{$M,$N,$T}($ptrsym))
+        else
+            :(MutableFixedSizePaddedMatrix{$M,$N,$T}(undef))
+        end
+    else
+        if sp
+            :(DynamicPointerArray{$T}($ptrsym, ($M,$N), $(M isa Int ? VectorizationBase.align(M,T) : :(VectorizationBase.align($M, $T)))))# $(align_dynamic ? :(VectorizationBase.align($M, $T)) : $M) ))
+        else
+            :(Matrix{$T}(undef, $M, $N))
+        end
+    end
+    Expr(:(=), sp ? :($ptrsym,$outsym) : outsym, matrix_expr)
+end
