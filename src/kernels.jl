@@ -907,7 +907,7 @@ end
 function pick_kernel_size(
     ::Type{T}, row_max = typemax(Int), col_max = typemax(Int);
     D_count = 1, A_count = 1, X_count = 1,
-    W = VectorizationBase.REGISTER_SIZE ÷ sizeof(T),
+    W = VectorizationBase.pick_vector_width(row_max, T),
     NREG = VectorizationBase.REGISTER_COUNT, verbose = false,
     max_aloads = min(NREG >> 1, row_max)
 ) where {T}
@@ -940,7 +940,6 @@ function pick_kernel_size(
                 next_ratio_rc_fr = (num_rows * remcol) / (remcol + a_loads)
                 rem_col_indicator = 1
             end
-#            rem_col_indicator = remcol > 0 ? 1 : 0
         else
             next_ratio_rc_fr = next_ratio_fc_fr
             nfullcol, remcol = 1, 0
@@ -955,7 +954,6 @@ function pick_kernel_size(
                 next_ratio_fc_rr = (remrow * num_cols) / (num_cols + cld(remrow, W))
                 rem_row_indicator = 1
             end
-#            rem_row_indicator = remrow > 0 ? 1 : 0
         else
             next_ratio_fc_rr = next_ratio_fc_fr
             nfullrow, remrow = 1, 0
@@ -974,15 +972,7 @@ function pick_kernel_size(
         rows[a_loads] = num_rows
         cols[a_loads] = num_cols
         ratios[a_loads] = next_ratio
-        if verbose
-            @show a_loads, num_rows, num_cols, next_ratio
-        end
-#        if next_ratio < prev_ratio
-#            break
-#        else
-#            prev_ratio = next_ratio
-#            prev_num_rows, prev_num_cols = num_rows, num_cols
-#        end
+        verbose && @show a_loads, num_rows, num_cols, next_ratio
         if num_rows >= row_max
             ratios[a_loads+1:end] .= 0
             break
@@ -1031,35 +1021,21 @@ function blocking_structure(M, N, P, ::Type{T} = Float64;
     L1, L2, L3 = cache_size .÷ sizeof(T)
     if L1 > total_elements
         epr, m_1, p_1 = pick_kernel_size(T, M, P, D_count = D_count, A_count = A_count, X_count = X_count)
-        # if m_1 <= M && p_1 <= P
-        #     return ((M,N,P),(M,N,P),(M,N,P)),-1
-        # else
         return ((min(m_1,M),N,min(p_1,P)),(M,N,P),(M,N,P)),0
-        # end
-        # return ((M,N,P),(M,N,P),(M,N,P)),0
     end
 
     epr, m_1, p_1 = pick_kernel_size(T, M, P, D_count = D_count, A_count = A_count, X_count = X_count)
-    # @show m_1, p_1, L1, L2, L3
     Dmp_1 = m_1 * p_1
 
     n_1 = (L1 - Dmp_1) ÷ (m_1 + p_1)
 
     # I need to consider the case where
     # m_1 or p_1 can be some multiple of themselves due to N being too small.
-    # n_2 = n_1 = min(N, n_1)
     if n_1 > N
         n_2 = n_1 = N
-        # m_1, p_1 = divide_into_rough_square(L1, M, P, n_1, m_1, p_1)#, D_count = D_count, A_count = A_count, X_count = X_count)
     else
         n_2 = n_1
     end
-
-    # else # currently not bothering to handle the "else".
-
-    # end
-    # num_elements = cache_size[i+1] ÷ sizeofT
-    # 0 = m^2 + 2m*n_2 - L2
 
     if L2 > total_elements
         return ((m_1, n_1, p_1), (M, N, P), (M, N, P)),1
@@ -1070,11 +1046,7 @@ function blocking_structure(M, N, P, ::Type{T} = Float64;
     m_2, p_2 = divide_into_rough_square(L2, M, P, n_2, m_1, p_1)#, D_count = D_count, A_count = A_count, X_count = X_count)
 
     if L3 > total_elements
-        # if m_2 == M && p_2 == P
-        #     return ((m_1, n_1, p_1), (M, N, p_2), (M, N, P)),1
-        # else
-            return ((m_1, n_1, p_1), (m_2, n_2, p_2), (M, N, P)),2
-        # end
+        return ((m_1, n_1, p_1), (m_2, n_2, p_2), (M, N, P)),2
     end
 
     Dmp_2 = m_2 * p_2

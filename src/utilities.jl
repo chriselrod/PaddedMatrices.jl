@@ -202,7 +202,7 @@ function pointer_vector_expr(
 end
 
 function pointer_matrix_expr(
-    outsym::Symbol, @nospecialize(M::Union{Int,Symbol}), @nospecialize(N::Union{Int,Symbol}), T sp::Bool = true, ptrsym::Symbol = :sptr#; align_dynamic::Bool=true
+    outsym::Symbol, @nospecialize(M::Union{Int,Symbol}), @nospecialize(N::Union{Int,Symbol}), T, sp::Bool = true, ptrsym::Symbol = :sptr#; align_dynamic::Bool=true
 )
     matrix_expr = if M isa Int && N isa Int
         if sp
@@ -219,3 +219,7 @@ function pointer_matrix_expr(
     end
     Expr(:(=), sp ? :($ptrsym,$outsym) : outsym, matrix_expr)
 end
+
+function ∂getindex end
+
+

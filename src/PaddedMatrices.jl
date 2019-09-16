@@ -7,7 +7,7 @@ using VectorizationBase, SIMDPirates,
     SLEEFPirates, VectorizedRNG,
     LoopVectorization, LinearAlgebra,
     Random, MacroTools, Parameters,
-    Base.Cartesian
+    Base.Cartesian, StackPointers
 
 using MacroTools: @capture, prettify, postwalk
 using LoopVectorization: @vvectorize
@@ -195,11 +195,8 @@ end
 ## ADD DOCS FOR STUBS
 function vload! end
 
-function __init__()
-    set_zero_subnormals(true)
-end
 
-include("stack_pointer.jl")
+# include("stack_pointer.jl")
 include("padded_array.jl")
 include("mutable_fs_padded_array.jl")
 include("const_fs_padded_array.jl")
@@ -211,5 +208,12 @@ include("rand.jl")
 include("utilities.jl")
 include("seed_increments.jl")
 include("broadcast.jl")
+
+@def_stackpointer_fallback vexp ∂getindex ∂materialize DynamicPtrVector DynamicPtrMatrix DynamicPtrArray RESERVED_INCREMENT_SEED_RESERVED RESERVED_DECREMENT_SEED_RESERVED RESERVED_NMULTIPLY_SEED_RESERVED RESERVED_MULTIPLY_SEED_RESERVED
+function __init__()
+    @add_stackpointer_method vexp ∂getindex ∂materialize DynamicPtrVector DynamicPtrMatrix DynamicPtrArray RESERVED_INCREMENT_SEED_RESERVED RESERVED_DECREMENT_SEED_RESERVED RESERVED_NMULTIPLY_SEED_RESERVED RESERVED_MULTIPLY_SEED_RESERVED
+    set_zero_subnormals(true)
+end
+
 
 end # module

@@ -119,10 +119,6 @@ function DynamicPtrArray{T,N}(sp::StackPointer, size::NTuple{N,<:Integer}, strid
     sp + VectorizationBase.align(L*sizeof(T)), DynamicPtrArray(pointer(sp, T), size, stride)    
 end
 
-@support_stack_pointer PaddedMatrices DynamicPtrVector;
-@support_stack_pointer PaddedMatrices DynamicPtrMatrix;
-@support_stack_pointer PaddedMatrices DynamicPtrArray;
-
 # function DynamicPaddedArray{T where T,N}(A::AbstractArray{T,N}) where {T,N}
 #     pA = DynamicPaddedArray{T}(undef, size(A))
 #     @inbounds for i ∈ CartesianIndices(A)

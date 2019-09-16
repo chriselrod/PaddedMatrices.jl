@@ -41,6 +41,7 @@ function rand_mutable_fixed_size_expr(L, T, P, randfunc, mulwith_B::Int = -1, ad
         P = (L+W-1) >> Wshift
         PW = P*W
     end
+    unifs = gensym(:unifs)
     nrep, r = divrem(L, PW)
     float_q = :($randfunc(rng, NTuple{$P,$V}, $(args...), Val{VectorizedRNG.RXS_M_XS}()))
     store_expr = quote end
@@ -67,28 +68,28 @@ function rand_mutable_fixed_size_expr(L, T, P, randfunc, mulwith_B::Int = -1, ad
         for p ∈ 1:P
             vB = mulwith_B == 0 ? :vB : Symbol(:vB_,p)
             vC = addto_C == 0 ? :vC : Symbol(:vC_,p)
-            push!(store_expr.args, :(@inbounds vstore!(ptr_A + $(sizeof(T)*W) * (i*$(P) + $(p-1)), vmuladd($vB, u[$p], $vC))))
+            push!(store_expr.args, :(vstore!(ptr_A + $(sizeof(T)*W) * (i*$(P) + $(p-1)), vmuladd($vB, $unifs[$p], $vC))))
         end
     elseif mulwith_B >= 0 && addto_C == -1
         for p ∈ 1:P
             vB = mulwith_B == 0 ? :vB : Symbol(:vB_,p)
-            push!(store_expr.args, :(@inbounds vstore!(ptr_A + $(sizeof(T)*W) * (i*$(P) + $(p-1)), vmul($vB,u[$p]))))
+            push!(store_expr.args, :(vstore!(ptr_A + $(sizeof(T)*W) * (i*$(P) + $(p-1)), vmul($vB, $unifs[$p]))))
         end
     elseif addto_C == 1 && mulwith_B == -1
         for p ∈ 1:P
             vC = addto_C == 0 ? :vC : Symbol(:vC_,p)
-            push!(store_expr.args, :(@inbounds vstore!(ptr_A + $(sizeof(T)*W) * (i*$(P) + $(p-1)), vadd($vC, u[$p]))))
+            push!(store_expr.args, :(vstore!(ptr_A + $(sizeof(T)*W) * (i*$(P) + $(p-1)), vadd($vC, $unifs[$p]))))
         end
     else
         for p ∈ 1:P
-            push!(store_expr.args, :(@inbounds vstore!(ptr_A + $(sizeof(T)*W) * (i*$(P) + $(p-1)), u[$p])))
+            push!(store_expr.args, :(vstore!(ptr_A + $(sizeof(T)*W) * (i*$(P) + $(p-1)), $unifs[$p])))
         end
     end
     if nrep > 0
         q = quote
             $pointer_quote
             for i ∈ 0:$(nrep-1)
-                u = $float_q
+                $unifs = $float_q
                 $store_expr
             end
         end

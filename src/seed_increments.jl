@@ -35,8 +35,6 @@ end
 
 @inline RESERVED_INCREMENT_SEED_RESERVED(a) = a
 @inline RESERVED_DECREMENT_SEED_RESERVED(a) = -a
-@support_stack_pointer RESERVED_INCREMENT_SEED_RESERVED
-@support_stack_pointer RESERVED_DECREMENT_SEED_RESERVED
 @inline function RESERVED_INCREMENT_SEED_RESERVED(sp::StackPointer, a, b, c)
     sp, SIMDPirates.vmuladd(a, b, c)
 end
@@ -77,8 +75,6 @@ end
     out
 end
 
-@support_stack_pointer RESERVED_MULTIPLY_SEED_RESERVED
-@support_stack_pointer RESERVED_NMULTIPLY_SEED_RESERVED
 @inline function RESERVED_MULTIPLY_SEED_RESERVED(sp::StackPointer, a, b)
 #     sa = a isa Tuple ? size.(a) : size(a)
 #    sb = b isa Tuple ? size.(b) : size(b)
