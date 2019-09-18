@@ -145,41 +145,37 @@ end
 
 @inline Base.pointer(x::Symmetric{T,MutableFixedSizePaddedMatrix{P,P,T,R,L}}) where {P,T,R,L} = pointer(x.data)
 
-@generated function vexp(
-    A::AbstractMutableFixedSizePaddedArray{S,T,N,R,L}
+
+@generated function vexp!(
+    B::AbstractMutableFixedSizePaddedArray{S,T,N,R,L},
+    A::AbstractFixedSizePaddedArray{S,T,N,R,L}
 ) where {S,T,N,R,L}
     quote
         $(Expr(:meta,:inline))
-        B = MutableFixedSizePaddedArray{$S,$T,$N,$R,$L}(undef)
         LoopVectorization.@vvectorize $T for l ∈ 1:$L
             B[l] = SLEEFPirates.exp(A[l])
         end
         B
     end
 end
-@generated function vexp(
+@inline function vexp(
+    A::AbstractFixedSizePaddedArray{S,T,N,R,L}
+) where {S,T,N,R,L}
+    vexp!(MutableFixedSizePaddedArray{S,T,N,R,L}(undef), A)
+end
+@inline function vexp(
     A::AbstractConstantFixedSizePaddedArray{S,T,N,R,L}
 ) where {S,T,N,R,L}
-    quote
-        B = MutableFixedSizePaddedArray{$S,$T,$N,$R,$L}(undef)
-        LoopVectorization.@vvectorize $T for l ∈ 1:$L
-            B[l] = SLEEFPirates.exp(A[l])
-        end
-        ConstantFixedSizePaddedArray(B)
-    end
+    MutableFixedSizePaddedArray{S,T,N,R,L}(undef) |>
+        vexp! |>
+        ConstantFixedSizePaddedArray
 end
-@generated function vexp(
+function vexp(
     sp::StackPointer,
     A::AbstractFixedSizePaddedArray{S,T,N,R,L}
 ) where {S,T,N,R,L}
-    quote
-#        $(Expr(:meta,:inline))
-        B = PtrArray{$S,$T,$N,$R,$L}(pointer(sp,$T))
-        LoopVectorization.@vvectorize $T for l ∈ 1:$L
-            B[l] = SLEEFPirates.exp(A[l])
-        end
-        sp + $(sizeof(T)*L), B
-    end
+    B = PtrArray{S,T,N,R,L}(pointer(sp,T))
+    sp + sizeof(T)*L, vexp!(B)
 end
 
 function pointer_vector_expr(
