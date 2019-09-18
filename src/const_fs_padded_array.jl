@@ -337,7 +337,7 @@ function concatenate_masks(::Type{T}, Wsmall, Wfull, remainder) where {T}
 end
 
 # vStaticPaddedArray
-@generated function SIMDPirates.vload(::Type{A}, ptr::VectorizationBase.vpointer{T}) where {T, S, A <: AbstractConstantFixedSizePaddedArray{S,T}}
+@generated function SIMDPirates.vload(::Type{A}, ptr::VectorizationBase.Pointer{T}) where {T, S, A <: AbstractConstantFixedSizePaddedArray{S,T}}
     vload_constant_matrix_quote(T, S, A)
 end
 @generated function SIMDPirates.vload(::Type{A}, ptr::vStaticPaddedArray{SPA}) where {T, S,S2, A <: AbstractConstantFixedSizePaddedArray{S,T},SPA <: AbstractConstantFixedSizePaddedArray{S2,T}}
