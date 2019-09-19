@@ -197,7 +197,7 @@ end
 @inline Base.pointer(A::DynamicPtrArray) = A.ptr
 @inline Base.unsafe_convert(::Type{Ptr{T}}, A::DynamicPtrArray{T}) where {T} = A.ptr
 
-@inline VectorizationBase.vectorizable(A::AbstractDynamicPaddedArray) = VectorizationBase.vpointer(pointer(A))
+@inline VectorizationBase.vectorizable(A::AbstractDynamicPaddedArray) = VectorizationBase.Pointer(pointer(A))
 
 
 

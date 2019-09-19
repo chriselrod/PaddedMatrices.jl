@@ -22,7 +22,12 @@ export @Constant, @Mutable,
     DynamicPaddedVector,
     DynamicPaddedMatrix,
     DynamicPaddedArray,
-    PtrVector, PtrMatrix, PtrArray
+    PtrVector, DynamicPtrVector,
+    PtrMatrix, DynamicPtrMatrix,
+    PtrArray, DynamicPtrArray
+
+
+    
 
 
 @noinline ThrowBoundsError() = throw(BoundsError())

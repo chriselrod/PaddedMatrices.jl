@@ -380,9 +380,9 @@ const PtrMatrix{M,N,T,R,L,P} = PtrArray{Tuple{M,N},T,2,R,L,P}
 @inline Base.pointer(A::PtrArray{S,NTuple{W,Core.VecElement{T}}}) where {S,T,W} = Base.unsafe_convert(Ptr{T}, A.ptr)
 
 
-@inline VectorizationBase.vectorizable(A::AbstractMutableFixedSizePaddedArray) = VectorizationBase.vpointer(pointer(A))
-@inline VectorizationBase.vectorizable(A::LinearAlgebra.Diagonal{T,<:AbstractMutableFixedSizePaddedArray}) where {T} = VectorizationBase.vpointer(pointer(A.diag))
-@inline VectorizationBase.vectorizable(A::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedArray}) where {T} = VectorizationBase.vpointer(pointer(A.parent))
+@inline VectorizationBase.vectorizable(A::AbstractMutableFixedSizePaddedArray) = VectorizationBase.Pointer(pointer(A))
+@inline VectorizationBase.vectorizable(A::LinearAlgebra.Diagonal{T,<:AbstractMutableFixedSizePaddedArray}) where {T} = VectorizationBase.Pointer(pointer(A.diag))
+@inline VectorizationBase.vectorizable(A::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedArray}) where {T} = VectorizationBase.Pointer(pointer(A.parent))
 
 
 @inline Base.similar(sp::StackPointer, A::AbstractMutableFixedSizePaddedArray{S,T,N,R}) where {S,T,N,R} = PtrArray{S,T,N,R}(sp, Val{true}())
