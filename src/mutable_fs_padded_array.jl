@@ -1,41 +1,49 @@
-function calc_padding(nrow, T)
-    W, Wshift = VectorizationBase.pick_vector_width_shift(T)
-    TwoN = 2nrow
+function calc_padding(nrow::Int, T)
+    # W, Wshift = VectorizationBase.pick_vector_width_shift(T)
+    # TwoN = 2nrow
 
-    while W >= TwoN
-        W >>= 1
-    end
-    Wm1 = W - 1
-    # rem = nrow & Wm1
-    (nrow + Wm1) & ~Wm1
+    # while W >= TwoN
+    #     W >>= 1
+    # end
+    # Wm1 = W - 1
+    # # rem = nrow & Wm1
+    # (nrow + Wm1) & ~Wm1
+    VectorizationBase.align(nrow, T)
 end
 
-function calc_NPL(SV, T)
+function calc_NPL(SV::Core.SimpleVector, T, align_stride::Bool, pad_to_align_length::Bool = false)#true)
     # N, padded_rows, L = calc_NPL(S, T)
     # SV = S.parameters
+    nrow = (SV[1])::Int
     N = length(SV)
+    if align_stride
+        padded_rows == VectorizationBase.align(nrow, T)
+    else
+        W, Wshift = VectorizationBase.pick_vector_width_shift(T)
+        TwoN = 2nrow
 
-    nrow = SV[1]
-    W, Wshift = VectorizationBase.pick_vector_width_shift(T)
-    TwoN = 2nrow
-
-    while W >= TwoN
-        W >>= 1
+        while W >= TwoN
+            W >>= 1
+        end
+        Wm1 = W - 1
+        # rem = nrow & Wm1
+        padded_rows = (nrow + Wm1) & ~Wm1
     end
-    Wm1 = W - 1
-    # rem = nrow & Wm1
-    padded_rows = (nrow + Wm1) & ~Wm1
     L = padded_rows
     for n ∈ 2:N
-        L *= SV[n]
+        L *= (SV[n])::Int
     end
-    N, padded_rows, VectorizationBase.align(L,T)
+    LA = VectorizationBase.align(L,T)
+    if pad_to_align_length
+        LA += VectorizationBase.pick_vector_width(T)
+    end
+    N, padded_rows, LA
 end
 
-function init_mutable_fs_padded_array_quote(SV, T)
+function init_mutable_fs_padded_array_quote(SV::Core.SimpleVector, T)
     N = length(SV)
 
-    nrow = SV[1]
+    nrow = (SV[1])::Int
     W, Wshift = VectorizationBase.pick_vector_width_shift(T)
     TwoN = 2nrow
     if W < TwoN
@@ -44,7 +52,7 @@ function init_mutable_fs_padded_array_quote(SV, T)
         padded_rows = (nrow + Wm1) & ~Wm1
         L = padded_rows
         for n ∈ 2:N
-            L *= SV[n]
+            L *= (SV[n])::Int
         end
         q = quote
             $(Expr(:meta,:inline))
@@ -70,7 +78,7 @@ function init_mutable_fs_padded_array_quote(SV, T)
     padded_rows = (nrow + Wm1) & ~Wm1
     L = padded_rows
     for n ∈ 2:N
-        L *= SV[n]
+        L *= (SV[n])::Int
     end
     quote
         $(Expr(:meta,:inline))
@@ -124,7 +132,7 @@ end
     L = P
     SV = S.parameters
     for n in 2:N
-        L *= SV[n]
+        L *= (SV[n])::Int
     end
     :(MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef))
 end
@@ -154,9 +162,12 @@ end
 end
 @generated function Base.zero(::Type{<:MutableFixedSizePaddedArray{S,Vec{W,T}}}) where {S,W,T}
     SV = S.parameters
-    P = SV[1]
-    L = prod(SV)
+    P = (SV[1])::Int
     N = length(SV)
+    L = P
+    for n in 2:N
+        L *= (SV[n])::Int
+    end
     quote
         $(Expr(:meta,:inline))
         ma = MutableFixedSizePaddedArray{$S,Vec{$W,$T},$N,$P,$L}(undef)
@@ -270,8 +281,9 @@ end
 end
 @generated function PtrArray{S,T,N,R}(ptr::Ptr{T},::Val{P}=Val{true}()) where {S,T,N,R,P}
     L = R
+    SV = S.parameters
     for n ∈ 2:N
-        L *= S.parameters[n]
+        L *= (SV[n])::Int
     end
     quote
         $(Expr(:meta,:inline))
@@ -279,10 +291,11 @@ end
     end
 end
 @generated function PtrArray{S,T,N}(ptr::Ptr{T},::Val{P}=Val{true}()) where {S,T,N,P}
-    R = calc_padding(S.parameters[1], T)
+    R = VectorizationBase.align(S.parameters[1], T)
     L = R
+    SV = S.parameters
     for n ∈ 2:N
-        L *= S.parameters[n]
+        L *= (SV[n])::Int
     end
     quote
         $(Expr(:meta,:inline))
@@ -290,45 +303,46 @@ end
     end
 end
 @generated function PtrArray{S,T}(ptr::Ptr{T}, ::Val{P} = Val{true}()) where {S,T,P}
-    N, R, L = calc_NPL(S, T)
+    N, R, L = calc_NPL(S, T,true,false)
     quote
         $(Expr(:meta,:inline))
         PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
 end
 @generated function PtrArray{S}(ptr::Ptr{T}) where {S,T}
-    N, P, L = calc_NPL(S, T)
+    N, P, L = calc_NPL(S, T,true,false)
     quote
         $(Expr(:meta,:inline))
         PtrArray{$S,$T,$N,$P,$L,true}(ptr)
     end
 end
 @generated function PtrArray{S}(ptr::Ptr{T}, ::Val{P}) where {S,T,P}
-    N,R,L = calc_NPL(S,T)
+    N,R,L = calc_NPL(S,T,true,false)
     quote
         $(Expr(:meta,:inline))
         PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
 end
 @generated function PtrArray{S}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,P}
-    N,R,L = calc_NPL(S,Float64)
+    N,R,L = calc_NPL(S,Float64,true,false)
     quote
         $(Expr(:meta,:inline))
         sp + $(VectorizationBase.align(8L)), PtrArray{$S,Float64,$N,$R,$L,$P}(pointer(sp, Float64))
     end
 end
 @generated function PtrArray{S,T}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,T,P}
-    N,R,L = calc_NPL(S,T)
+    N,R,L = calc_NPL(S,T,true,false)
     quote
         $(Expr(:meta,:inline))
         sp + $(VectorizationBase.align(sizeof(T)*L)), PtrArray{$S,$T,$N,$R,$L,$P}(pointer(sp, $T))
     end
 end
 @generated function PtrArray{S,T,N}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,T,N,P}
-    R = calc_padding(S.parameters[1], T)
+    R = VectorizationBase.align(S.parameters[1], T)
     L = R
+    SV = S.parameters
     for n ∈ 2:N
-        L *= S.parameters[n]
+        L *= (SV[n])::Int
     end
     quote
         $(Expr(:meta,:inline))
@@ -337,8 +351,9 @@ end
 end
 @generated function PtrArray{S,T,N,R}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,T,N,R,P}
     L = R
+    SV = S.parameters
     for n ∈ 2:N
-        L *= S.parameters[n]
+        L *= (SV[n])::Int
     end
     quote
         $(Expr(:meta,:inline))
