@@ -28,7 +28,7 @@ Base.@pure DKernel(Mₖ,Pₖ,N,stride_D,stride_A,stride_X) = Kernel{Mₖ,Pₖ}(N
     negative::Bool = false
 end
 
-function reps_and_rem(kernel::DynamicKernel)
+@noinline function reps_and_rem(kernel::DynamicKernel)
     @unpack R, T = kernel
     W, Wshift = VectorizationBase.pick_vector_width_shift(R, T)
     Riter = R >> Wshift
@@ -36,14 +36,14 @@ function reps_and_rem(kernel::DynamicKernel)
     Riter, Rrem
 end
 
-function DynamicKernel(
+@noinline function DynamicKernel(
     R::Int, C::Int, N::Union{Symbol,Int},
     stride_D::Union{Symbol,Int}, stride_A::Union{Symbol,Int}, stride_X::Union{Symbol,Int},
     T::DataType; X_transposed::Bool = false, negative::Bool = false
 )
     DynamicKernel(R, C, N, stride_D, stride_A, stride_X, T, X_transposed, negative)
 end
-function mul_block(V, W, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B, gemm = nothing)
+@noinline function mul_block(V, W, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B, gemm = nothing)
     Prange = (1 + poffset):(P + poffset)
     loop_max = isa(N, Number) ? N - 1 : :($N - 1)
     if gemm === nothing
@@ -76,7 +76,7 @@ function mul_block(V, W, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B
         end
     end
 end
-function mul_block(V, W, R1, R2, m_rep, N, P, poffset::Symbol, vA = :vA, B = :B, gemm = nothing)
+@noinline function mul_block(V, W, R1, R2, m_rep, N, P, poffset::Symbol, vA = :vA, B = :B, gemm = nothing)
     Prange = 1:P
     loop_max = isa(N, Number) ? N - 1 : :($N - 1)
     if gemm === nothing
@@ -120,7 +120,7 @@ Meaning the operation is
 A * B′
 ie, A is not transposed, and B is transposed.
 """
-function mul_block_nt(V, W, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B, gemm = nothing)
+@noinline function mul_block_nt(V, W, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B, gemm = nothing)
     Prange = (1 + poffset):(P + poffset)
     loop_max = isa(N, Number) ? N - 1 : :($N - 1)
     if gemm === nothing
@@ -153,7 +153,7 @@ function mul_block_nt(V, W, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B =
         end
     end
 end
-function mul_block_nt(V, W, R1, R2, m_rep, N, P, poffset::Symbol, vA = :vA, B = :B, gemm = nothing)
+@noinline function mul_block_nt(V, W, R1, R2, m_rep, N, P, poffset::Symbol, vA = :vA, B = :B, gemm = nothing)
     Prange = 1:P
     loop_max = isa(N, Number) ? N - 1 : :($N - 1)
     if gemm === nothing
@@ -186,56 +186,7 @@ function mul_block_nt(V, W, R1, R2, m_rep, N, P, poffset::Symbol, vA = :vA, B = 
         end
     end
 end
-# function mul_block_right_symmetric(sub2ind, W, R1, R2, m_rep, N, P, poffset::Int = 0)
-#     Prange = (1 + poffset):(P + poffset)
-#     quote
-#         $([:(
-#             $(Symbol(:Acol_,mr)) = @inbounds $(
-#                 Expr(:tuple, [:(Core.VecElement(A[ $(m + (mr-1)*W) ])) for m ∈ 1:W]...)
-#             )
-#         ) for mr ∈ 1:m_rep]...)
-#         $(
-#             [Expr(:block,
-#             [ :($(Symbol(:C_, mr, :_, p)) = SIMDPirates.evmul(
-#                 $(Symbol(:Acol_,mr)), @inbounds B[ $(1 + (p-1)*R2) ])
-#             ) for mr ∈ 1:m_rep]...) for p ∈ Prange]...
-#         )
-#         @inbounds for n ∈ 1:$(N-1)
-#             $([:(
-#                 $(Symbol(:Acol_,mr)) = @inbounds $(Expr(:tuple,
-#                 [:(Core.VecElement(A[ $(m + (mr-1)*W) + n*$R1 ])) for m ∈ 1:W]...))
-#             ) for mr ∈ 1:m_rep]...)
-#             $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd(
-#                 $(Symbol(:Acol_,mr)), B[n + $(1 + (p-1)*R2)],
-#                 $(Symbol(:C_, mr, :_, p)) )) for mr ∈ 1:m_rep]...) for p ∈ Prange]...
-#             )
-#         end
-#     end
-# end
-# function mul_block_right_symmetric(sub2ind, W, R1, R2, m_rep, N, P, poffset::Symbol)
-#     Prange = 1:P
-#     quote
-#         $([:(
-#             $(Symbol(:Acol_,mr)) = @inbounds $(Expr(:tuple,
-#             [:(Core.VecElement(A[ $(m + (mr-1)*W) ])) for m ∈ 1:W]...)
-#         )
-#         ) for mr ∈ 1:m_rep]...)
-#         $([Expr(:block, [ :($(Symbol(:C_, mr, :_, p)) = SIMDPirates.evmul(
-#             $(Symbol(:Acol_,mr)), @inbounds B[ 1 + ($(p-1)+$poffset)*$R2 ])
-#             ) for mr ∈ 1:m_rep]...) for p ∈ Prange]...)
-#         @inbounds for n ∈ 1:$(N-1)
-#             $([:(
-#                 $(Symbol(:Acol_,mr)) = @inbounds $(Expr(:tuple,
-#                     [:(Core.VecElement(A[ $(m + (mr-1)*W) + n*$R1 ])) for m ∈ 1:W]...))
-#             ) for mr ∈ 1:m_rep]...)
-#             $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd(
-#                 $(Symbol(:Acol_,mr)), B[n + 1 + ($(p-1)+$poffset)*$R2],
-#                 $(Symbol(:C_, mr, :_, p)) )) for mr ∈ 1:m_rep]...) for p ∈ Prange]...
-#             )
-#         end
-#     end
-# end
-function store_block(W, R1, m_rep, P, poffset::Int = 0)
+@noinline function store_block(W, R1, m_rep, P, poffset::Int = 0)
     Prange = (1 + poffset):(P + poffset)
     q = quote end
     for p ∈ Prange, mr ∈ 1:m_rep
@@ -243,7 +194,7 @@ function store_block(W, R1, m_rep, P, poffset::Int = 0)
     end
     q
 end
-function store_block(W, R1, m_rep, P, poffset::Symbol)
+@noinline function store_block(W, R1, m_rep, P, poffset::Symbol)
     Prange = 1:P
     q = quote end
     for p ∈ Prange, mr ∈ 1:m_rep
@@ -252,8 +203,7 @@ function store_block(W, R1, m_rep, P, poffset::Symbol)
     q
 end
 
-function static_mul_quote(M,N,P,T,R1,R2)
-
+@noinline function static_mul_quote(M,N,P,T,R1,R2)
     L3 = R1 * P
     W = VectorizationBase.pick_vector_width(R1, T)
     m_rep = R1 ÷ W
@@ -277,7 +227,6 @@ function static_mul_quote(M,N,P,T,R1,R2)
             output_data = $outtup
         end
     end
-
     piter = cld(P, num_reps)
     q = quote
         $(Expr(:meta, :inline))
@@ -300,8 +249,7 @@ function static_mul_quote(M,N,P,T,R1,R2)
     q
 end
 
-function static_mul_nt_quote(M,N,P,T,R1,R2)
-
+@noinline function static_mul_nt_quote(M,N,P,T,R1,R2)
     L3 = R1 * P
     W = VectorizationBase.pick_vector_width(R1, T)
     m_rep = R1 ÷ W
@@ -326,7 +274,6 @@ function static_mul_nt_quote(M,N,P,T,R1,R2)
             output_data = $outtup
         end
     end
-
     piter = cld(P, num_reps)
     q = quote
         $(Expr(:meta, :inline))
@@ -350,51 +297,7 @@ function static_mul_nt_quote(M,N,P,T,R1,R2)
     q
 end
 
-
-# function static_by_sym_mul_quote(M,P,T,R1,R2)
-#
-#     L3 = R1 * P
-#     W = VectorizationBase.pick_vector_width(R1, T)
-#     m_rep = R1 ÷ W
-#     outtup = Expr(:tuple)
-#     # outtup = Expr(:call, :tuple_join)
-#     for p ∈ 1:P, mr ∈ 1:m_rep, m ∈ 1:W
-#         # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m] ))
-#         push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m].value ))
-#         # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))))
-#     end
-#
-#     num_reps = cld(L3 ÷ W + 3, VectorizationBase.REGISTER_COUNT)
-#     if num_reps == 1
-#         return quote
-#             $(Expr(:meta, :inline))
-#             $(mul_block(W, R1, R2, m_rep, N, P))
-#             ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(
-#                 $outtup
-#             )
-#         end
-#     end
-#     piter = cld(P, num_reps)
-#     q = quote
-#         $(Expr(:meta, :inline))
-#         out = MutableFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(undef)
-#         vout = VectorizationBase.vectorizable(out)
-#         plow = 0
-#         for pmax ∈ 1:$(num_reps-1)
-#             $(mul_block(W, R1, R2, m_rep, N, piter, :plow))
-#             $(store_block(W, R1, m_rep, piter, :plow))
-#             plow += $piter
-#         end
-#     end
-#     plow = piter * (num_reps-1)
-#     prem = P - plow
-#     prem > 0 && push!(q.args, mul_block(W, R1, R2, m_rep, N, prem, plow))
-#     prem > 0 && push!(q.args, store_block(W, R1, m_rep, prem, plow))
-#     push!(q.args,  :(ConstantFixedSizePaddedMatrix( out )) )
-#     q
-# end
-
-function mulinit(
+@noinline function mulinit(
     kernel::DynamicKernel, mask_expr::Union{Symbol,Unsigned} = 0x00, force_inline::Bool = false, mask_ops::Bool = true
 )
     @unpack T, R, C, stride_X, X_transposed, negative = kernel
@@ -436,7 +339,7 @@ function mulinit(
     end
     q
 end
-function gemminit(
+@noinline function gemminit(
     kernel::DynamicKernel, mask_expr::Union{Symbol,Unsigned} = 0x00, force_inline::Bool = false, mask_ops::Bool = true
 )
     @unpack T, R, C, stride_X = kernel
@@ -535,7 +438,7 @@ pD, pA, and pX must be defined as Ptr{T}.
 Similarly, to use a runtime mask, it must be named `__mask__`, and the expression to define it must be placed somewhere.
 
 """
-function kernel_quote(kernel::DynamicKernel; init::Bool = true, force_inline::Bool = true, mask_ops::Bool = true, runtime_mask::Bool = false)
+@noinline function kernel_quote(kernel::DynamicKernel; init::Bool = true, force_inline::Bool = true, mask_ops::Bool = true, runtime_mask::Bool = false)
     @unpack R, C, N, T, stride_D, stride_A, stride_X, X_transposed, negative = kernel
     size_T = sizeof(T)
     W, Wshift = VectorizationBase.pick_vector_width_shift(R, T)
@@ -619,9 +522,7 @@ function kernel_quote(kernel::DynamicKernel; init::Bool = true, force_inline::Bo
     q
 end
 
-
-
-function kernel_tn_quote(kernel::DynamicKernel,init,inline = false, Asym = :pA, Xsym = :pX, Dsym = :pD, d_isa_ptr = true)
+@noinline function kernel_tn_quote(kernel::DynamicKernel,init,inline = false, Asym = :pA, Xsym = :pX, Dsym = :pD, d_isa_ptr = true)
     @unpack R, C, N, stride_D, stride_A, stride_X, T, negative = kernel
     if N isa Symbol
         W, Wshift = VectorizationBase.pick_vector_width_shift(T)
@@ -904,7 +805,7 @@ end
 # (L1_cache_size - rows*colums) ÷ (rows + columns)
 # will be maximized with relatively square blocks, making that friendliest for the cache.
 # """
-function pick_kernel_size(
+@noinline function pick_kernel_size(
     ::Type{T}, row_max = typemax(Int), col_max = typemax(Int);
     D_count = 1, A_count = 1, X_count = 1,
     W = VectorizationBase.pick_vector_width(row_max, T),
@@ -1014,7 +915,7 @@ Should add support for how many copies of each of the matrices we have, so that 
     D = A*(X + C)
 in one step, without as much un/reloading of memory.
 """
-function blocking_structure(M, N, P, ::Type{T} = Float64;
+@noinline function blocking_structure(M, N, P, ::Type{T} = Float64;
         cache_size::NTuple{3,Int} = VectorizationBase.CACHE_SIZE,
                 D_count = 1, A_count = 1, X_count = 1) where T
     total_elements = M*N*D_count + N*P*A_count + M*P*X_count
@@ -1062,12 +963,12 @@ function blocking_structure(M, N, P, ::Type{T} = Float64;
     ((m_1,n_1,p_1),(m_2,n_2,p_2),(m_3,n_3,p_3)),3
 end
 
-function round_x_to_nearest_y(x::T, y::T) where {T}
+@noinline function round_x_to_nearest_y(x::T, y::T) where {T}
     z = x/y
     round(T, z) * y
 end
 
-function divide_into_rough_square(L, M, P, n, mbase, pbase)
+@noinline function divide_into_rough_square(L, M, P, n, mbase, pbase)
     Mhalf = max(round_x_to_nearest_y(M>>1, mbase), mbase)
     Phalf = max(round_x_to_nearest_y(P>>1, pbase), pbase)
     bsize = Mhalf*Phalf + Mhalf*n + n*Phalf

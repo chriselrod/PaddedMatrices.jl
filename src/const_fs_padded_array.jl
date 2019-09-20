@@ -5,18 +5,17 @@ end
 const ConstantFixedSizePaddedVector{S,T,P,L} = ConstantFixedSizePaddedArray{Tuple{S},T,1,P,L}
 const ConstantFixedSizePaddedMatrix{M,N,T,P,L} = ConstantFixedSizePaddedArray{Tuple{M,N},T,2,P,L}
 
-function calc_NP(S, L)
+@noinline function calc_NP(S, L)
     SV = S.parameters
     N = length(SV)
     P = L
     for n ∈ 2:N
-        P ÷= SV[n]
+        P ÷= (SV[n])::Int
     end
     N, P
 end
-function pick_L(N, T = Float64)
-    Wm1 = VectorizationBase.pick_vector_width(N, T) - 1
-    (N + Wm1) & ~ Wm1
+@noinline function pick_L(N, T = Float64)
+    VectorizationBase.align(N, T)
 end
 
 @inline ConstantFixedSizePaddedVector{N}(data::NTuple{L,T}) where {N,L,T} = ConstantFixedSizePaddedVector{N,T,L,L}(data)
@@ -241,7 +240,7 @@ end
 
 
 
-function vload_constant_matrix_quote(T, S, A)
+@noinline function vload_constant_matrix_quote(T, S, A)
     SV = S.parameters
     N = length(SV)
     nrow = SV[1]
@@ -325,7 +324,7 @@ function vload_constant_matrix_quote(T, S, A)
         @inbounds $A($output)
     end
 end
-function concatenate_masks(::Type{T}, Wsmall, Wfull, remainder) where {T}
+@noinline function concatenate_masks(::Type{T}, Wsmall, Wfull, remainder) where {T}
     single_mask = unsafe_trunc(T, 2^remainder - 1)
     while Wsmall < Wfull
         single_mask_old = single_mask

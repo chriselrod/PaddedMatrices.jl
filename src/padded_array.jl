@@ -31,45 +31,6 @@ function full_length(Asize::NTuple{N,Int}, L::Int = Asize[1]) where {N}
 end
 full_length(A::DynamicPtrArray) = full_length(A.size, A.stride)
 
-
-
-#=
-@generated function DynamicPaddedArray{T}(::UndefInitializer, S::NTuple{N}) where {T,N}#, ::Val{Z} = Val(true)) where {T,N,Z}
-    quote
-        nrow = S[1]
-        W, Wshift = VectorizationBase.pick_vector_width_shift(T)
-        TwoN = 2nrow
-#        if W < TwoN
-            Wm1 = W - 1
-            rem = nrow & Wm1
-            padded_rows = (nrow + Wm1) & ~Wm1
-
-            nvector_loads = padded_rows >> Wshift
-
-            data = Array{$T,$N}(undef,
-                $(Expr(:tuple, :padded_rows, [:(S[$n]) for n ∈ 2:N]...))
-            )
-#            if $Z
-#                @nloops $(N-1) i j -> 1:S[j+1] begin
-#                    @inbounds for i_0 ∈ padded_rows+1-W:padded_rows
-#                        ( @nref $N data n -> i_{n-1} ) = $(zero(T))
-#                    end
-#                end
-#            end
-            return DynamicPaddedArray{$T,$N}(data, nvector_loads, S)
-#        end
-#        while W >= TwoN
-#            W >>= 1
-#        end
-#        Wm1 = W - 1
-#        rem = nrow & Wm1
-#        padded_rows = (nrow + Wm1) & ~Wm1
-#
-#        data = zeros($T, $(Expr(:tuple, :padded_rows, [:(S[$n]) for n ∈ 2:N]...)) )
-#        DynamicPaddedArray{$T,$N}(data, 1, S)
-    end
-end
-=#
 function DynamicPaddedArray{T}(::UndefInitializer, S::NTuple{N}) where {T,N}#, ::Val{Z} = Val(true)) where {T,N,Z}
     nrow = S[1]
     W, Wshift = VectorizationBase.pick_vector_width_shift(T)
@@ -307,27 +268,6 @@ end
             end
         end
         rem_base = nregrepgroup*$(repetitions*W)
-        # if nregrepindiv >= $rep_half
-        #     Base.Cartesian.@nexprs $rep_half r -> begin
-        #         a_r = SIMDPirates.vload(Vec{$W,$T}, va + $W*(r-1) + rem_base )
-        #         c_r = SIMDPirates.vload(Vec{$W,$T}, vc + $W*(r-1) + rem_base )
-        #     end
-        #     for col ∈ 0:N-1
-        #         Base.Cartesian.@nexprs $rep_half r -> begin
-        #             SIMDPirates.vstore!(
-        #                 vD + $W*(r-1) + rem_base + s*col,
-        #                 SIMDPirates.vmuladd(
-        #                     SIMDPirates.vload(Vec{$W,$T}, vB + $W*(r-1) + rem_base + s*col),
-        #                     a_r, c_r
-        #                 )
-        #             )
-        #         end
-        #     end
-        #     rem_base += $(rep_half*W)
-        #     nregrepindiv -= $rep_half
-        #     # @show rem_base, nregrepindiv
-        # end
-        # @show rem_base, nregrepindiv
         for n ∈ 0:nregrepindiv-1
             a_r = SIMDPirates.vload(Vec{$W,$T}, va + $W*n + rem_base )
             c_r = SIMDPirates.vload(Vec{$W,$T}, vc + $W*n + rem_base )

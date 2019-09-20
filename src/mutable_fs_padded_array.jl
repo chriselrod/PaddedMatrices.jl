@@ -1,4 +1,4 @@
-function calc_padding(nrow, T)
+@noinline function calc_padding(nrow::Int, T)
     W, Wshift = VectorizationBase.pick_vector_width_shift(T)
     TwoN = 2nrow
 
@@ -10,7 +10,7 @@ function calc_padding(nrow, T)
     (nrow + Wm1) & ~Wm1
 end
 
-function calc_NPL(SV, T)
+@noinline function calc_NPL(SV, T)
     # N, padded_rows, L = calc_NPL(S, T)
     # SV = S.parameters
     N = length(SV)
@@ -32,7 +32,7 @@ function calc_NPL(SV, T)
     N, padded_rows, VectorizationBase.align(L,T)
 end
 
-function init_mutable_fs_padded_array_quote(SV, T)
+@noinline function init_mutable_fs_padded_array_quote(SV, T)
     N = length(SV)
 
     nrow = SV[1]
@@ -575,12 +575,20 @@ end
     S.parameters[n-1]
 end
 
-to_tuple(S) = tuple(S.parameters...)
+@noinline function simple_vec_prod(sv::Core.SimpleVector)
+    p = 1
+    for n in 1:length(sv)
+        p *= (sv[n])::Int
+    end
+    p
+end
+
+@noinline to_tuple(S) = tuple(S.parameters...)
 @generated Base.size(::AbstractFixedSizePaddedArray{S}) where {S} = to_tuple(S)
 
 
 # Do we want this, or L?
-@generated Base.length(::AbstractFixedSizePaddedArray{S}) where {S} = prod(to_tuple(S))
+@generated Base.length(::AbstractFixedSizePaddedArray{S}) where {S} = simple_vec_prod(S)
 
 
 staticrangelength(::Type{Static{R}}) where R = 1 + last(R) - first(R)
