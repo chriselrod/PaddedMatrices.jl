@@ -1,16 +1,4 @@
-function calculate_L_from_size(S, T)
-    nrow = S[1]
-    N = length(S)
-    W, Wshift = VectorizationBase.pick_vector_width_shift(nrow, T)
-    rem = nrow & (W - 1)
-    P = rem == 0 ? nrow : nrow + W - rem
-    L = P
-    for n ∈ 2:N
-        L *= S[n]
-    end
-    P, L
-end
-function rand_iter_expr(V, mulwith_B, addto_C, rand_extract_expr, iter_offset, rrepiter = 0)
+@noinline function rand_iter_expr(V, mulwith_B::Int, addto_C::Int, rand_extract_expr, iter_offset::Int, rrepiter::Int = 0)
     if addto_C == -1 && mulwith_B == -1
         rem_expr = rand_extract_expr
     elseif addto_C == -1
@@ -32,7 +20,7 @@ function rand_iter_expr(V, mulwith_B, addto_C, rand_extract_expr, iter_offset, r
     end
     rem_expr
 end
-function rand_mutable_fixed_size_expr(L, T, P, randfunc, mulwith_B::Int = -1, addto_C::Int = -1, args...)
+@noinline function rand_mutable_fixed_size_expr(L::Int, T, P::Int, randfunc::Symbol, mulwith_B::Int = -1, addto_C::Int = -1, args...)
     size_T = sizeof(T)
     W, Wshift = VectorizationBase.pick_vector_width_shift(L, T)
     V = Vec{W,T}
@@ -50,7 +38,7 @@ function rand_mutable_fixed_size_expr(L, T, P, randfunc, mulwith_B::Int = -1, ad
         push!(pointer_quote.args, :(ptr_B = pointer(B)))
         for p ∈ 1:P
             vB = Symbol(:vB_,p)
-            push!(store_expr.args, :($vB = vload($V, ptr_B + $(sizeof(T)*W) * (i*$(P) + $(p-1)))))
+            push!(store_expr.args, :($vB = vload($V, ptr_B + $(size_T*W) * (i*$(P) + $(p-1)))))
         end
     elseif mulwith_B == 0
         push!(pointer_quote.args, :(vB = vbroadcast($V, B)))
@@ -59,7 +47,7 @@ function rand_mutable_fixed_size_expr(L, T, P, randfunc, mulwith_B::Int = -1, ad
         push!(pointer_quote.args, :(ptr_C = pointer(C)))
         for p ∈ 1:P
             vC = Symbol(:vC_,p)
-            push!(store_expr.args, :($vC = vload($V, ptr_C + $(sizeof(T)*W) * (i*$(P) + $(p-1)))))
+            push!(store_expr.args, :($vC = vload($V, ptr_C + $(size_T*W) * (i*$(P) + $(p-1)))))
         end
     elseif addto_C == 0
         push!(pointer_quote.args, :(vC = vbroadcast($V, C)))
@@ -68,21 +56,21 @@ function rand_mutable_fixed_size_expr(L, T, P, randfunc, mulwith_B::Int = -1, ad
         for p ∈ 1:P
             vB = mulwith_B == 0 ? :vB : Symbol(:vB_,p)
             vC = addto_C == 0 ? :vC : Symbol(:vC_,p)
-            push!(store_expr.args, :(vstore!(ptr_A + $(sizeof(T)*W) * (i*$(P) + $(p-1)), vmuladd($vB, $unifs[$p], $vC))))
+            push!(store_expr.args, :(vstore!(ptr_A + $(size_T*W) * (i*$(P) + $(p-1)), vmuladd($vB, $unifs[$p], $vC))))
         end
     elseif mulwith_B >= 0 && addto_C == -1
         for p ∈ 1:P
             vB = mulwith_B == 0 ? :vB : Symbol(:vB_,p)
-            push!(store_expr.args, :(vstore!(ptr_A + $(sizeof(T)*W) * (i*$(P) + $(p-1)), vmul($vB, $unifs[$p]))))
+            push!(store_expr.args, :(vstore!(ptr_A + $(size_T*W) * (i*$(P) + $(p-1)), vmul($vB, $unifs[$p]))))
         end
     elseif addto_C == 1 && mulwith_B == -1
         for p ∈ 1:P
             vC = addto_C == 0 ? :vC : Symbol(:vC_,p)
-            push!(store_expr.args, :(vstore!(ptr_A + $(sizeof(T)*W) * (i*$(P) + $(p-1)), vadd($vC, $unifs[$p]))))
+            push!(store_expr.args, :(vstore!(ptr_A + $(size_T*W) * (i*$(P) + $(p-1)), vadd($vC, $unifs[$p]))))
         end
     else
         for p ∈ 1:P
-            push!(store_expr.args, :(vstore!(ptr_A + $(sizeof(T)*W) * (i*$(P) + $(p-1)), $unifs[$p])))
+            push!(store_expr.args, :(vstore!(ptr_A + $(size_T*W) * (i*$(P) + $(p-1)), $unifs[$p])))
         end
     end
     if nrep > 0
@@ -102,13 +90,13 @@ function rand_mutable_fixed_size_expr(L, T, P, randfunc, mulwith_B::Int = -1, ad
         u_sym = gensym(:u_rem)
         push!(q.args, :($u_sym = $randfunc(rng, NTuple{$Nremv,$V}, $(args...))))#VectorizedRNG.RXS_M_XS)))
         for rrepiter ∈ 0:rrep-1
-            iter_offset = sizeof(T)*W*(nrep*P + rrepiter)
+            iter_offset = size_T*W*(nrep*P + rrepiter)
             rand_extract_expr = :($u_sym[$(rrepiter+1)])
             rem_expr = rand_iter_expr(V, mulwith_B, addto_C, rand_extract_expr, iter_offset, rrepiter)
             push!(q.args, :(vstore!(ptr_A + $iter_offset, $rem_expr)))
         end
         if rrem > 0
-            iter_offset = sizeof(T)*W*(nrep*P + rrep)
+            iter_offset = size_T*W*(nrep*P + rrep)
             rem_expr = rand_iter_expr(V, mulwith_B, addto_C, :($u_sym[$Nremv]), iter_offset, 0)
             mask = VectorizationBase.mask(T, rrem)
             push!(q.args, :( vstore!(ptr_A + $iter_offset, $rem_expr, $mask) ))

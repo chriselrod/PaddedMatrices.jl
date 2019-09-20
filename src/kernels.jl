@@ -16,16 +16,16 @@ struct DKernel{Mₖ,Pₖ} <: AbstractSizedKernel{Mₖ,Pₖ}
 end
 Base.@pure DKernel(Mₖ,Pₖ,N,stride_D,stride_A,stride_X) = Kernel{Mₖ,Pₖ}(N,stride_D,stride_A,stride_X)
 
-@with_kw struct DynamicKernel <: AbstractKernel
+struct DynamicKernel <: AbstractKernel
     R::Int
     C::Int
     N::Union{Symbol,Int}
     stride_D::Union{Symbol,Int}
     stride_A::Union{Symbol,Int}
     stride_X::Union{Symbol,Int}
-    T::DataType = Float64
-    X_transposed::Bool = false
-    negative::Bool = false
+    T::DataType
+    X_transposed::Bool
+    negative::Bool
 end
 
 @noinline function reps_and_rem(kernel::DynamicKernel)

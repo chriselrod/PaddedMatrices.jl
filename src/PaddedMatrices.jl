@@ -6,11 +6,10 @@ module PaddedMatrices
 using VectorizationBase, SIMDPirates,
     SLEEFPirates, VectorizedRNG,
     LoopVectorization, LinearAlgebra,
-    Random, MacroTools, Parameters,
-    Base.Cartesian, StackPointers
+    Random, MacroTools, StackPointers
 
+using Parameters: @unpack
 using MacroTools: @capture, prettify, postwalk
-using LoopVectorization: @vvectorize
 
 export @Constant, @Mutable,
     ConstantFixedSizePaddedArray,
@@ -57,17 +56,17 @@ const AbstractPaddedArrayOrAdjoint{T,N} = Union{AbstractPaddedArray{T,N},<:Adjoi
 
 const AbstractPaddedVector{T} = AbstractPaddedArray{T,1}
 const AbstractPaddedMatrix{T} = AbstractPaddedArray{T,2}
-const AbstractFixedSizePaddedVector{M,T,P,L} = AbstractFixedSizePaddedArray{Tuple{M},T,1,P,L}
+const AbstractFixedSizePaddedVector{M,T,L} = AbstractFixedSizePaddedArray{Tuple{M},T,1,L,L}
 const AbstractFixedSizePaddedMatrix{M,N,T,P,L} = AbstractFixedSizePaddedArray{Tuple{M,N},T,2,P,L}
-const AbstractMutableFixedSizePaddedVector{M,T,P,L} = AbstractMutableFixedSizePaddedArray{Tuple{M},T,1,P,L}
+const AbstractMutableFixedSizePaddedVector{M,T,L} = AbstractMutableFixedSizePaddedArray{Tuple{M},T,1,L,L}
 const AbstractMutableFixedSizePaddedMatrix{M,N,T,P,L} = AbstractMutableFixedSizePaddedArray{Tuple{M,N},T,2,P,L}
-const AbstractConstantFixedSizePaddedVector{M,T,P,L} = AbstractConstantFixedSizePaddedArray{Tuple{M},T,1,P,L}
+const AbstractConstantFixedSizePaddedVector{M,T,L} = AbstractConstantFixedSizePaddedArray{Tuple{M},T,1,L,L}
 const AbstractConstantFixedSizePaddedMatrix{M,N,T,P,L} = AbstractConstantFixedSizePaddedArray{Tuple{M,N},T,2,P,L}
 
 maybe_static_size(::AbstractFixedSizePaddedArray{S}) where {S} = Static{S}()
 maybe_static_size(A::AbstractArray) = size(A)
 
-struct StaticUnitRange{L,S} <: AbstractFixedSizePaddedVector{L,Int,L,L} end
+struct StaticUnitRange{L,S} <: AbstractFixedSizePaddedVector{L,Int,L} end
 Base.getindex(::StaticUnitRange{L,S}, i::Integer) where {L,S} = Int(i+S-1)
 Base.size(::StaticUnitRange{L}) where {L} = (L,)
 Base.length(::StaticUnitRange{L}) where {L} = L

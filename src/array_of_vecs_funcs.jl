@@ -68,7 +68,7 @@ end
 end
 
 
-function determine_pattern(M,N)
+@noinline function determine_pattern(M::Int, N::Int)
     # 4 x 5 preferred for avx512
     # 32 registers means in C = A * B,
     # we have 4*5 = 20 filled from A,
@@ -91,7 +91,7 @@ end
 
 
 
-function matrix_of_vecs_mul_quote(M,N,P,W,T)
+@noinline function matrix_of_vecs_mul_quote(M::Int, N::Int, P::Int, W::Int, T)
     mk, mr, nk, nr, kernel_size_m, kernel_size_n = determine_pattern(M,N)
     # if mr == 0
     #     @assert mk > 0
@@ -212,7 +212,7 @@ end
 
 
 
-function triangle_vsum_quote(@nospecialize(T), M::Int, L::Int, Lfull::Int)
+@noinline function triangle_vsum_quote(@nospecialize(T), M::Int, L::Int, Lfull::Int)
     quote
         @inbounds for l ∈ 1:$L
             out[l] = SIMDPirates.vsum(triangle[$l])

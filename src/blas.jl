@@ -18,13 +18,13 @@ end
     q
 end
 @generated function Base.:*(
-            A::AbstractConstantFixedSizePaddedVector{M,T,R1,L1},
-            B::LinearAlgebra.Adjoint{T,<:AbstractConstantFixedSizePaddedVector{P,T,R2,L2}}
-        ) where {M,P,T,R1,R2,L1,L2}
+            A::AbstractConstantFixedSizePaddedVector{M,T,L1},
+            B::LinearAlgebra.Adjoint{T,<:AbstractConstantFixedSizePaddedVector{P,T,L2}}
+        ) where {M,P,T,L1,L2}
         # ) where {M,N,P,T,R1,R2,L2,L1}
-    q = static_mul_nt_quote(M,1,P,T,R1,1)
+    q = static_mul_nt_quote(M,1,P,T,L1,1)
     # push!(q.args,  :(ConstantFixedSizePaddedMatrix( out )) )
-    push!(q.args,  :(ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$(R1*P)}( output_data )) )
+    push!(q.args,  :(ConstantFixedSizePaddedMatrix{$M,$P,$T,$L1,$(L1*P)}( output_data )) )
     q
 end
 # @generated function Base.:*(A::LinearAlgebra.Adjoint{T,StaticSIMDVector{N,T,R1,L1}}, B::StaticSIMDMatrix{N,P,T,R2}) where {N,P,T,R1,R2,L1}
@@ -126,10 +126,10 @@ end
     end
 end
 @generated function LinearAlgebra.mul!(
-    D::PtrVector{M,T,DR,LD,PD},
+    D::PtrVector{M,T,DR,PD},
     A::PtrMatrix{M,N,T,AR,LA,PA},
     X::PtrVector{N,T,XR}
-) where {M,N,T,AR,XR,DR,LD,PD,LA,PA}
+) where {M,N,T,AR,XR,DR,PD,LA,PA}
     if PD && PA && (DR == AR)
         Meffective = DR
     else
@@ -284,12 +284,12 @@ end
 end
 @generated function Base.:+(
     sp::StackPointer,
-    A::AbstractFixedSizePaddedVector{N,T,PA,PA},
-    B::AbstractFixedSizePaddedVector{N,T,PB,PB}
+    A::AbstractFixedSizePaddedVector{N,T,PA},
+    B::AbstractFixedSizePaddedVector{N,T,PB}
 ) where {N,T<:Number,PA,PB}
     P = min(PA,PB)
     quote
-        mv = PtrVector{$N,$T,$P,$P}(pointer(sp,$T))
+        mv = PtrVector{$N,$T,$P}(pointer(sp,$T))
         @vvectorize $T for i ∈ 1:$P
             mv[i] = A[i] + B[i]
         end
@@ -388,7 +388,7 @@ end
 end
 
 
-@generated function Base.sum!(s::AbstractMutableFixedSizePaddedVector{P,T,L,L}, A::AbstractPaddedMatrix{T}) where {T,P,L}
+@generated function Base.sum!(s::AbstractMutableFixedSizePaddedVector{P,T,L}, A::AbstractPaddedMatrix{T}) where {T,P,L}
     stride_bytes = L*sizeof(T)
     sample_mat_stride = L
 
@@ -441,7 +441,7 @@ end
         s
     end
 end
-@generated function negative_sum!(s::AbstractMutableFixedSizePaddedVector{P,T,L,L}, A::AbstractPaddedMatrix{T}) where {T,P,L}
+@generated function negative_sum!(s::AbstractMutableFixedSizePaddedVector{P,T,L}, A::AbstractPaddedMatrix{T}) where {T,P,L}
     stride_bytes = L*sizeof(T)
     sample_mat_stride = L
 
@@ -574,8 +574,8 @@ end
 end
 @generated function SIMDPirates.vmuladd(
     a::T,
-    x::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{N,T,L,L}},
-    y::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{N,T,L,L}}
+    x::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{N,T,L}},
+    y::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{N,T,L}}
 ) where {N,T,L}
     quote
         $(Expr(:meta,:inline))

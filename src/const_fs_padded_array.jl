@@ -183,7 +183,7 @@ end
     N = (L + Wm1) & ~Wm1
     :(ConstantFixedSizePaddedVector{$L,$T,$N,$N}($(Expr(:tuple,zeros(N)...))))
 end
-@inline return_mutable(A::MutableFixedSizePaddedArray) = A
+@inline return_mutable(A::AbstractMutableFixedSizePaddedArray) = A
 @inline return_mutable(A::ConstantFixedSizePaddedArray) = MutableFixedSizePaddedArray(A)
 
 struct vStaticPaddedArray{SPA}
@@ -240,10 +240,10 @@ end
 
 
 
-@noinline function vload_constant_matrix_quote(T, S, A)
-    SV = S.parameters
+@noinline function vload_constant_matrix_quote(T, SV::Core.SimpleVector, @nospecialize(A))
+    # SV = S.parameters
     N = length(SV)
-    nrow = SV[1]
+    nrow = (SV[1])::Int
     W, Wshift = VectorizationBase.pick_vector_width_shift(nrow, T)
 
     num_unmasked_loads_per_row = nrow >> Wshift
@@ -253,7 +253,7 @@ end
 
     remaining_dims = 1
     for n ∈ 2:N
-        remaining_dims *= SV[n]
+        remaining_dims *= (SV[n])::Int
     end
     L = padded_rows * remaining_dims
 
@@ -324,8 +324,8 @@ end
         @inbounds $A($output)
     end
 end
-@noinline function concatenate_masks(::Type{T}, Wsmall, Wfull, remainder) where {T}
-    single_mask = unsafe_trunc(T, 2^remainder - 1)
+@noinline function concatenate_masks(T, Wsmall, Wfull, remainder)
+    single_mask = unsafe_trunc(T, 1 << remainder - 1)
     while Wsmall < Wfull
         single_mask_old = single_mask
         single_mask <<= Wsmall
@@ -337,10 +337,10 @@ end
 
 # vStaticPaddedArray
 @generated function SIMDPirates.vload(::Type{A}, ptr::VectorizationBase.Pointer{T}) where {T, S, A <: AbstractConstantFixedSizePaddedArray{S,T}}
-    vload_constant_matrix_quote(T, S, A)
+    vload_constant_matrix_quote(T, S.parameters, A)
 end
-@generated function SIMDPirates.vload(::Type{A}, ptr::vStaticPaddedArray{SPA}) where {T, S,S2, A <: AbstractConstantFixedSizePaddedArray{S,T},SPA <: AbstractConstantFixedSizePaddedArray{S2,T}}
-    vload_constant_matrix_quote(T, S, A)
+@generated function SIMDPirates.vload(::Type{A}, ptr::vStaticPaddedArray{SPA}) where {T, S,S2, A <: AbstractConstantFixedSizePaddedArray{S,T}, SPA <: AbstractConstantFixedSizePaddedArray{S2,T}}
+    vload_constant_matrix_quote(T, S.parameters, A)
 end
 
 
@@ -351,7 +351,7 @@ end
         V = Vec{W,T}
         outtup = Expr(:tuple,)
         indbase = 0
-        Base.Cartesian.@nloops $(N-1) i j -> 1:SV[j+1] begin
+        Base.Cartesian.@nloops $(N-1) i j -> 1:(SV[j+1])::Int begin
             ind = indbase
             @inbounds for i_0 ∈ 1:SV[1]
                 ind += 1
@@ -361,7 +361,7 @@ end
             indbase += P
         end
         push!(q.args, Expr(:call,
-            Expr(:curly, :ConstantFixedSizePaddedArray, S, V, N, SV[1], prod(SV)),
+            Expr(:curly, :ConstantFixedSizePaddedArray, S, V, N, (SV[1])::Int, simple_vec_prod(SV)),
             outtup)
         )
         q

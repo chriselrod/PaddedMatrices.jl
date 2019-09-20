@@ -1,4 +1,4 @@
-@noinline calc_padding(nrow::Int, T) = VectorizationBase.align(nrow, T)n
+@noinline calc_padding(nrow::Int, T) = VectorizationBase.align(nrow, T)
 
 @noinline function calc_NPL(SV::Core.SimpleVector, T, align_stride::Bool, pad_to_align_length::Bool = false)#true)
     nrow = (SV[1])::Int
@@ -86,7 +86,7 @@ end
 @generated function MutableFixedSizePaddedArray{S,T,N}(::UndefInitializer) where {S,T,N}
     init_mutable_fs_padded_array_quote(S.parameters, T)
 end
-const MutableFixedSizePaddedVector{M,T,P,L} = MutableFixedSizePaddedArray{Tuple{M},T,1,P,L}
+const MutableFixedSizePaddedVector{M,T,L} = MutableFixedSizePaddedArray{Tuple{M},T,1,L,L}
 const MutableFixedSizePaddedMatrix{M,N,T,P,L} = MutableFixedSizePaddedArray{Tuple{M,N},T,2,P,L}
 
 @inline MutableFixedSizePaddedVector(A::AbstractFixedSizePaddedArray{S,T,1,P,L}) where {S,T,P,L} = MutableFixedSizePaddedArray{S,T,1,P,L}(A.data)
@@ -349,7 +349,7 @@ end
 end
 
 
-const PtrVector{N,T,R,L,P} = PtrArray{Tuple{N},T,1,R,L,P} # R and L will always be the same...
+const PtrVector{N,T,L,P} = PtrArray{Tuple{N},T,1,L,L,P} # R and L will always be the same...
 const PtrMatrix{M,N,T,R,L,P} = PtrArray{Tuple{M,N},T,2,R,L,P}
 
 # Now defining these, because any use of PtrArray is going to already be using some pointer.
@@ -569,12 +569,12 @@ end
     p
 end
 
-@noinline to_tuple(S) = tuple(S.parameters...)
-@generated Base.size(::AbstractFixedSizePaddedArray{S}) where {S} = to_tuple(S)
+# @noinline to_tuple(S) = tuple(S.parameters...)
+@generated Base.size(::AbstractFixedSizePaddedArray{S}) where {S} = tuple(S.parameters...)#to_tuple(S)
 
 
 # Do we want this, or L?
-@generated Base.length(::AbstractFixedSizePaddedArray{S}) where {S} = simple_vec_prod(S)
+@generated Base.length(::AbstractFixedSizePaddedArray{S}) where {S} = simple_vec_prod(S.parameters)
 
 
 staticrangelength(::Type{Static{R}}) where R = 1 + last(R) - first(R)

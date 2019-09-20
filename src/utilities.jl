@@ -68,8 +68,7 @@ Base.cumsum(A::AbstractConstantFixedSizePaddedVector) = ConstantFixedSizePaddedV
 #     q
 # end
 
-# @generated
-function Base.maximum(::typeof(abs), A::AbstractFixedSizePaddedArray{S,T,P,L}) where {S,T,P,L}
+@generated function Base.maximum(::typeof(abs), A::AbstractFixedSizePaddedArray{S,T,P,L}) where {S,T,P,L}
     SV = S.parameters
     R1 = SV[1]
     D = 1
@@ -112,7 +111,7 @@ function Base.maximum(::typeof(abs), A::AbstractFixedSizePaddedArray{S,T,P,L}) w
     q
 end
 
-@generated function Base.maximum(::typeof(abs), A::AbstractFixedSizePaddedVector{S,T,P,L}) where {S,T,P,L}
+@generated function Base.maximum(::typeof(abs), A::AbstractFixedSizePaddedVector{S,T,L}) where {S,T,L}
     W, Wshift = VectorizationBase.pick_vector_width_shift(S, T)
     V = Vec{W,T}
     q = quote
@@ -178,7 +177,7 @@ function vexp(
     sp + sizeof(T)*L, vexp!(B)
 end
 
-function pointer_vector_expr(
+@noinline function pointer_vector_expr(
     outsym::Symbol, @nospecialize(M::Union{Int,Symbol}), T, sp::Bool = true, ptrsym::Symbol = :sptr#; align_dynamic::Bool=true
 )
     vector_expr = if M isa Int
@@ -197,7 +196,7 @@ function pointer_vector_expr(
     Expr(:(=), sp ? :($ptrsym,$outsym) : outsym, vector_expr)
 end
 
-function pointer_matrix_expr(
+@noinline function pointer_matrix_expr(
     outsym::Symbol, @nospecialize(M::Union{Int,Symbol}), @nospecialize(N::Union{Int,Symbol}), T, sp::Bool = true, ptrsym::Symbol = :sptr#; align_dynamic::Bool=true
 )
     matrix_expr = if M isa Int && N isa Int

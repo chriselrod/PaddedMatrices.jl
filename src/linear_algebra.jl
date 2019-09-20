@@ -31,13 +31,13 @@ end
 
 sym(A, i, j) = Symbol(A, :_, i, :_, j)
 symi(A, i, j) = Symbol(A, :i_, i, :_, j)
-function invchol_L_core_quote!(qa, P, output = :L, input = :S, ::Type{T} = Float64) where T
+@noinline function invchol_L_core_quote!(qa::Vector{Any}, P::Int, output::Symbol = :L, input::Symbol = :S)
     for c ∈ 1:P
         for cr ∈ 1:c-1, r ∈ c:P
             push!(qa, :( $(sym(input, r, c)) -= $(sym(input, r, cr)) * $(sym(input, c, cr))  ) )
         end
         push!(qa, :( $(sym(input, c, c)) = sqrt( $(sym(input, c, c)) ) ) )
-        push!(qa, :( $(sym(output, c, c)) = $(one(T)) / $(sym(input, c, c)) ))
+        push!(qa, :( $(sym(output, c, c)) = inv( $(sym(input, c, c)) )))
         for r ∈ c+1:P
             push!(qa, :( $(sym(input, r, c)) *= $(sym(output, c, c))  ) )
         end
@@ -52,15 +52,38 @@ function invchol_L_core_quote!(qa, P, output = :L, input = :S, ::Type{T} = Float
         end
     end
 end
-function invcholdeti_L_core_quote!(qa, P, output = :L, input = :S, ::Type{T} = Float64) where T
-    push!(qa, :(det = one($T)))
+@noinline function invcholdeti_L_core_quote!(qa::Vector{Any}, P::Int, output::Symbol = :L, input::Symbol = :S)
     for c ∈ 1:P
         for cr ∈ 1:c-1, r ∈ c:P
             push!(qa, :( $(sym(input, r, c)) -= $(sym(input, r, cr)) * $(sym(input, c, cr))  ) )
         end
+        outcc = sym(output, c, c)
         push!(qa, :( $(sym(input, c, c)) = sqrt( $(sym(input, c, c)) ) ) )
-        push!(qa, :( $(sym(output, c, c)) = $(one(T)) / $(sym(input, c, c)) ))
-        push!(qa, :( det *=  $(sym(output, c, c)) ))
+        push!(qa, :( $outcc = inv($(sym(input, c, c)) )))
+        push!(qa, Expr(c == 1 ? :(=) : :(*=), :det, outcc))
+        for r ∈ c+1:P
+            push!(qa, :( $(sym(input, r, c)) *= $outcc  ) )
+        end
+    end
+    for c ∈ 1:P
+        for r ∈ c+1:P
+            push!(qa, :( $(sym(output, r, c)) = $(sym(input, r, c)) * $(sym(output, c, c)) ))
+            for cr ∈ c+1:r-1
+                push!(qa, :( $(sym(output, r, c)) += $(sym(input, r, cr)) * $(sym(output, cr, c)) ))
+            end
+            push!(qa, :( $(sym(output, r, c)) *=  -$(sym(output, r, r)) ) )
+        end
+    end
+end
+@noinline function invcholdetc_L_core_quote!(qa::Vector{Any}, P::Int, output::Symbol = :L, input::Symbol = :S)
+    for c ∈ 1:P
+        for cr ∈ 1:c-1, r ∈ c:P
+            push!(qa, :( $(sym(input, r, c)) -= $(sym(input, r, cr)) * $(sym(input, c, cr))  ) )
+        end
+        incc = sym(input, c, c)
+        push!(qa, :( $(sym(input, c, c)) = sqrt( $incc ) ) )
+        push!(qa, :( $(sym(output, c, c)) = inv($incc )))
+        push!(qa, Expr(c == 1 ? :(=) : :(*=), :det, incc))
         for r ∈ c+1:P
             push!(qa, :( $(sym(input, r, c)) *= $(sym(output, c, c))  ) )
         end
@@ -75,30 +98,7 @@ function invcholdeti_L_core_quote!(qa, P, output = :L, input = :S, ::Type{T} = F
         end
     end
 end
-function invcholdetc_L_core_quote!(qa, P, output = :L, input = :S, ::Type{T} = Float64) where T
-    push!(qa, :(det = one($T)))
-    for c ∈ 1:P
-        for cr ∈ 1:c-1, r ∈ c:P
-            push!(qa, :( $(sym(input, r, c)) -= $(sym(input, r, cr)) * $(sym(input, c, cr))  ) )
-        end
-        push!(qa, :( $(sym(input, c, c)) = sqrt( $(sym(input, c, c)) ) ) )
-        push!(qa, :( $(sym(output, c, c)) = $(one(T)) / $(sym(input, c, c)) ))
-        push!(qa, :( det *=  $(sym(input, c, c)) ))
-        for r ∈ c+1:P
-            push!(qa, :( $(sym(input, r, c)) *= $(sym(output, c, c))  ) )
-        end
-    end
-    for c ∈ 1:P
-        for r ∈ c+1:P
-            push!(qa, :( $(sym(output, r, c)) = $(sym(input, r, c)) * $(sym(output, c, c)) ))
-            for cr ∈ c+1:r-1
-                push!(qa, :( $(sym(output, r, c)) += $(sym(input, r, cr)) * $(sym(output, cr, c)) ))
-            end
-            push!(qa, :( $(sym(output, r, c)) *=  -$(sym(output, r, r)) ) )
-        end
-    end
-end
-function chol_L_core_quote!(qa, P, input = :S, ::Type{T} = Float64, symout = sym, symin = sym) where T
+@noinline function chol_L_core_quote!(qa::Vector{Any}, P::Int, input::Symbol = :S, symout::Symbol = sym, symin::Symbol = sym)
     for c ∈ 1:P
         for cr ∈ 1:c-1, r ∈ c:P
             push!(qa, :( $(sym(input, r, c)) -= $(sym(input, r, cr)) * $(sym(input, c, cr))  ) )
@@ -109,9 +109,9 @@ function chol_L_core_quote!(qa, P, input = :S, ::Type{T} = Float64, symout = sym
         end
     end
 end
-function inv_L_core_quote!(qa, P, output = :L, input = :S, ::Type{T} = Float64) where T
+@noinline function inv_L_core_quote!(qa::Vector{Any}, P::Int, output::Symbol = :L, input::Symbol = :S)
     for c ∈ 1:P
-        push!(qa, :( $(sym(output, c, c)) = $(one(T)) / $(sym(input, c, c)) ))
+        push!(qa, :( $(sym(output, c, c)) = inv($(sym(input, c, c)) )))
     end
     for c ∈ 1:P
         # push!(qa, :( $(sym(output, c, c)) = $(one(T)) / $(sym(input, c, c)) ))
@@ -124,12 +124,12 @@ function inv_L_core_quote!(qa, P, output = :L, input = :S, ::Type{T} = Float64) 
         end
     end
 end
-function load_L_quote!(qa, P, R, symbol_name = :L, extract_from = :L)
+@noinline function load_L_quote!(qa::Vector{Any}, P::Int, R::Int, symbol_name::Symbol = :L, extract_from::Symbol = :L)
     for c ∈ 1:P, r ∈ c:P
         push!(qa, :($(sym(symbol_name, r, c)) = $extract_from[ $(r + (c-1)*R) ]) )
     end
 end
-function store_L_quote!(qa, P, R, output = :Li, ::Type{T} = Float64) where {T} # N x N block, with stride S.
+@noinline function store_L_quote!(qa::Vector{Any}, P::Int, R::Int, output::Symbol = :Li, T = Float64)
     outtup = Union{Symbol,T}[]
     for c ∈ 1:P
         for r ∈ 1:c-1
@@ -146,7 +146,7 @@ function store_L_quote!(qa, P, R, output = :Li, ::Type{T} = Float64) where {T} #
         Expr(:tuple, outtup...)
     ))))
 end
-function store_U_quote!(qa, P, R, output = :Li, ::Type{T} = Float64) where {T} # N x N block, with stride S.
+@noinline function store_U_quote!(qa::Vector{Any}, P::Int, R::Int, output::Symbol = :Li, T = Float64)
     # W = VectorizationBase.pick_vector_width(P, T)
     # rem = P & (W-1)
     # L = rem == 0 ? P : P - rem + W
@@ -173,7 +173,7 @@ Uses the lower triangle of the input matrix S, and returns the upper triangle of
     q = quote end
     qa = q.args
     load_L_quote!(qa, P, R, :S, :S)
-    invchol_L_core_quote!(qa, P, :L, :S, T)
+    invchol_L_core_quote!(qa, P, :L, :S)
     store_U_quote!(qa, P, R, :L, T)
     quote
         $(Expr(:meta,:inline))
@@ -193,7 +193,7 @@ end
     q = quote end
     qa = q.args
     load_L_quote!(qa, P, R, :S, :S)
-    invcholdeti_L_core_quote!(qa, P, :L, :S, T)
+    invcholdeti_L_core_quote!(qa, P, :L, :S)
     # store_L_quote!(qa, P, R, :L, T, false)
     storeq = quote end
     ind = 0
@@ -227,7 +227,7 @@ end
     qa = q.args
     P = min(P1,P3)
     load_L_quote!(qa, P, R1, :S, :S)
-    invcholdetc_L_core_quote!(qa, P, :L, :S, T)
+    invcholdetc_L_core_quote!(qa, P, :L, :S)
     # store_L_quote!(qa, P, R, :L, T, false)
     storeq = quote end
     ind = 0
@@ -264,7 +264,7 @@ Uses the lower triangle of the input matrix S, and returns the upper triangle of
     q = quote end
     qa = q.args
     load_L_quote!(qa, P, R, :S, :S)
-    chol_L_core_quote!(qa, P, :S, T)
+    chol_L_core_quote!(qa, P, :S)
     store_L_quote!(qa, P, R, :S, T)
     quote
         $(Expr(:meta,:inline))
@@ -334,16 +334,16 @@ Assumes the input matrix is lower triangular.
 end
 
 
-function safecholdet_L_core_quote!(qa, P, output = :L, ::Type{T} = Float64) where T
-    push!(qa, :(det = $(one(T))))
+@noinline function safecholdet_L_core_quote!(qa::Vector{Any}, P::Int, output::Symbol = :L)
     for c ∈ 1:P
         for cr ∈ 1:c-1, r ∈ c:P
             push!(qa, :( $(sym(output, r, c)) -= $(sym(output, r, cr)) * $(sym(output, c, cr))  ) )
         end
-        push!(qa, :( $(sym(output, c, c)) > $(zero(T)) || return ($(-T(Inf)), false) ))
-        push!(qa, :( $(sym(output, c, c)) = sqrt( $(sym(output, c, c)) ) ) )
-        push!(qa, :(det *= $(sym(output, c, c)) ))
-        push!(qa, :( $(symi(output, c, c)) = $(one(T)) / $(sym(output, c, c)) ))
+        symcc = sym(output, c, c)
+        push!(qa, :( $symcc > 0 || return (oftype($sym(output, c, c), -Inf), false) ))
+        push!(qa, :( $symcc = sqrt( $symcc ) ) )
+        push!(qa, Expr(c == 1 ? :(=) : :(*=), :det, symcc))
+        push!(qa, :( $(symi(output, c, c)) = inv($symcc )))
         for r ∈ c+1:P
             push!(qa, :( $(sym(output, r, c)) *= $(symi(output, c, c))  ) )
         end
@@ -353,7 +353,7 @@ end
     q = quote @fastmath @inbounds begin end end
     qa = q.args[2].args[3].args[3].args
     load_L_quote!(qa, P, R, :L, :L)
-    safecholdet_L_core_quote!(qa, P, :L, T)
+    safecholdet_L_core_quote!(qa, P, :L)
     for c ∈ 1:P
         for r ∈ 1:c-1
             push!(qa, zero(T))

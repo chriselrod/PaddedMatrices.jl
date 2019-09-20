@@ -5,37 +5,37 @@ function ∂materialize end
 abstract type AbstractProdct{T,N} end
 abstract type AbstractSizedProduct{M,P,K,T,N} <: AbstractProdct{T,N} end
 
-function reduce_size(@nospecialize(S), ::Val{N}) where {N}
-    s = fill!(MutableFixedSizePaddedVector{N,Int}(undef),1)
-    SV = S.parameters
-    j = SV[1]::Union{Int,DataType}
-    if j isa Int
-        for i ∈ eachindex(SV)
-            s[i] = (SV[i])::Int
-        end
-    elseif j isa DataType
-        for i ∈ eachindex(SV)
-            s2 = reduce_size(SV[i]::DataType, Val(N))
-            for n ∈ 1:N
-                sₙ = s[n]
-                s2ₙ = s2[n]
-                if sₙ == 1
-                    s[n] = s2[n]
-                elseif (s2ₙ == sₙ) || s2ₙ == 1 # neither are 1
-                    nothing
-                else
-                    throw("sₙ == $sₙ != s2ₙ == $s2ₙ")
-                end
-            end
-        end
-    end
-    ConstantFixedSizePaddedVector(s)
-end
+# @noinline function reduce_size(@nospecialize(S), N::Int)
+#     s = ones(Int, N)
+#     SV = S.parameters
+#     j = SV[1]::Union{Int,DataType}
+#     if j isa Int
+#         for i ∈ eachindex(SV)
+#             s[i] = (SV[i])::Int
+#         end
+#     elseif j isa DataType
+#         for i ∈ eachindex(SV)
+#             s2 = reduce_size(SV[i]::DataType, N)
+#             for n ∈ 1:N
+#                 sₙ = s[n]
+#                 s2ₙ = s2[n]
+#                 if sₙ == 1
+#                     s[n] = s2[n]
+#                 elseif (s2ₙ == sₙ) || s2ₙ == 1 # neither are 1
+#                     nothing
+#                 else
+#                     throw("sₙ == $sₙ != s2ₙ == $s2ₙ")
+#                 end
+#             end
+#         end
+#     end
+#     s
+# end
 
-function reduce_size(@nospecialize S)
+@noinline function reduce_size(SV::Core.SimpleVector)
     reduce_size!(Int[1], S)
 end
-function pick_size(s1::Int, s2::Int)
+@noinline function pick_size(s1::Int, s2::Int)
     if s1 == 1
         s3 = s2
     elseif (s1 == s2) || (s2 == 1)
@@ -46,18 +46,18 @@ function pick_size(s1::Int, s2::Int)
     s3
 end
 
-function reduce_size!(s::Vector{Int}, @nospecialize(S))
-    SV = S.parameters
+@noinline function reduce_size!(s::Vector{Int}, SV::Core.SimpleVector)
+    # SV = S.parameters
     length(SV) == 0 && return s
     j = SV[1]::Union{Int,DataType}
     if j isa Int
         N1 = length(SV)
         N2 = length(s)
         for n ∈ 1:min(N1,N2)
-            s[n] = pick_size(s[n], SV[n])
+            s[n] = pick_size(s[n], (SV[n])::Int)
         end
         for n ∈ min(N1,N2)+1:N1
-            push!(s, SV[n])
+            push!(s, (SV[n])::Int)
         end
     elseif j isa DataType
         for i ∈ eachindex(SV)
@@ -66,9 +66,6 @@ function reduce_size!(s::Vector{Int}, @nospecialize(S))
     end
     s
 end
-
-#reduce_size(S,Val(2))
-
 
 @inline Base.ndims(::Type{<:AbstractProdct{T,N}}) where {T,N} = N
 @inline Base.broadcastable(A::AbstractProdct) = A
@@ -295,7 +292,7 @@ end
     if (A == CartesianIndexing) || (A == KernelBatches)
         return FixedSizePaddedMatrixDefaultStyle{ST,T,R,A}()
     end
-    sz = reduce_size(ST)
+    sz = reduce_size(Svec)
     nonscalarinds = (Svec .=== Tuple{}) .== false
     if A == LinearIndexing
         all_equal = true
@@ -362,8 +359,8 @@ end
     elseif (A1 == CartesianIndexing) || (A2 == CartesianIndexing) || (access_pattern == CartesianIndexing)
         return FixedSizePaddedMatrixDefaultStyle{Tuple{S1,S2},T,R,CartesianIndexing}()
     end
-    sa1 = reduce_size(S1)
-    sa2 = reduce_size(S2)
+    sa1 = reduce_size(S1.parameters)
+    sa2 = reduce_size(S2.parameters)
     l1 = length(sa1)
     l2 = length(sa2)
     if (((A1 == BatchedColumnMajor) || (A2 == BatchedColumnMajor)) && (max(l1,l2)>2))
@@ -444,7 +441,7 @@ end
 
 
 @generated function Base.similar(bc::Base.Broadcast.Broadcasted{FixedSizePaddedMatrixDefaultStyle{S,T,R,A}}) where {S,A,T,R}
-    Salloc = reduce_size(S)
+    Salloc = reduce_size(S.parameters)
     #    N, R, L = calc_NPL(Salloc, T)
     N = length(Salloc)
     L = R
@@ -455,7 +452,7 @@ end
     :(MutableFixedSizePaddedArray{$ST,$T,$N,$R,$L}(undef))
 end
 @generated function Base.similar(bc::Base.Broadcast.Broadcasted{FixedSizePaddedMatrixDefaultStyle{S,T1,R,A}}, mystack::Ptr{T2}) where {S,A,T1,T2,R}
-    Salloc = reduce_size(S)
+    Salloc = reduce_size(S.parameters)
     #    N, R, L = calc_NPL(Salloc, T)
     N = length(Salloc)
     L = R
@@ -656,7 +653,7 @@ function materialize_quote(S, A, T, SB, N, P, R)
 end
 
 function materialize_quote(bc::Base.Broadcast.Broadcasted{FixedSizePaddedMatrixDefaultStyle{SB,T,R,A}}) where {A,T,SB,R}
-    S = reduce_size(SB)
+    S = reduce_size(SB.parameters)
     prettify(materialize_quote(S, A, T, SB, length(S), R, R))
 end
 
