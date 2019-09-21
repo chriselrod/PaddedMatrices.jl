@@ -86,6 +86,10 @@ end
 @generated function MutableFixedSizePaddedArray{S,T,N}(::UndefInitializer) where {S,T,N}
     init_mutable_fs_padded_array_quote(S.parameters, T)
 end
+@generated function MutableFixedSizePaddedVector{S,T}(::UndefInitializer) where {S,T}
+    L = calc_padding(S,T)
+    :(MutableFixedSizePaddedVector{$S,$T,$L}(undef))
+end
 const MutableFixedSizePaddedVector{M,T,L} = MutableFixedSizePaddedArray{Tuple{M},T,1,L,L}
 const MutableFixedSizePaddedMatrix{M,N,T,P,L} = MutableFixedSizePaddedArray{Tuple{M,N},T,2,P,L}
 
@@ -348,10 +352,16 @@ end
     end
 end
 
-
 const PtrVector{N,T,L,P} = PtrArray{Tuple{N},T,1,L,L,P} # R and L will always be the same...
 const PtrMatrix{M,N,T,R,L,P} = PtrArray{Tuple{M,N},T,2,R,L,P}
 
+@generated function PtrVector{P,T}(a) where {P,T}
+    L = calc_padding(P, T)
+    quote
+        $(Expr(:meta,:inline))
+        PtrVector{$P,$T,$L,true}(a)
+    end
+end
 # Now defining these, because any use of PtrArray is going to already be using some pointer.
 # These will therefore be fully manual.
 #@support_stack_pointer PaddedMatrices PtrVector;
