@@ -32,8 +32,8 @@ abstract type AbstractSizedProduct{M,P,K,T,N} <: AbstractProdct{T,N} end
 #     s
 # end
 
-@noinline function reduce_size(SV::Core.SimpleVector)
-    reduce_size!(Int[1], S)
+@noinline function reduce_size(SV)
+    reduce_size!(Int[1], SV)
 end
 @noinline function pick_size(s1::Int, s2::Int)
     if s1 == 1
@@ -46,7 +46,7 @@ end
     s3
 end
 
-@noinline function reduce_size!(s::Vector{Int}, SV::Core.SimpleVector)
+@noinline function reduce_size!(s::Vector{Int}, SV)#::Core.SimpleVector)
     # SV = S.parameters
     length(SV) == 0 && return s
     j = SV[1]::Union{Int,DataType}
@@ -61,7 +61,7 @@ end
         end
     elseif j isa DataType
         for i ∈ eachindex(SV)
-            s2 = reduce_size!(s, (SV[i])::DataType)
+            s2 = reduce_size!(s, (SV[i]).parameters)
         end
     end
     s
@@ -258,13 +258,17 @@ end
     
     A = LinearIndexing
     Svec = DataType[]
-#    @show s
-#    @show typeof(s)
-#    throw("Bad!")
+    # println("About to iterate over:")
+    # @show s
+    # @show typeof(s)
+    # println("Starting iteration:")
+    #    throw("Bad!")
     if is_padded_array[1]
         bs = Base.Broadcast.BroadcastStyle(s[1])
+        # @show bs
         sₙ = typeof(bs).parameters
         push!(Svec, sₙ[1])
+        # @show sₙ[1]
         T = sₙ[2]
         R = sₙ[3]
         A = sₙ[4]
@@ -275,11 +279,14 @@ end
         A = LinearIndexing
     end
     for n ∈ 2:N
+        # @show n
         if is_padded_array[n]
             bs = Base.Broadcast.BroadcastStyle(s[n])
+            # @show bs
             sₙ = typeof(bs).parameters
 #            sₙ = s[n].parameters
             push!(Svec, sₙ[1])
+            # @show sₙ[1]
             T = promote_type(T, sₙ[2])
             R, access_pattern = pick_R(R, sₙ[3])
             A = max(A, sₙ[4], access_pattern)
@@ -288,7 +295,10 @@ end
             T = promote_type(T, s[2])
         end
     end
+    # @show Svec
     ST = Tuple{Svec...}
+    # @show ST
+    # println("\n")
     if (A == CartesianIndexing) || (A == KernelBatches)
         return FixedSizePaddedMatrixDefaultStyle{ST,T,R,A}()
     end

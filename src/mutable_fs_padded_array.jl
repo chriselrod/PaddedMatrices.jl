@@ -86,12 +86,12 @@ end
 @generated function MutableFixedSizePaddedArray{S,T,N}(::UndefInitializer) where {S,T,N}
     init_mutable_fs_padded_array_quote(S.parameters, T)
 end
+const MutableFixedSizePaddedVector{M,T,L} = MutableFixedSizePaddedArray{Tuple{M},T,1,L,L}
+const MutableFixedSizePaddedMatrix{M,N,T,P,L} = MutableFixedSizePaddedArray{Tuple{M,N},T,2,P,L}
 @generated function MutableFixedSizePaddedVector{S,T}(::UndefInitializer) where {S,T}
     L = calc_padding(S,T)
     :(MutableFixedSizePaddedVector{$S,$T,$L}(undef))
 end
-const MutableFixedSizePaddedVector{M,T,L} = MutableFixedSizePaddedArray{Tuple{M},T,1,L,L}
-const MutableFixedSizePaddedMatrix{M,N,T,P,L} = MutableFixedSizePaddedArray{Tuple{M,N},T,2,P,L}
 
 @inline MutableFixedSizePaddedVector(A::AbstractFixedSizePaddedArray{S,T,1,P,L}) where {S,T,P,L} = MutableFixedSizePaddedArray{S,T,1,P,L}(A.data)
 @inline MutableFixedSizePaddedMatrix(A::AbstractFixedSizePaddedArray{S,T,2,P,L}) where {S,T,P,L} = MutableFixedSizePaddedArray{S,T,2,P,L}(A.data)
