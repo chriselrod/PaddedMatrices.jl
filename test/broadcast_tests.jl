@@ -12,7 +12,7 @@ pt = PtrVector{30,Float64,30}(pointer(t));
 ρ = 0.6
 
 
-@. AR = exp( abs( pt - pt' ) * log( ρ ) )
+AR .= exp.( abs.( pt .- pt' ) .* log( ρ ) )
 
 @. AR = ρ .^ abs( pt - pt' )
 

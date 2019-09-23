@@ -279,21 +279,21 @@ end
         @vvectorize $T for i ∈ 1:$(VectorizationBase.aligntrunc(L, T))
             mv[i] = A[i] + B[i]
         end
-        sp + $(sizeof(T)*L), mv
+        sp + $(VectorizationBase.align(sizeof(T)*L)), mv
     end
 end
 @generated function Base.:+(
     sp::StackPointer,
-    A::AbstractFixedSizePaddedVector{N,T,PA},
-    B::AbstractFixedSizePaddedVector{N,T,PB}
-) where {N,T<:Number,PA,PB}
-    P = min(PA,PB)
+    A::AbstractFixedSizePaddedVector{N,T,LA},
+    B::AbstractFixedSizePaddedVector{N,T,LB}
+) where {N,T<:Number,LA,LB}
+    L = min(LA,LB)
     quote
-        mv = PtrVector{$N,$T,$P}(pointer(sp,$T))
+        mv = PtrVector{$N,$T,$L}(pointer(sp,$T))
         @vvectorize $T for i ∈ 1:$(VectorizationBase.aligntrunc(L, T))
             mv[i] = A[i] + B[i]
         end
-        sp + $(sizeof(T)*P), mv
+        sp + $(VectorizationBase.align(sizeof(T)*L)), mv
     end
 end
 @inline function Base.:+(A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}},
@@ -534,7 +534,7 @@ end
         @vvectorize for i ∈ 1:$L
             mv[i] = A[i] * b
         end
-        sp + $(sizeof(T)*L), mv
+        sp + $(VectorizationBase.align(sizeof(T)*L)), mv
     end
 end
 @generated function Base.:*(
@@ -550,7 +550,7 @@ end
         @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] * b
         end
-        sp + $(sizeof(T)*L), mv'
+        sp + $(VectorizationBase.align(sizeof(T)*L)), mv'
     end
 end
 @generated function Base.:*(a::T, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
@@ -1935,7 +1935,7 @@ end
                 SIMDPirates.vstore!(vC + $P*n + $W*(r-1), prod_r)
             end
         end
-        sp + $(sizeof(T)*P*N), C
+        sp + $(VectorizationBase.align(sizeof(T)*P*N)), C
     end
     q
 end

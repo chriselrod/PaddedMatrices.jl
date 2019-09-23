@@ -1,10 +1,10 @@
-@noinline calc_padding(nrow::Int, T) = VectorizationBase.align(nrow, T)
+@noinline calc_padding(nrow::Int, T) = VectorizationBase.ispow2(nrow) ? nrow : VectorizationBase.align(nrow, T)
 
 @noinline function calc_NPL(SV::Core.SimpleVector, T, align_stride::Bool, pad_to_align_length::Bool = false)#true)
     nrow = (SV[1])::Int
     N = length(SV)
     if align_stride
-        padded_rows == VectorizationBase.align(nrow, T)
+        padded_rows = calc_padding(nrow, T)
     else
         W, Wshift = VectorizationBase.pick_vector_width_shift(T)
         TwoN = 2nrow
@@ -313,7 +313,8 @@ end
     end
 end
 @generated function PtrArray{S,T,N}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,T,N,P}
-    R = VectorizationBase.align(S.parameters[1], T)
+    nrow = (S.parameters[1])::Int
+    R = calc_padding(nrow, T)
     L = R
     SV = S.parameters
     for n ∈ 2:N
@@ -359,7 +360,7 @@ const PtrMatrix{M,N,T,R,L,P} = PtrArray{Tuple{M,N},T,2,R,L,P}
     L = calc_padding(P, T)
     quote
         $(Expr(:meta,:inline))
-        PtrVector{$P,$T,$L,true}(a)
+        PtrArray{Tuple{$P},$T,1,$L,$L}(a)
     end
 end
 # Now defining these, because any use of PtrArray is going to already be using some pointer.
