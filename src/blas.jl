@@ -1257,13 +1257,14 @@ function add_row_rem_expression!(q::Expr, row_rem, kernel::DynamicKernel; mask_o
     q
 end
 
-function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D = M; negative::Bool = false, force_inline = false)
-    Mmax = M isa Integer ? M : typemax(Int)
-    Nmax = N isa Integer ? N : typemax(Int)
-    W, rows, cols, aloads = pick_kernel_size(T, Mmax, Nmax)
-
+function mul_nt_quote(
+    M::Union{Int,Symbol}, K::Union{Int,Symbol}, N::Union{Int,Symbol}, T, init::Bool,
+    stride_A::Union{Int,Symbol} = M, stride_X::Union{Int,Symbol} = N, stride_D::Union{Int,Symbol} = M;
+    negative::Bool = false, force_inline::Bool = false
+)
+    W, rows, cols, aloads = pick_kernel_size(T, M isa Int ? M : typemax(Int), N isa Int ? N : typemax(Int))
     q = force_inline ? quote $(Expr(:meta,:inline)) end : quote end
-    if M isa Integer
+    if M isa Int
         row_reps, row_rem = divrem(M, rows)
         row_reps_total = row_reps + (row_rem > 0)
     else
@@ -1272,7 +1273,7 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
         push!(q.args, :(($row_reps,$row_rem) = divrem($M,$rows)))
         push!(q.args, :(mask = VectorizationBase.mask($T, $row_rem & $(W-1))))
     end
-    if K isa Integer
+    if K isa Int
         col_reps, col_rem = divrem(K, cols)
         col_reps_total = col_reps + (col_rem > 0)
     else
@@ -1311,7 +1312,7 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
             end
             push!(q.args, loop)
         end
-        if K isa Integer
+        if K isa Int
             if col_rem > 0
                 kernel = DynamicKernel(
                     M, col_rem, N, stride_D, stride_A, stride_X, T, X_transposed = true, negative = negative
@@ -1336,12 +1337,10 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
         return q
     elseif col_reps_total == 1
         push!(q.args, :(pA = pointer(A); pD = pointer(D); pX = pointer(X)))
-        
         kernel = DynamicKernel(
             rows, K, N, stride_D, stride_A, stride_X, T, X_transposed = true, negative = negative
         )
         kql = kernel_quote(kernel, init = init, force_inline = false, mask_ops = false, runtime_mask = false)
-        # kql = kernel_nt_quote(rows, N, stride_A, stride_X, stride_D, K, T, init, false, nothing, negative = negative)
         if row_reps == 1
             push!(q.args, kql)
             push!(q.args, :(pA += $size_T*$rows; pD += $size_T*$rows))
@@ -1368,7 +1367,6 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
         rows, cols, N, stride_D, stride_A, stride_X, T, X_transposed = true, negative = negative
     )
     kql = kernel_quote(kernel, init = init, force_inline = false, mask_ops = false, runtime_mask = false)
-    # kql = kernel_nt_quote(rows, cols, stride_A, stride_X, stride_D, K, T, init, false, nothing, negative = negative)
     inner = quote pA = pointer(A) end
     if col_reps > 1
         push!(inner.args, :(pD = pointer(D) + c*$size_T*$stride_D*$cols))
@@ -1380,7 +1378,7 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
         push!(inner.args, :(pA += $size_T*$rows; pD += $size_T*$rows))
     else
         loop = quote
-            for $(gensym(:r)) ∈ 0:$(row_reps isa Integer ? row_reps - 1 : :($row_reps - 1))
+            for $(gensym(:r)) ∈ 0:$(row_reps isa Int ? row_reps - 1 : :($row_reps - 1))
                 $kql
                 pA += $size_T*$rows
                 pD += $size_T*$rows
@@ -1392,18 +1390,18 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
         rows, cols, N, stride_D, stride_A, stride_X, T, X_transposed = true, negative = negative
     )
     add_row_rem_expression!(inner, row_rem, kernel, init = init)
-    push!(inner.args, :(pX += $size_T*$(stride_X isa Integer ? max(1,stride_X) : stride_X)*$cols))
+    push!(inner.args, :(pX += $size_T*$(stride_X isa Int ? max(1,stride_X) : stride_X)*$cols))
     if col_reps == 1
         push!(q.args, inner)
     else
         loop = quote
-            for c ∈ 0:$(col_reps isa Integer ? col_reps - 1 : :($col_reps - 1))
+            for c ∈ 0:$(col_reps isa Int ? col_reps - 1 : :($col_reps - 1))
                 $inner
             end
         end
         push!(q.args, loop)
     end
-    if K isa Integer
+    if K isa Int
         if col_rem > 0
             kernel = DynamicKernel(
                 rows, col_rem, N, stride_D, stride_A, stride_X, T, X_transposed = true, negative = negative
@@ -1418,7 +1416,7 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
                 push!(inner.args, :(pA += $size_T*$rows; pD += $size_T*$rows))
             else
                 loop = quote
-                    for r ∈ 0:$(row_reps isa Integer ? row_reps - 1 : :($row_reps - 1))
+                    for r ∈ 0:$(row_reps isa Int ? row_reps - 1 : :($row_reps - 1))
                         $kql
                         pA += $size_T*$rows
                         pD += $size_T*$rows
@@ -1435,7 +1433,6 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
     else
         set_pointer_quote = quote
             pD = pointer(D) + $size_T*($row_reps*$rows + $stride_D*$col_reps*$cols)
-            # pA = pointer(A) + $size_T*(
             pX = pointer(X) + $size_T*($col_reps*$cols)
         end
         push!(q.args, set_pointer_quote)
@@ -1445,7 +1442,9 @@ function mul_nt_quote(M,K,N,T,init::Bool, stride_A = M, stride_X = N, stride_D =
     q
 end
 
-function column_remainder_xt_quote(M, cols, N, stride_D, stride_A, stride_X, negative)
+function column_remainder_xt_quote(
+    M::Union{Int,Symbol}, cols::Int, N::Union{Int,Symbol}, stride_D::Union{Int,Symbol}, stride_A::Union{Int,Symbol}, stride_X::Union{Int,Symbol}, negative::Bool
+)
     mulfunc = negative ? :A_nmul_Xt! : :A_mul_Xt!
     q = quote nothing end
     for c ∈ 1:cols-1

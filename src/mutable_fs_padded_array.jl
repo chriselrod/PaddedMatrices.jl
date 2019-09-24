@@ -1,6 +1,6 @@
 @noinline calc_padding(nrow::Int, T) = VectorizationBase.ispow2(nrow) ? nrow : VectorizationBase.align(nrow, T)
 
-@noinline function calc_NPL(SV::Core.SimpleVector, T, align_stride::Bool, pad_to_align_length::Bool = false)#true)
+@noinline function calc_NPL(SV::Core.SimpleVector, T, align_stride::Bool = true, pad_to_align_length::Bool = false)#true)
     nrow = (SV[1])::Int
     N = length(SV)
     if align_stride
@@ -266,7 +266,7 @@ end
     end
 end
 @generated function PtrArray{S,T,N}(ptr::Ptr{T},::Val{P}=Val{true}()) where {S,T,N,P}
-    R = VectorizationBase.align(S.parameters[1], T)
+    R = calc_padding((S.parameters[1])::Int, T)
     L = R
     SV = S.parameters
     for n ∈ 2:N
@@ -313,8 +313,7 @@ end
     end
 end
 @generated function PtrArray{S,T,N}(sp::StackPointer, ::Val{P} = Val{true}()) where {S,T,N,P}
-    nrow = (S.parameters[1])::Int
-    R = calc_padding(nrow, T)
+    R = calc_padding((S.parameters[1])::Int, T)
     L = R
     SV = S.parameters
     for n ∈ 2:N

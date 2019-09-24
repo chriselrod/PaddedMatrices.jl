@@ -301,7 +301,7 @@ end
     kernel::DynamicKernel, mask_expr::Union{Symbol,Unsigned} = 0x00, force_inline::Bool = false, mask_ops::Bool = true
 )
     @unpack T, R, C, stride_X, X_transposed, negative = kernel
-    W = VectorizationBase.pick_vector_width(kernel.R, T)
+    W = VectorizationBase.pick_vector_width(R, T)
     V = Vec{W,T}
     size_T = sizeof(T)::Int
     q = force_inline ? quote $(Expr(:meta,:inline)) end : quote end
@@ -342,8 +342,8 @@ end
 @noinline function gemminit(
     kernel::DynamicKernel, mask_expr::Union{Symbol,Unsigned} = 0x00, force_inline::Bool = false, mask_ops::Bool = true
 )
-    @unpack T, R, C, stride_X = kernel
-    W = VectorizationBase.pick_vector_width(kernel.R, T)
+    @unpack T, R, C, stride_D, stride_X = kernel
+    W = VectorizationBase.pick_vector_width(R, T)
     V = Vec{W,T}
     size_T = sizeof(T)
     q = force_inline ? quote $(Expr(:meta,:inline)) end : quote end
@@ -806,14 +806,13 @@ end
 # will be maximized with relatively square blocks, making that friendliest for the cache.
 # """
 @noinline function pick_kernel_size(
-    ::Type{T}, row_max = typemax(Int), col_max = typemax(Int);
-    D_count = 1, A_count = 1, X_count = 1,
-    W = VectorizationBase.pick_vector_width(row_max, T),
-    NREG = VectorizationBase.REGISTER_COUNT, verbose = false,
-    max_aloads = min(NREG >> 1, row_max)
+    ::Type{T}, row_max::Int = typemax(Int), col_max::Int = typemax(Int);
+    W::Int = VectorizationBase.pick_vector_width(row_max, T),
+    NREG::Int = VectorizationBase.REGISTER_COUNT, verbose::Bool = false,
+    max_aloads::Int = min(NREG >> 1, row_max)
 ) where {T}
     T_size = sizeof(T)
-    
+    # @show max_aloads
     # cache_line = W
     # cache_line = CACHELINE_SIZE ÷ T_size
     max_total = W * NREG
@@ -915,17 +914,16 @@ Should add support for how many copies of each of the matrices we have, so that 
     D = A*(X + C)
 in one step, without as much un/reloading of memory.
 """
-@noinline function blocking_structure(M, N, P, ::Type{T} = Float64;
-        cache_size::NTuple{3,Int} = VectorizationBase.CACHE_SIZE,
-                D_count = 1, A_count = 1, X_count = 1) where T
-    total_elements = M*N*D_count + N*P*A_count + M*P*X_count
+@noinline function blocking_structure(M::Int, N::Int, P::Int, ::Type{T} = Float64;
+        cache_size::NTuple{3,Int} = VectorizationBase.CACHE_SIZE) where T
+    total_elements = M*N + N*P + M*P
     L1, L2, L3 = cache_size .÷ sizeof(T)
     if L1 > total_elements
-        epr, m_1, p_1 = pick_kernel_size(T, M, P, D_count = D_count, A_count = A_count, X_count = X_count)
+        epr, m_1, p_1 = pick_kernel_size(T, M, P)
         return ((min(m_1,M),N,min(p_1,P)),(M,N,P),(M,N,P)),0
     end
 
-    epr, m_1, p_1 = pick_kernel_size(T, M, P, D_count = D_count, A_count = A_count, X_count = X_count)
+    epr, m_1, p_1 = pick_kernel_size(T, M, P)
     Dmp_1 = m_1 * p_1
 
     n_1 = (L1 - Dmp_1) ÷ (m_1 + p_1)
