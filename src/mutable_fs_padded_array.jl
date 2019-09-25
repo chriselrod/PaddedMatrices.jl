@@ -1,4 +1,3 @@
-@noinline calc_padding(nrow::Int, T) = VectorizationBase.ispow2(nrow) ? nrow : VectorizationBase.align(nrow, T)
 
 @noinline function calc_NPL(SV::Core.SimpleVector, T, align_stride::Bool = true, pad_to_align_length::Bool = false)#true)
     nrow = (SV[1])::Int
@@ -10,7 +9,7 @@
         TwoN = 2nrow
 
         while W >= TwoN
-            W >>= 1
+            W >>>= 1
         end
         Wm1 = W - 1
         # rem = nrow & Wm1
@@ -47,7 +46,7 @@ end
         return q
     end
     while W >= TwoN
-        W >>= 1
+        W >>>= 1
     end
     Wm1 = W - 1
     # rem = nrow & Wm1

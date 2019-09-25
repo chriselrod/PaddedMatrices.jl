@@ -31,7 +31,7 @@ end
 @noinline function reps_and_rem(kernel::DynamicKernel)
     @unpack R, T = kernel
     W, Wshift = VectorizationBase.pick_vector_width_shift(R, T)
-    Riter = R >> Wshift
+    Riter = R >>> Wshift
     Rrem = R & (W-1)
     Riter, Rrem
 end
@@ -809,7 +809,7 @@ end
     ::Type{T}, row_max::Int = typemax(Int), col_max::Int = typemax(Int);
     W::Int = VectorizationBase.pick_vector_width(row_max, T),
     NREG::Int = VectorizationBase.REGISTER_COUNT, verbose::Bool = false,
-    max_aloads::Int = min(NREG >> 1, row_max)
+    max_aloads::Int = min(NREG >>> 1, row_max)
 ) where {T}
     T_size = sizeof(T)
     # @show max_aloads
@@ -967,8 +967,8 @@ end
 end
 
 @noinline function divide_into_rough_square(L, M, P, n, mbase, pbase)
-    Mhalf = max(round_x_to_nearest_y(M>>1, mbase), mbase)
-    Phalf = max(round_x_to_nearest_y(P>>1, pbase), pbase)
+    Mhalf = max(round_x_to_nearest_y(M>>>1, mbase), mbase)
+    Phalf = max(round_x_to_nearest_y(P>>>1, pbase), pbase)
     bsize = Mhalf*Phalf + Mhalf*n + n*Phalf
     if bsize < L
         return Mhalf, Phalf

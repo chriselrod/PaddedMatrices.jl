@@ -246,7 +246,7 @@ end
     nrow = (SV[1])::Int
     W, Wshift = VectorizationBase.pick_vector_width_shift(nrow, T)
 
-    num_unmasked_loads_per_row = nrow >> Wshift
+    num_unmasked_loads_per_row = nrow >>> Wshift
     remainder = nrow & (W - 1)
 
     padded_rows = remainder == 0 ? nrow : nrow + W - remainder
@@ -258,7 +258,7 @@ end
     L = padded_rows * remaining_dims
 
     W_full, Wshift_full = VectorizationBase.pick_vector_width_shift(L, T)
-    num_unmasked_loads = L >> Wshift_full
+    num_unmasked_loads = L >>> Wshift_full
     remainder_full = L & (W_full - 1)
 
     q = quote end

@@ -398,9 +398,9 @@ end
     V = Vec{W,T}
 
     # +2, to divide by an additional 4
-    iterations = L >> (Wshift + 2)
+    iterations = L >>> (Wshift + 2)
     r = L & ((W << 2) - 1)
-    riter = r >> Wshift
+    riter = r >>> Wshift
     remainder_quote = quote
             Base.Cartesian.@nexprs $riter j -> begin
             offset_j = $(4WT*iterations) + $WT*(j-1)
@@ -451,9 +451,9 @@ end
     V = Vec{W,T}
 
     # +2, to divide by an additional 4
-    iterations = L >> (Wshift + 2)
+    iterations = L >>> (Wshift + 2)
     r = L & ((W << 2) - 1)
-    riter = r >> Wshift
+    riter = r >>> Wshift
     remainder_quote = quote
         Base.Cartesian.@nexprs $riter j -> begin
             offset_j = $(4WT*iterations) + $WT*(j-1)
@@ -1241,7 +1241,7 @@ function add_row_rem_expression!(q::Expr, row_rem, kernel::DynamicKernel; mask_o
         end
     else
         row_rem_quote = quote initkernel_nt!(pD, pA, pX, DKernel{$R, $C}($N, $stride_D, $stride_A, $stride_X), mask, Val{$negative}()) end
-        for r ∈ 1:(R >> Wshift)
+        for r ∈ 1:(R >>> Wshift)
             new_nrows = R - (r << Wshift)
             row_rem_quote = quote
                 if $row_rem > $new_nrows
@@ -1891,7 +1891,7 @@ end
 
 @generated function Base.:*(A::LinearAlgebra.Diagonal{T,<:AbstractFixedSizePaddedVector{M,T,P}}, B::AbstractFixedSizePaddedMatrix{M,N,T,P}) where {M,N,T,P}
     W, Wshift = VectorizationBase.pick_vector_width_shift(P, T)
-    reps = P >> Wshift
+    reps = P >>> Wshift
     V = Vec{W,T}
     q = quote
         C = MutableFixedSizePaddedMatrix{$M,$N,$T}(undef)
@@ -1920,7 +1920,7 @@ end
     B::AbstractFixedSizePaddedMatrix{M,N,T,P}
 ) where {M,N,T,P}
     W, Wshift = VectorizationBase.pick_vector_width_shift(P, T)
-    reps = P >> Wshift
+    reps = P >>> Wshift
     V = Vec{W,T}
     q = quote
         C = PtrMatrix{$M,$N,$T,$P}(pointer(sp,$T))

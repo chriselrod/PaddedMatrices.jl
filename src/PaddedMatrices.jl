@@ -199,6 +199,11 @@ end
 ## ADD DOCS FOR STUBS
 function vload! end
 
+function calc_padding(nrow::Int, T)
+    W = VectorizationBase.pick_vector_width(T)
+    W > nrow ? VectorizationBase.nextpow2(nrow) : VectorizationBase.align(nrow, T)
+end
+# calc_padding(nrow::Int, T) = VectorizationBase.ispow2(nrow) ? nrow : VectorizationBase.align(nrow, T)
 
 # include("stack_pointer.jl")
 include("padded_array.jl")

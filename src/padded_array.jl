@@ -38,14 +38,14 @@ function DynamicPaddedArray{T}(::UndefInitializer, S::NTuple{N}) where {T,N}#, :
     Wm1 = W - 1
     rem = nrow & Wm1
     padded_rows = (nrow + Wm1) & ~Wm1
-#    nvector_loads = padded_rows >> Wshift
+#    nvector_loads = padded_rows >>> Wshift
     padded_size = Base.setindex(S, padded_rows, 1)
     data = Array{T,N}(undef, padded_size)
     return DynamicPaddedArray{T,N}(data, S)
 end
 function DynamicPaddedArray{T}(::UndefInitializer, S::NTuple{N,Int}, padded_rows::Int) where {T,N}#, ::Val{Z} = Val(true)) where {T,N,Z}
     W, Wshift = VectorizationBase.pick_vector_width_shift(T)
-#    nvector_loads = padded_rows >> Wshift
+#    nvector_loads = padded_rows >>> Wshift
     padded_size = Base.setindex(S, padded_rows, 1)
     data = Array{T,N}(undef, padded_size)
     return DynamicPaddedArray{T,N}(data, S)
@@ -79,6 +79,13 @@ function DynamicPtrArray{T,N}(sp::StackPointer, size::NTuple{N,<:Integer}, strid
     L = full_length(size, stride)
     sp + VectorizationBase.align(L*sizeof(T)), DynamicPtrArray(pointer(sp, T), size, stride)    
 end
+function DynamicPtrVector{T}(sp::StackPointer, s::Integer, L::Integer) where {T}
+    sp + VectorizationBase.align(L*sizeof(T)), DynamicPtrArray(pointer(sp, T), (s,), L)
+end
+function DynamicPtrVector{T}(sp::StackPointer, s::Integer) where {T}
+    L = VectorizationBase.align(s,T)
+    sp + L*sizeof(T), DynamicPtrArray(pointer(sp, T), (s,), L)
+end
 
 # function DynamicPaddedArray{T where T,N}(A::AbstractArray{T,N}) where {T,N}
 #     pA = DynamicPaddedArray{T}(undef, size(A))
@@ -92,7 +99,7 @@ function Base.zeros(::Type{<:DynamicPaddedArray{T}}, S::NTuple{N,<:Integer}) whe
     W, Wshift = VectorizationBase.pick_vector_width_shift(S[1], T)
     rem = (nrow & (W-1))
     padded_rows = rem == 0 ? nrow : nrow + W - rem
- #   nvector_loads = padded_rows >> Wshift
+ #   nvector_loads = padded_rows >>> Wshift
     DynamicPaddedArray{T,N}(
         zeros(T, Base.setindex(S, padded_rows, 1)), S#nvector_loads, S
     )
@@ -103,7 +110,7 @@ function Base.ones(::Type{<:DynamicPaddedArray{T}}, S::NTuple{N,<:Integer}) wher
     Wm1 = W - 1
     rem = nrow & Wm1
     padded_rows = (nrow + Wm1) & ~Wm1
-#    nvector_loads = padded_rows >> Wshift
+#    nvector_loads = padded_rows >>> Wshift
     DynamicPaddedArray{T,N}(
         ones(T, Base.setindex(S, padded_rows, 1)), S#nvector_loads, S
     )
@@ -114,7 +121,7 @@ function Base.fill(::Type{<: DynamicPaddedArray}, S::NTuple{N,<:Integer}, v::T) 
     Wm1 = W - 1
     rem = nrow & Wm1
     padded_rows = (nrow + Wm1) & ~Wm1
-#    nvector_loads = padded_rows >> Wshift
+#    nvector_loads = padded_rows >>> Wshift
     DynamicPaddedArray{T,N}(
         fill(v, Base.setindex(S, padded_rows, 1)), S#nvector_loads, S
     )
@@ -229,7 +236,7 @@ end
     register_count = VectorizationBase.REGISTER_COUNT
     # repetitions = register_count ÷ 3
     repetitions = 4
-    # rep_half = repetitions >> 1
+    # rep_half = repetitions >>> 1
     quote
         N = size(D,2)
         @boundscheck begin
@@ -244,7 +251,7 @@ end
         end
         s = stride(D,2)
         regrem = s & $(W-1)
-        nregrep = s >> $Wshift
+        nregrep = s >>> $Wshift
         nregrepgroup, nregrepindiv = divrem(nregrep, $repetitions)
         vD = VectorizationBase.vectorizable(D)
         va = VectorizationBase.vectorizable(a)
