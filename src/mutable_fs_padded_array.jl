@@ -15,52 +15,27 @@
         # rem = nrow & Wm1
         padded_rows = (nrow + Wm1) & ~Wm1
     end
+    X = Int[]
     L = padded_rows
+    push!(X, padded_rows)
     for n ∈ 2:N
         L *= (SV[n])::Int
+        push!(X, L)
     end
     LA = VectorizationBase.align(L,T)
     if pad_to_align_length
         LA += VectorizationBase.pick_vector_width(T)
     end
-    N, padded_rows, LA
+    N, X, LA
 end
 
 @noinline function init_mutable_fs_padded_array_quote(SV::Core.SimpleVector, T)
-    N = length(SV)
-    nrow = (SV[1])::Int
-    W, Wshift = VectorizationBase.pick_vector_width_shift(T)
-    TwoN = 2nrow
-    if W < TwoN
-        Wm1 = W - 1
-        rem = nrow & Wm1
-        padded_rows = (nrow + Wm1) & ~Wm1
-        L = padded_rows
-        for n ∈ 2:N
-            L *= (SV[n])::Int
-        end
-        q = quote
-            $(Expr(:meta,:inline))
-            out = MutableFixedSizePaddedArray{Tuple{$(SV...)},$T,$N,$padded_rows,$L}(undef)
-        end
-        return q
-    end
-    while W >= TwoN
-        W >>>= 1
-    end
-    Wm1 = W - 1
-    # rem = nrow & Wm1
-    padded_rows = (nrow + Wm1) & ~Wm1
-    L = padded_rows
-    for n ∈ 2:N
-        L *= (SV[n])::Int
-    end
+    N, X, LA = calc_NPL(SV, T)
     quote
         $(Expr(:meta,:inline))
-        MutableFixedSizePaddedArray{Tuple{$(SV...)},$T,$N,$padded_rows,$L}(undef)
+        MutableFixedSizePaddedArray{Tuple{$(SV...)},$T,$N,Tuple{$(X...)},$LA}(undef)
     end
 end
-
 
 """
 Parameters are
@@ -70,12 +45,12 @@ N, the number of axis
 R, the actual number of rows, where the excess R > S[1] are zero.
 L, number of elements (including buffer zeros).
 """
-mutable struct MutableFixedSizePaddedArray{S,T,N,P,L} <: AbstractMutableFixedSizePaddedArray{S,T,N,P,L}
+mutable struct MutableFixedSizePaddedArray{S,T,N,X,L} <: AbstractMutableFixedSizePaddedArray{S,T,N,X,L}
     data::NTuple{L,T}
-    @inline function MutableFixedSizePaddedArray{S,T,N,R,L}(::UndefInitializer) where {S,T,N,R,L}
+    @inline function MutableFixedSizePaddedArray{S,T,N,X,L}(::UndefInitializer) where {S,T,N,X,L}
         new()
     end
-    @inline function MutableFixedSizePaddedArray{S,T,N,R,L}(data::NTuple{L,T}) where {S,T,N,R,L}
+    @inline function MutableFixedSizePaddedArray{S,T,N,X,L}(data::NTuple{L,T}) where {S,T,N,X,L}
         new(data)
     end
 end
@@ -85,30 +60,37 @@ end
 @generated function MutableFixedSizePaddedArray{S,T,N}(::UndefInitializer) where {S,T,N}
     init_mutable_fs_padded_array_quote(S.parameters, T)
 end
-const MutableFixedSizePaddedVector{M,T,L} = MutableFixedSizePaddedArray{Tuple{M},T,1,L,L}
-const MutableFixedSizePaddedMatrix{M,N,T,P,L} = MutableFixedSizePaddedArray{Tuple{M,N},T,2,P,L}
+const MutableFixedSizePaddedVector{M,T,L} = MutableFixedSizePaddedArray{Tuple{M},T,1,Tuple{L},L}
+const MutableFixedSizePaddedMatrix{M,N,T,P,L} = MutableFixedSizePaddedArray{Tuple{M,N},T,2,Tuple{P,L},L}
 @generated function MutableFixedSizePaddedVector{S,T}(::UndefInitializer) where {S,T}
     L = calc_padding(S,T)
     :(MutableFixedSizePaddedVector{$S,$T,$L}(undef))
 end
 
-@inline MutableFixedSizePaddedVector(A::AbstractFixedSizePaddedArray{S,T,1,P,L}) where {S,T,P,L} = MutableFixedSizePaddedArray{S,T,1,P,L}(A.data)
-@inline MutableFixedSizePaddedMatrix(A::AbstractFixedSizePaddedArray{S,T,2,P,L}) where {S,T,P,L} = MutableFixedSizePaddedArray{S,T,2,P,L}(A.data)
-@inline MutableFixedSizePaddedArray(A::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L}= MutableFixedSizePaddedArray{S,T,N,P,L}(A.data)
+@inline MutableFixedSizePaddedVector(A::AbstractConstantFixedSizePaddedArray{S,T,1,P,L}) where {S,T,P,L} = MutableFixedSizePaddedArray{S,T,1,P,L}(A.data)
+@inline MutableFixedSizePaddedMatrix(A::AbstractConstantFixedSizePaddedArray{S,T,2,P,L}) where {S,T,P,L} = MutableFixedSizePaddedArray{S,T,2,P,L}(A.data)
+@inline MutableFixedSizePaddedArray(A::AbstractConstantFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L}= MutableFixedSizePaddedArray{S,T,N,P,L}(A.data)
 
 
 
 @generated function MutableFixedSizePaddedArray(::UndefInitializer, ::Val{S}, ::Type{T1}=Float64) where {S,T1}
-    SD = Tuple{S...}
-    init_mutable_fs_padded_array_quote(SD.parameters, T1)
+    init_mutable_fs_padded_array_quote(Tuple{S...}.parameters, T1)
 end
 @generated function MutableFixedSizePaddedArray{S,T,N,P}(::UndefInitializer) where {S,T,N,P}
-    L = P
-    SV = S.parameters
-    for n in 2:N
-        L *= (SV[n])::Int
+    if P isa Int
+        L = P
+        Xv = Int[ P ]
+        SV = S.parameters
+        for n in 2:N
+            L *= (SV[n])::Int
+            push!(Xv, L)
+        end
+        X = Tuple{Xv...}
+    else P isa Tuple
+        X = P
+        L = last(P.parameters)
     end
-    :(MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef))
+    :(MutableFixedSizePaddedArray{$S,$T,$N,$X,$L}(undef))
 end
 
 @generated function Base.zero(::Type{<:MutableFixedSizePaddedArray{S,T}}) where {S,T}

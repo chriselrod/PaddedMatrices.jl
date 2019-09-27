@@ -261,7 +261,7 @@ end
     quote
         $(Expr(:meta,:inline))
         mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
-        @vvectorize $T for l ∈ 1:$(VectorizationBase.aligntrunc(L, T))
+        @vvectorize $T for l ∈ 1:$L
             mv[l] = A[l] + B[l]
         end
         mv
@@ -276,7 +276,7 @@ end
     L = min(LA,LB)
     quote
         mv = PtrArray{$S,$T,$N,$P,$L}(pointer(sp,$T))
-        @vvectorize $T for i ∈ 1:$(VectorizationBase.aligntrunc(L, T))
+        @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] + B[i]
         end
         sp + $(VectorizationBase.align(sizeof(T)*L)), mv
@@ -290,7 +290,7 @@ end
     L = min(LA,LB)
     quote
         mv = PtrVector{$N,$T,$L}(pointer(sp,$T))
-        @vvectorize $T for i ∈ 1:$(VectorizationBase.aligntrunc(L, T))
+        @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] + B[i]
         end
         sp + $(VectorizationBase.align(sizeof(T)*L)), mv
@@ -312,7 +312,7 @@ end
     quote
         # $(Expr(:meta,:inline))
         mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
-        @vvectorize $T for i ∈ 1:$(VectorizationBase.aligntrunc(L, T))
+        @vvectorize $T for i ∈ 1:$L
             mv[i] = a + B[i]
         end
         ConstantFixedSizePaddedArray(mv)
@@ -322,7 +322,7 @@ end
     quote
         # $(Expr(:meta,:inline))
         mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
-        @vvectorize $T for i ∈ 1:$(VectorizationBase.aligntrunc(L, T))
+        @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] + b
         end
         ConstantFixedSizePaddedArray(mv)
@@ -332,7 +332,7 @@ end
     quote
         $(Expr(:meta,:inline))
         mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
-        @vvectorize $T for i ∈ 1:$(VectorizationBase.aligntrunc(L, T))
+        @vvectorize $T for i ∈ 1:$L
             mv[i] = a + B[i]
         end
         ConstantFixedSizePaddedArray(mv)'
@@ -342,7 +342,7 @@ end
     quote
         $(Expr(:meta,:inline))
         mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
-        @vvectorize $T for i ∈ 1:$(VectorizationBase.aligntrunc(L, T))
+        @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] + b
         end
         ConstantFixedSizePaddedArray(mv)'
@@ -352,7 +352,7 @@ end
     quote
         # $(Expr(:meta,:inline))
         mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
-        @vvectorize $T for i ∈ 1:$(VectorizationBase.aligntrunc(L, T))
+        @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] - B[i]
         end
         ConstantFixedSizePaddedArray(mv)
@@ -360,7 +360,7 @@ end
 end
 @generated function diff!(C::MutableFixedSizePaddedArray{S,T,N,P,L}, A::AbstractFixedSizePaddedArray{S,T,N,P,L}, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
     quote
-        @vvectorize $T for i ∈ 1:$(VectorizationBase.aligntrunc(L, T))
+        @vvectorize $T for i ∈ 1:$L
             C[i] = A[i] - B[i]
         end
         C
@@ -370,7 +370,7 @@ end
     quote
         # $(Expr(:meta,:inline))
         mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
-        @vvectorize $T for i ∈ 1:$(VectorizationBase.aligntrunc(L, T))
+        @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] - b
         end
         ConstantFixedSizePaddedArray(mv)
@@ -380,7 +380,7 @@ end
     quote
         # $(Expr(:meta,:inline))
         mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
-        @vvectorize $T for i ∈ 1:$(VectorizationBase.aligntrunc(L, T))
+        @vvectorize $T for i ∈ 1:$L
             mv[i] = a - B[i]
         end
         ConstantFixedSizePaddedArray(mv)

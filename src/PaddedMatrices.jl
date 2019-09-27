@@ -66,17 +66,6 @@ const AbstractConstantFixedSizePaddedMatrix{M,N,T,P,L} = AbstractConstantFixedSi
 maybe_static_size(::AbstractFixedSizePaddedArray{S}) where {S} = Static{S}()
 maybe_static_size(A::AbstractArray) = size(A)
 
-struct StaticUnitRange{L,S} <: AbstractFixedSizePaddedVector{L,Int,L} end
-Base.getindex(::StaticUnitRange{L,S}, i::Integer) where {L,S} = Int(i+S-1)
-Base.size(::StaticUnitRange{L}) where {L} = (L,)
-Base.length(::StaticUnitRange{L}) where {L} = L
-Base.IndexStyle(::Type{<:StaticUnitRange}) = Base.IndexLinear()
-@generated StaticUnitRange(::Val{Start}, ::Val{Stop}) where {Start,Stop} = StaticUnitRange{Stop-Start+1,Start}()
-macro StaticRange(rq)
-    @assert rq.head == :call
-    @assert rq.args[1] == :(:)
-    :(StaticUnitRange(Val{$(rq.args[2])}(), Val{$(rq.args[3])}()))
-end
 LinearAlgebra.checksquare(::AbstractFixedSizePaddedMatrix{M,M}) where {M} = M
 LinearAlgebra.checksquare(::AbstractFixedSizePaddedMatrix) = DimensionMismatch("Matrix is not square.")
                                 
@@ -203,6 +192,15 @@ function calc_padding(nrow::Int, T)
     W = VectorizationBase.pick_vector_width(T)
     W > nrow ? VectorizationBase.nextpow2(nrow) : VectorizationBase.align(nrow, T)
 end
+@noinline function calc_strides(SV::Core.SimpleVector, T)
+    P = calc_padding(first(SV)::Int, T)::Int
+    X = [ P ]
+    for n in 2:length(SV)
+        P *= (SV[n])::Int
+        push!(X, P)
+    end
+    X
+end
 # calc_padding(nrow::Int, T) = VectorizationBase.ispow2(nrow) ? nrow : VectorizationBase.align(nrow, T)
 
 # include("stack_pointer.jl")
@@ -217,6 +215,7 @@ include("rand.jl")
 include("utilities.jl")
 include("seed_increments.jl")
 include("broadcast.jl")
+include("getindex.jl")
 
 @def_stackpointer_fallback vexp ∂getindex ∂materialize DynamicPtrVector DynamicPtrMatrix DynamicPtrArray RESERVED_INCREMENT_SEED_RESERVED RESERVED_DECREMENT_SEED_RESERVED RESERVED_NMULTIPLY_SEED_RESERVED RESERVED_MULTIPLY_SEED_RESERVED
 function __init__()
