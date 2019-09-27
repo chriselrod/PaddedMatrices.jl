@@ -215,6 +215,3 @@ end
     Expr(:(=), sp ? :($ptrsym,$outsym) : outsym, matrix_expr)
 end
 
-function ∂getindex end
-
-
