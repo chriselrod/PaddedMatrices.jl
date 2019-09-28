@@ -1,21 +1,21 @@
 
-@inline function diff!(C::AbstractMutableFixedSizePaddedMatrix{M,N,Vec{W,T}},
-                            A::AbstractFixedSizePaddedMatrix{M,N,T,P},
-                            B::AbstractFixedSizePaddedMatrix{M,N,Vec{W,T}}) where {M,N,W,T,P}
-
+@inline function diff!(
+    C::AbstractMutableFixedSizeMatrix{M,N,Vec{W,T}},
+    A::AbstractFixedSizeMatrix{M,N,T},
+    B::AbstractFixedSizeMatrix{M,N,Vec{W,T}}
+) where {M,N,W,T}
     @inbounds for n ∈ 1:N, m ∈ 1:M
         C[m,n] = SIMDPirates.vsub( SIMDPirates.vbroadcast(Vec{W,T}, A[m,n]), B[m,n] )
     end
 end
 
 @generated function LinearAlgebra.dot(
-            A::AbstractFixedSizePaddedArray{S,NTuple{W,Core.VecElement{T}},N,P,L},
-            B::AbstractFixedSizePaddedArray{S,NTuple{W,Core.VecElement{T}},N,P,L}
-        ) where {S,W,T,N,P,L}
-
-
+    A::AbstractFixedSizeArray{S,NTuple{W,Core.VecElement{T}},N,X,L},
+    B::AbstractFixedSizeArray{S,NTuple{W,Core.VecElement{T}},N,X,L}
+) where {S,W,T,N,X,L}
     if N > 1
-        ST = ntuple(n -> S.parameters[n], Val(N))
+        ST = tuple(S.parameters...)
+        P = (X.parameters[2])::Int
         return quote
             out = SIMDPirates.vbroadcast(NTuple{W,Core.VecElement{T}}, zero(T))
             ind = 0
@@ -23,7 +23,7 @@ end
                 for i_0 ∈ 1:$(ST[1])
                     out = SIMDPirates.vmuladd(A[ind + i_0], B[ind + i_0], out)
                 end
-                ind += P
+                ind += $P
             end
             out
         end
@@ -39,12 +39,11 @@ end
 end
 
 @generated function dot_self(
-            A::AbstractFixedSizePaddedArray{S,NTuple{W,Core.VecElement{T}},N,P,L}
-        ) where {S,W,T,N,P,L}
-
-
+    A::AbstractFixedSizeArray{S,NTuple{W,Core.VecElement{T}},N,X,L}
+) where {S,W,T,N,X,L}
     if N > 1
-        ST = ntuple(n -> S.parameters[n], Val(N))
+        ST = tuple(S.parameters...)
+        P = (X.parameters[2])::Int
         return quote
             out = SIMDPirates.vbroadcast(NTuple{W,Core.VecElement{T}}, zero(T))
             ind = 0
@@ -52,7 +51,7 @@ end
                 for i_0 ∈ 1:$(ST[1])
                     out = SIMDPirates.vmuladd(A[ind + i_0], A[ind + i_0], out)
                 end
-                ind += P
+                ind += $P
             end
             out
         end
@@ -125,7 +124,7 @@ end
     q = quote
         $(Expr(:meta,:inline))
         # Inline, to prevent C from getting heap allocated, so long as it doesn't escape the calling function.
-        C = MutableFixedSizePaddedMatrix{$M,$P,Core.VecElement{$W,$T}}(undef)
+        C = MutableFixedSizeMatrix{$M,$P,Core.VecElement{$W,$T}}(undef)
         @inbounds for mkern in 0:$(mk-1)
             # handle remainder in N first, to initialize
             Base.Cartesian.@nexpr $kernel_size_m m -> begin
@@ -194,8 +193,8 @@ end
 end
 
 @generated function Base.:*(
-            A::AbstractFixedSizePaddedMatrix{M,N,NTuple{W,Core.VecElement{T}}},
-            B::AbstractFixedSizePaddedMatrix{N,P,NTuple{W,Core.VecElement{T}}}
+            A::AbstractFixedSizeMatrix{M,N,NTuple{W,Core.VecElement{T}}},
+            B::AbstractFixedSizeMatrix{N,P,NTuple{W,Core.VecElement{T}}}
         ) where {M,N,P,W,T}
 
     matrix_of_vecs_mul_quote(M,N,P,W,T)
@@ -203,8 +202,8 @@ end
 
 
 @generated function Base.:*(
-            A::LinearAlgebra.Adjoint{T,<: AbstractFixedSizePaddedMatrix{N,M,NTuple{W,Core.VecElement{T}}}},
-            B::AbstractFixedSizePaddedMatrix{N,P,NTuple{W,Core.VecElement{T}}}
+            A::LinearAlgebra.Adjoint{T,<: AbstractFixedSizeMatrix{N,M,NTuple{W,Core.VecElement{T}}}},
+            B::AbstractFixedSizeMatrix{N,P,NTuple{W,Core.VecElement{T}}}
         ) where {M,N,P,W,T}
 
     matrix_of_vecs_mul_quote(M,N,P,W,T)
@@ -222,7 +221,7 @@ end
         end
     end
 end
-# @generated function SIMDPirates.vsum(vA::AbstractFixedSizePaddedArray{S,Vec{W,T}}) where {S,W,T}
+# @generated function SIMDPirates.vsum(vA::AbstractFixedSizeArray{S,Vec{W,T}}) where {S,W,T}
 #     N, padded_rows, L = calc_NPL(S, T)
 #     vL = prod(S.parameters)
 #     if N == 1
@@ -232,7 +231,7 @@ end
 #                 $([ :( $(Symbol(:A_,l)) = SIMDPirates.vsum(vA[$l]) ) for l ∈ 1:vL ]...)
 #             end
 #             outtup = $(Expr(:tuple, [Symbol(:A_,l) for l ∈ 1:vL ]..., [zero(T) for l ∈ 1+vL:L]...))
-#             $(Expr(:call, Expr(:curly, ConstantFixedSizePaddedArray, S, T, N, padded_rows, L), :outtup))
+#             $(Expr(:call, Expr(:curly, ConstantFixedSizeArray, S, T, N, padded_rows, L), :outtup))
 #         end
 #     else
 #         S1 = S.parameters[1]
@@ -255,26 +254,26 @@ end
 #             @inbounds begin
 #                 $q
 #             end
-#             $(Expr(:call, Expr(:curly, ConstantFixedSizePaddedArray, S, T, N, padded_rows, L), outtup))
+#             $(Expr(:call, Expr(:curly, ConstantFixedSizeArray, S, T, N, padded_rows, L), outtup))
 #         end
 #     end
 # end
-@inline function SIMDPirates.vsum(vA::AbstractFixedSizePaddedVector{L,Vec{W,T}}) where {L,W,T}
-    out = MutableFixedSizePaddedVector{L,T}(undef)
+@inline function SIMDPirates.vsum(vA::AbstractFixedSizeVector{L,Vec{W,T}}) where {L,W,T}
+    out = MutableFixedSizeVector{L,T}(undef)
     @inbounds for l ∈ 1:L
         out[l] = SIMDPirates.vsum(vA[l])
     end
-    ConstantFixedSizePaddedArray(out)
+    ConstantFixedSizeArray(out)
 end
-@inline function SIMDPirates.vsum(vA::AbstractFixedSizePaddedMatrix{M,N,Vec{W,T},P}) where {M,N,W,T,P}
-    out = MutableFixedSizePaddedMatrix{M,N,T}(undef)
+@inline function SIMDPirates.vsum(vA::AbstractFixedSizeMatrix{M,N,Vec{W,T},P}) where {M,N,W,T,P}
+    out = MutableFixedSizeMatrix{M,N,T}(undef)
     @inbounds for n ∈ 1:N, m ∈ 1:M
         out[m,n] = SIMDPirates.vsum(vA[m,n])
     end
-    ConstantFixedSizePaddedArray(out)
+    ConstantFixedSizeArray(out)
 end
 
-@generated function zero!(A::AbstractMutableFixedSizePaddedMatrix{M,N,NTuple{W,Core.VecElement{T}},M}) where {M,N,W,T}
+@generated function zero!(A::AbstractMutableFixedSizeMatrix{M,N,NTuple{W,Core.VecElement{T}},M}) where {M,N,W,T}
     quote
         $(Expr(:meta,:inline))
         @inbounds for i ∈ 1:$(M*N)
@@ -285,7 +284,7 @@ end
 end
 
 
-@inline function mask!(A::AbstractMutableFixedSizePaddedMatrix{M,N,NTuple{W,Core.VecElement{T}},M,L}, mask::Unsigned) where {M,N,W,T,L}
+@inline function mask!(A::AbstractMutableFixedSizeMatrix{M,N,NTuple{W,Core.VecElement{T}},M,L}, mask::Unsigned) where {M,N,W,T,L}
     mask == zero(VectorizationBase.mask_type(T)) && return nothing
     z = SIMDPirates.vbroadcast(NTuple{W,Core.VecElement{T}}, zero(T))
     @inbounds for l ∈ 1:L

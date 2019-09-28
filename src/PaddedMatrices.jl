@@ -12,12 +12,12 @@ using Parameters: @unpack
 using MacroTools: @capture, prettify, postwalk
 
 export @Constant, @Mutable,
-    ConstantFixedSizePaddedArray,
-    ConstantFixedSizePaddedVector,
-    ConstantFixedSizePaddedMatrix,
-    MutableFixedSizePaddedArray,
-    MutableFixedSizePaddedVector,
-    MutableFixedSizePaddedMatrix,
+    ConstantFixedSizeArray,
+    ConstantFixedSizeVector,
+    ConstantFixedSizeMatrix,
+    MutableFixedSizeArray,
+    MutableFixedSizeVector,
+    MutableFixedSizeMatrix,
     DynamicPaddedVector,
     DynamicPaddedMatrix,
     DynamicPaddedArray,
@@ -48,42 +48,47 @@ tonumber(::Static{N}) where {N} = N
 end
 
 abstract type AbstractPaddedArray{T,N} <: AbstractArray{T,N} end
-abstract type AbstractFixedSizePaddedArray{S,T,N,P,L} <: AbstractPaddedArray{T,N} end
-abstract type AbstractMutableFixedSizePaddedArray{S,T,N,P,L} <: AbstractFixedSizePaddedArray{S,T,N,P,L} end
-abstract type AbstractConstantFixedSizePaddedArray{S,T,N,P,L} <: AbstractFixedSizePaddedArray{S,T,N,P,L} end
+abstract type AbstractFixedSizeArray{S<:Tuple,T,N,X<:Tuple,L} <: AbstractPaddedArray{T,N} end
+abstract type AbstractMutableFixedSizeArray{S,T,N,X,L} <: AbstractFixedSizeArray{S,T,N,X,L} end
+abstract type AbstractConstantFixedSizeArray{S,T,N,X,L} <: AbstractFixedSizeArray{S,T,N,X,L} end
 
 const AbstractPaddedArrayOrAdjoint{T,N} = Union{AbstractPaddedArray{T,N},<:Adjoint{T,<:AbstractPaddedArray{T,N}}}
 
 const AbstractPaddedVector{T} = AbstractPaddedArray{T,1}
 const AbstractPaddedMatrix{T} = AbstractPaddedArray{T,2}
-const AbstractFixedSizePaddedVector{M,T,L} = AbstractFixedSizePaddedArray{Tuple{M},T,1,L,L}
-const AbstractFixedSizePaddedMatrix{M,N,T,P,L} = AbstractFixedSizePaddedArray{Tuple{M,N},T,2,P,L}
-const AbstractMutableFixedSizePaddedVector{M,T,L} = AbstractMutableFixedSizePaddedArray{Tuple{M},T,1,L,L}
-const AbstractMutableFixedSizePaddedMatrix{M,N,T,P,L} = AbstractMutableFixedSizePaddedArray{Tuple{M,N},T,2,P,L}
-const AbstractConstantFixedSizePaddedVector{M,T,L} = AbstractConstantFixedSizePaddedArray{Tuple{M},T,1,L,L}
-const AbstractConstantFixedSizePaddedMatrix{M,N,T,P,L} = AbstractConstantFixedSizePaddedArray{Tuple{M,N},T,2,P,L}
+const AbstractFixedSizeVector{M,T,L} = AbstractFixedSizeArray{Tuple{M},T,1,Tuple{1},L}
+const AbstractFixedSizeMatrix{M,N,T,P,L} = AbstractFixedSizeArray{Tuple{M,N},T,2,Tuple{1,P},L}
+const AbstractMutableFixedSizeVector{M,T,L} = AbstractMutableFixedSizeArray{Tuple{M},T,1,Tuple{1},L}
+const AbstractMutableFixedSizeMatrix{M,N,T,P,L} = AbstractMutableFixedSizeArray{Tuple{M,N},T,2,Tuple{1,P},L}
+const AbstractConstantFixedSizeVector{M,T,L} = AbstractConstantFixedSizeArray{Tuple{M},T,1,Tuple{1},L}
+const AbstractConstantFixedSizeMatrix{M,N,T,P,L} = AbstractConstantFixedSizeArray{Tuple{M,N},T,2,Tuple{1,P},L}
 
-maybe_static_size(::AbstractFixedSizePaddedArray{S}) where {S} = Static{S}()
+maybe_static_size(::AbstractFixedSizeArray{S}) where {S} = Static{S}()
 maybe_static_size(A::AbstractArray) = size(A)
 
-LinearAlgebra.checksquare(::AbstractFixedSizePaddedMatrix{M,M}) where {M} = M
-LinearAlgebra.checksquare(::AbstractFixedSizePaddedMatrix) = DimensionMismatch("Matrix is not square.")
+LinearAlgebra.checksquare(::AbstractFixedSizeMatrix{M,M}) where {M} = M
+LinearAlgebra.checksquare(::AbstractFixedSizeMatrix) = DimensionMismatch("Matrix is not square.")
                                 
 @inline LoopVectorization.stride_row(::LinearAlgebra.Adjoint{T,V}) where {T,V <: AbstractVector{T}} = 1
-@inline LoopVectorization.stride_row(::AbstractFixedSizePaddedArray{S,T,N,P}) where {S,T,N,P} = P
+@generated function LoopVectorization.stride_row(::AbstractFixedSizeArray{S,T,N,P}) where {S,T,N,P}
+    quote
+        $(Expr(:meta, :inline))
+        $((P.parameters[2])::Int)
+    end
+end
 
 Base.IndexStyle(::Type{<:AbstractPaddedArray}) = IndexCartesian()
 Base.IndexStyle(::Type{<:AbstractPaddedVector}) = IndexLinear()
-@generated function Base.IndexStyle(::Type{<:AbstractFixedSizePaddedArray{S,T,N,P}}) where {S,T,N,P}
+@generated function Base.IndexStyle(::Type{<:AbstractFixedSizeArray{S,T,N,P}}) where {S,T,N,P}
     # If it is a vector, of if the array doesn't have padding, then it is IndexLinear().
     N == 1 && return IndexLinear()
-    S.parameters[1] == P && return IndexLinear()
+    (S.parameters[1])::Int == (P.parameters[2])::Int && return IndexLinear()
     IndexCartesian()
 end
 
 
-@inline full_length(::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L} = L
-@inline full_length(::Type{<: AbstractFixedSizePaddedArray{S,T,N,P,L}}) where {S,T,N,P,L} = L
+@inline full_length(::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = L
+@inline full_length(::Type{<: AbstractFixedSizeArray{S,T,N,X,L}}) where {S,T,N,X,L} = L
 @inline full_length(A::AbstractPaddedArray) = length(A.data)
 @inline full_length(::NTuple{N}) where {N} = N
 @inline full_length(::Type{<:NTuple{N}}) where {N} = N
@@ -100,45 +105,37 @@ end
 @inline type_length(::Type{<:Number}) = 1
 @inline param_type_length(::Number) = 1
 @inline param_type_length(::Type{<:Number}) = 1
-# @inline is_sized(::AbstractFixedSizePaddedVector) = true
-# @inline is_sized(::Type{<:AbstractFixedSizePaddedVector}) = true
-@inline is_sized(::AbstractFixedSizePaddedArray) = true
-@inline is_sized(::Type{<:AbstractFixedSizePaddedArray}) = true
-# @inline type_length(::AbstractFixedSizePaddedVector{N}) where {N} = N
-# @inline type_length(::Type{<:AbstractFixedSizePaddedVector{N}}) where {N} = N
-# @inline type_length(::AbstractFixedSizePaddedMatrix{M,N}) where {M,N} = M*N
-# @inline type_length(::Type{<:AbstractFixedSizePaddedMatrix{M,N}}) where {M,N} = M*N
-@generated function type_length(::AbstractFixedSizePaddedArray{S}) where {S}
-    SV = S.parameters
-    L = 1
-    for n ∈ 1:length(SV)
-        L *= SV[n]
+# @inline is_sized(::AbstractFixedSizeVector) = true
+# @inline is_sized(::Type{<:AbstractFixedSizeVector}) = true
+@inline is_sized(::AbstractFixedSizeArray) = true
+@inline is_sized(::Type{<:AbstractFixedSizeArray}) = true
+# @inline type_length(::AbstractFixedSizeVector{N}) where {N} = N
+# @inline type_length(::Type{<:AbstractFixedSizeVector{N}}) where {N} = N
+# @inline type_length(::AbstractFixedSizeMatrix{M,N}) where {M,N} = M*N
+# @inline type_length(::Type{<:AbstractFixedSizeMatrix{M,N}}) where {M,N} = M*N
+@noinline function simple_vec_prod(sv::Core.SimpleVector)
+    p = 1
+    for n in 1:length(sv)
+        p *= (sv[n])::Int
     end
-    L
+    p
 end
-@generated function type_length(::Type{<:AbstractFixedSizePaddedArray{S}}) where {S}
-    SV = S.parameters
-    L = 1
-    for n ∈ 1:length(SV)
-        L *= SV[n]
-    end
-    L
-end
-@generated param_type_length(::AbstractFixedSizePaddedArray{S}) where {S} = prod(S.parameters)
-@generated param_type_length(::Type{<:AbstractFixedSizePaddedArray{S}}) where {S} = prod(S.parameters)
+@generated type_length(::AbstractFixedSizeArray{S}) where {S} = simple_vec_prod(S.parameters)
+@generated type_length(::Type{<:AbstractFixedSizeArray{S}}) where {S} = simple_vec_prod(S.parameters)
+@generated param_type_length(::AbstractFixedSizeArray{S}) where {S} = simple_vec_prod(S.parameters)
+@generated param_type_length(::Type{<:AbstractFixedSizeArray{S}}) where {S} = simple_vec_prod(S.parameters)
 @inline is_sized(::Any) = false
 
 """
 Converts Cartesian one-based index into linear one-based index.
 Just subtract 1 for a zero based index.
 """
-function sub2ind_expr(S, P,  N = length(S))
-    N == 1 && return :(@inbounds i[1])
-    ex = :(i[$N] - 1)
-    for i ∈ (N - 1):-1:2
-        ex = :(i[$i] - 1 + $(S[i]) * $ex)
+@noinline function sub2ind_expr(X::Core.SimpleVector)#, N::Int = length(X)) 
+    x1 = first(X)::Int
+    if N == 1
+        return x1 == 1 ? :(@inbounds i[1] - 1) : :(@inbounds (i[1] - 1) * $x1 )
     end
-    :(@inbounds i[1] + $P * $ex)
+    :( @inbounds +($(x1 == 1 ? :(i[1] - 1) : :((i[1] - 1)*$x1)),  $([:((i[$n]-1)*$((X[n])::Int)) for n in 2:N]...)) )
 end
 @generated function sub2ind(
     s::NTuple{N},

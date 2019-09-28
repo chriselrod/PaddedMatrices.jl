@@ -211,26 +211,20 @@ end
     num_reps = cld(L3 ÷ W + 3, VectorizationBase.REGISTER_COUNT)
     if num_reps == 1
         outtup = Expr(:tuple)
-        # outtup = Expr(:call, :tuple_join)
         for p ∈ 1:P, mr ∈ 1:m_rep, m ∈ 1:W
-            # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m] ))
             push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m].value ))
-            # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))))
         end
         return quote
             $(Expr(:meta, :inline))
             vA = VectorizationBase.vectorizable(A)
             $(mul_block(V, W, R1, R2, m_rep, N, P))
-            # ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(
-            #     $outtup
-            # )
             output_data = $outtup
         end
     end
     piter = cld(P, num_reps)
     q = quote
         $(Expr(:meta, :inline))
-        out = MutableFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(undef)
+        out = MutableFixedSizeMatrix{$M,$P,$T,$R1,$L3}(undef)
         vout = VectorizationBase.vectorizable(out)
         plow = 0
         vA = VectorizationBase.vectorizable(A)
@@ -244,7 +238,6 @@ end
     prem = P - plow
     prem > 0 && push!(q.args, mul_block(V, W, R1, R2, m_rep, N, prem, plow))
     prem > 0 && push!(q.args, store_block(W, R1, m_rep, prem, plow))
-    # push!(q.args,  :(ConstantFixedSizePaddedMatrix( out )) )
     push!(q.args, :(output_data = out.data))
     q
 end
@@ -257,27 +250,21 @@ end
     num_reps = cld(L3 ÷ W + 3, VectorizationBase.REGISTER_COUNT)
     if num_reps == 1
         outtup = Expr(:tuple)
-        # outtup = Expr(:call, :tuple_join)
         for p ∈ 1:P, mr ∈ 1:m_rep, m ∈ 1:W
-            # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m] ))
             push!(outtup.args, :($(Symbol(:C_, mr, :_, p))[$m].value ))
-            # push!(outtup.args, :($(Symbol(:C_, mr, :_, p))))
         end
         return quote
             $(Expr(:meta, :inline))
             vA = VectorizationBase.vectorizable(A)
             Bparent = B.parent
             $(mul_block_nt(V, W, R1, R2, m_rep, N, P, 0, :vA, :Bparent))
-            # ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(
-            #     $outtup
-            # )
             output_data = $outtup
         end
     end
     piter = cld(P, num_reps)
     q = quote
         $(Expr(:meta, :inline))
-        out = MutableFixedSizePaddedMatrix{$M,$P,$T,$R1,$L3}(undef)
+        out = MutableFixedSizeMatrix{$M,$P,$T,$R1,$L3}(undef)
         vout = VectorizationBase.vectorizable(out)
         plow = 0
         Bparent = B.parent
@@ -292,7 +279,6 @@ end
     prem = P - plow
     prem > 0 && push!(q.args, mul_block_nt(V, W, R1, R2, m_rep, N, prem, plow, :vA, :Bparent))
     prem > 0 && push!(q.args, store_block(W, R1, m_rep, prem, plow))
-    # push!(q.args,  :(ConstantFixedSizePaddedMatrix( out )) )
     push!(q.args, :(output_data = out.data))
     q
 end

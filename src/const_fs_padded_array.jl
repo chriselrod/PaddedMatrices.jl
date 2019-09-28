@@ -1,53 +1,51 @@
 
-struct ConstantFixedSizePaddedArray{S,T,N,P,L} <: AbstractConstantFixedSizePaddedArray{S,T,N,P,L}
+struct ConstantFixedSizeArray{S,T,N,X,L} <: AbstractConstantFixedSizeArray{S,T,N,X,L}
     data::NTuple{L,T}
 end
-const ConstantFixedSizePaddedVector{S,T,P,L} = ConstantFixedSizePaddedArray{Tuple{S},T,1,P,L}
-const ConstantFixedSizePaddedMatrix{M,N,T,P,L} = ConstantFixedSizePaddedArray{Tuple{M,N},T,2,P,L}
+const ConstantFixedSizeVector{S,T,L} = ConstantFixedSizeArray{Tuple{S},T,Tuple{1},L}
+const ConstantFixedSizeMatrix{M,N,T,P,L} = ConstantFixedSizeArray{Tuple{M,N},T,2,Tuple{1,P},L}
 
-@noinline function calc_NP(S, L)
-    SV = S.parameters
+@noinline function calc_NP(SV::Core.SimpleVector, L)
     N = length(SV)
-    P = L
-    for n ∈ 2:N
-        P ÷= (SV[n])::Int
+    P = Vector{Int}(undef, N)
+    P[N] = L ÷ (SV[N])::Int
+    for n ∈ N-1:-1:2
+        P[n-1] = P[n] ÷ (SV[n])::Int
     end
-    N, P
-end
-@noinline function pick_L(N, T = Float64)
-    VectorizationBase.align(N, T)
+    N, Tuple{P...}
 end
 
-@inline ConstantFixedSizePaddedVector{N}(data::NTuple{L,T}) where {N,L,T} = ConstantFixedSizePaddedVector{N,T,L,L}(data)
-@generated function ConstantFixedSizePaddedArray{S}(data::NTuple{L,T}) where {S,T,L}
-    N, P = calc_NP(S, L)
+@inline ConstantFixedSizeVector{N}(data::NTuple{L,T}) where {N,L,T} = ConstantFixedSizeVector{N,T,L}(data)
+@generated function ConstantFixedSizeArray{S}(data::NTuple{L,T}) where {S,T,L}
+    N, P = calc_NP(S.parameters, L)
     quote
         $(Expr(:meta,:inline))
-        ConstantFixedSizePaddedArray{$S,$T,$N,$P,$L}(data)
+        ConstantFixedSizeArray{$S,$T,$N,$P,$L}(data)
     end
 end
-@generated function ConstantFixedSizePaddedArray{S,T}(data::NTuple{L,T}) where {S,T,L}
-    N, P = calc_NP(S, L)
+@generated function ConstantFixedSizeArray{S,T}(data::NTuple{L,T}) where {S,T,L}
+    N, P = calc_NP(S.parameters, L)
     quote
         $(Expr(:meta,:inline))
-        ConstantFixedSizePaddedArray{$S,$T,$N,$P,$L}(data)
+        ConstantFixedSizeArray{$S,$T,$N,$P,$L}(data)
     end
 end
-@generated function ConstantFixedSizePaddedArray{S,T,N}(data::NTuple{L,T}) where {S,T,L,N}
-    Nv2, P = calc_NP(S, L)
+@generated function ConstantFixedSizeArray{S,T,N}(data::NTuple{L,T}) where {S,T,L,N}
+    Nv2, P = calc_NP(S.parameters, L)
     @assert N == Nv2
     quote
         $(Expr(:meta,:inline))
-        ConstantFixedSizePaddedArray{$S,$T,$N,$P,$L}(data)
+        ConstantFixedSizeArray{$S,$T,$N,$P,$L}(data)
     end
 end
-@inline ConstantFixedSizePaddedVector{N,T,P}(A::NTuple{P,T}) where {N,T,P} = ConstantFixedSizePaddedVector{N,T,P,P}(A)
-@inline ConstantFixedSizePaddedVector(A::AbstractFixedSizePaddedArray{S,T,1,P,L}) where {S,T,P,L} = ConstantFixedSizePaddedArray{S,T,1,P,L}(A.data)
-@inline ConstantFixedSizePaddedMatrix(A::AbstractFixedSizePaddedArray{S,T,2,P,L}) where {S,T,P,L} = ConstantFixedSizePaddedArray{S,T,2,P,L}(A.data)
-@inline ConstantFixedSizePaddedArray(A::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L} = ConstantFixedSizePaddedArray{S,T,N,P,L}(A.data)
+# @inline ConstantFixedSizeVector{N,T,P}(A::NTuple{P,T}) where {N,T,P} = ConstantFixedSizeVector{N,T,P}(A)
+# @inline ConstantFixedSizeVector(A::AbstractFixedSizeVector{S,T,L}) where {S,T,L} = ConstantFixedSizeArray{S,T,1,Tuple{1},L}(A.data)
+# @inline ConstantFixedSizeMatrix(A::AbstractFixedSizeMatrix{M,N,T,P,L}) where {M,N,T,P,L} = ConstantFixedSizeArray{Tuple{M,N},T,2,P,L}(A.data)
+@inline ConstantFixedSizeArray(A::AbstractFixedSizeArray{S,T,N,P,L}) where {S,T,N,P,L} = ConstantFixedSizeArray{S,T,N,P,L}(A.data)
 
-@generated function ConstantFixedSizePaddedMatrix{M,N}(data::Matrix{T}) where {M,N,T}
-    P = pick_L(M, T)
+@generated function ConstantFixedSizeMatrix{M,N}(data::Matrix{T}) where {M,N,T}
+    X = calc_padding(M, T)
+    P = (X.parameters[2])::Int
     outtup = Expr(:tuple)
     ind = 0
     for n ∈ 1:N
@@ -59,103 +57,80 @@ end
             push!(outtup.args, zero(T))
         end
     end
-    :(@inbounds ConstantFixedSizePaddedMatrix{$M,$N,$T}($outtup))
+    :(@inbounds ConstantFixedSizeMatrix{$M,$N,$T,$P}($outtup))
 end
 
-@generated function Base.fill(v::T, ::Type{<:ConstantFixedSizePaddedArray{S}}) where {S,T}
-    N, P, L = calc_NPL(S, T)
+@generated function Base.fill(v::T, ::Type{<:ConstantFixedSizeArray{S}}) where {S,T}
+    N, P, L = calc_NPL(S.parameters, T)
     quote
         $(Expr(:meta,:inline))
-        ConstantFixedSizePaddedArray{$S,$T,$N,$P,$L}(ntuple(l -> v, Val{$L}()))
+        ConstantFixedSizeArray{$S,$T,$N,$P,$L}(ntuple(_ -> v, Val{$L}()))
     end
 end
-@inline filltuple(v, ::Val{L}) where {L} = ntuple(l -> v, Val{L}())
 @generated function Base.fill(v::T, ::Static{S}) where {S,T}
     if isa(S, Integer)
         ST = Tuple{S}
     else
         ST = S
     end
-    N, P, L = calc_NPL(ST, T)
+    N, P, L = calc_NPL(ST.parameters, T)
     quote
         $(Expr(:meta,:inline))
-        ConstantFixedSizePaddedArray{$ST,$T,$N,$P,$L}(filltuple(v, Val{$L}()))
+        ConstantFixedSizeArray{$ST,$T,$N,$P,$L}(ntuple(_ -> v, Val{$L}()))
     end
 end
-# @inline function ConstantFixedSizePaddedMatrix(A::AbstractMutableFixedSizePaddedArray{S,T,2,P,L}) where {S,T,P,L}
-#     ConstantFixedSizePaddedArray{S,T,2,P,L}(unsafe_load(Base.unsafe_convert(Ptr{NTuple{L,T}}, pointer(A))))
-#     # ConstantFixedSizePaddedArray{S,T,2,P,L}(A.data)
-# end
 
 # Type unstable convenience method
-function ConstantFixedSizePaddedVector(x::Vector{T}) where {T}
+function ConstantFixedSizeVector(x::Vector{T}) where {T}
     @assert isbitstype(T)
     N = length(x)
-    Wm1 = VectorizationBase.pick_vector_width(N, T) - 1
-    L = (N + Wm1) & ~Wm1
-    ConstantFixedSizePaddedVector{N,T,L,L}(ntuple(i -> i > N ? zero(T) : x[i], L))
+    L = calc_padding(N)
+    @inbounds ConstantFixedSizeVector{N,T,L}(ntuple(i -> i > N ? zero(T) : x[i], L))
 end
 
-@generated function Base.size(::AbstractConstantFixedSizePaddedArray{S,T,N}) where {S,T,N}
-    quote
-        $(Expr(:meta, :inline))
-        $(Expr(:tuple, [S.parameters[n] for n ∈ 1:N]...))
-    end
-end
-@generated function Base.length(A::AbstractConstantFixedSizePaddedArray{S,T,N}) where {S,T,N}
-    SV = S.parameters
-    L = SV[1]
-    for n ∈ 2:N
-        L *= SV[n]
-    end
-    quote
-        $(Expr(:meta, :inline))
-        $L
-    end
-end
-
-@inline function Base.getindex(A::AbstractConstantFixedSizePaddedArray{S,T,1,L,L}, i::Int) where {S,T,L}
+@inline function Base.getindex(A::AbstractConstantFixedSizeArray{S,T,1,Tuple{1},L}, i::Int) where {S,T,L}
     @boundscheck i <= L || ThrowBoundsError("Index $i < full length $(full_length(A)).")
     @inbounds A.data[i]
 end
-@inline function Base.getindex(A::AbstractConstantFixedSizePaddedArray{S,T,1,L,L}, i::Int, j::Int) where {S,T,L}
+@inline function Base.getindex(A::AbstractConstantFixedSizeArray{S,T,1,Tuple{1},L}, i::Int, j::Int) where {S,T,L}
     @boundscheck begin
         j == 1 || ThrowBoundsError("Column index j = $j != 1.")
         i <= L || ThrowBoundsError("Index $i < full length $(full_length(A)).")
     end
     @inbounds A.data[i]
 end
-@inline function Base.getindex(A::AbstractConstantFixedSizePaddedArray, i::Int)
+@inline function Base.getindex(A::AbstractConstantFixedSizeArray, i::Int)
     @boundscheck i <= full_length(A) || ThrowBoundsError("Index $i < full length $(full_length(A)).")
     @inbounds A.data[i]
 end
-@inline function Base.getindex(A::LinearAlgebra.Adjoint{Union{},<: AbstractConstantFixedSizePaddedMatrix{M,N,Vec{W,T}}}, i::Int) where {M,N,W,T}
+@inline function Base.getindex(A::LinearAlgebra.Adjoint{Union{},<: AbstractConstantFixedSizeMatrix{M,N,Vec{W,T}}}, i::Int) where {M,N,W,T}
     @boundscheck i <= full_length(A) || ThrowBoundsError("Index $i < full length $(full_length(A)).")
     @inbounds A.parent.data[i]
 end
-@generated function Base.getindex(A::AbstractConstantFixedSizePaddedArray{S,T,N,P}, i::Vararg{<:Integer,N}) where {S,T,N,P}
-    SV = S.parameters
-    ex = sub2ind_expr(SV, P)
+@generated function Base.getindex(A::AbstractConstantFixedSizeArray{S,T,N,X}, i::Vararg{<:Integer,N}) where {S,T,N,X}
+    ex = sub2ind_expr(X.parameters)
+    P = N == 1 ? (S.parameters[1])::Int : (X.parameters[2])::Int
+    quote
+        $(Expr(:meta, :inline))
+        @boundscheck begin
+            Base.Cartesian.@nif $(N+1) d->(d == 1 ? i[d] > $P : i[d] > size(A,d)) d->ThrowBoundsError() d -> nothing
+        end
+        @inbounds A.data[1 + $ex]
+    end
+end
+@generated function Base.getindex(A::AbstractConstantFixedSizeArray{S,T,N,X}, i::CartesianIndex{N}) where {S,T,N,X}
+    ex = sub2ind_expr(X.parameters)
+    P = N == 1 ? (S.parameters[1])::Int : (X.parameters[2])::Int
     quote
         $(Expr(:meta, :inline))
         @boundscheck begin
             Base.Cartesian.@nif $(N+1) d->(d == 1 ? i[d] > $P : i[d] > $SV[d]) d->ThrowBoundsError() d -> nothing
         end
-        @inbounds A.data[$ex]
+        @inbounds A.data[1 + $ex ]
     end
 end
-@generated function Base.getindex(A::AbstractConstantFixedSizePaddedArray{S,T,N,P}, i::CartesianIndex{N}) where {S,T,N,P}
-    SV = S.parameters
-    ex = sub2ind_expr(SV, P)
-    quote
-        $(Expr(:meta, :inline))
-        @boundscheck begin
-            Base.Cartesian.@nif $(N+1) d->(d == 1 ? i[d] > $P : i[d] > $SV[d]) d->ThrowBoundsError() d -> nothing
-        end
-        @inbounds A.data[$ex]
-    end
-end
-@generated function Base.getindex(A::LinearAlgebra.Adjoint{Union{},<:AbstractConstantFixedSizePaddedMatrix{M,N,Vec{W,T},R}}, i::Int, j::Int) where {M,N,W,T,R}
+@generated function Base.getindex(A::LinearAlgebra.Adjoint{Union{},<:AbstractConstantFixedSizeMatrix{M,N,Vec{W,T},X}}, i::Int, j::Int) where {M,N,W,T,X}
+    R = (X.parameters[2])::Int
     quote
         $(Expr(:meta, :inline))
         @boundscheck if (i > N) || (j > M)
@@ -165,35 +140,21 @@ end
     end
 end
 
-@generated function Base.strides(A::AbstractConstantFixedSizePaddedArray{S,T,N,P}) where {S,T,N,P}
-    SV = S.parameters
-    N = length(SV)
-    N == 1 && return (1,)
-    last = P
-    q = Expr(:tuple, 1, last)
-    for n ∈ 3:N
-        last *= SV[n-1]
-        push!(q.args, last)
-    end
-    q
+@generated function Base.zero(::Type{<:ConstantFixedSizeVector{L,T}}) where {L,T}
+    N = calc_padding(L, T)
+    :(ConstantFixedSizeVector{$L,$T,$N,$N}($(Expr(:tuple,zeros(N)...))))
 end
-
-@generated function Base.zero(::Type{<:ConstantFixedSizePaddedVector{L,T}}) where {L,T}
-    Wm1 = VectorizationBase.pick_vector_width(L,T)
-    N = (L + Wm1) & ~Wm1
-    :(ConstantFixedSizePaddedVector{$L,$T,$N,$N}($(Expr(:tuple,zeros(N)...))))
-end
-@inline return_mutable(A::AbstractMutableFixedSizePaddedArray) = A
-@inline return_mutable(A::ConstantFixedSizePaddedArray) = MutableFixedSizePaddedArray(A)
+@inline return_mutable(A::AbstractMutableFixedSizeArray) = A
+@inline return_mutable(A::ConstantFixedSizeArray) = MutableFixedSizeArray(A)
 
 struct vStaticPaddedArray{SPA}
     spa::SPA
     offset::Int
 end
 @inline VectorizationBase.vectorizable(A::vStaticPaddedArray) = A
-@inline VectorizationBase.vectorizable(A::AbstractConstantFixedSizePaddedArray) = vStaticPaddedArray(A,0)
-@inline VectorizationBase.vectorizable(A::LinearAlgebra.Diagonal{T,<:AbstractConstantFixedSizePaddedArray}) where {T} = vStaticPaddedArray(A.diag,0)
-@inline VectorizationBase.vectorizable(A::LinearAlgebra.Adjoint{T,<:AbstractConstantFixedSizePaddedArray}) where {T} = vStaticPaddedArray(A.parent,0)
+@inline VectorizationBase.vectorizable(A::AbstractConstantFixedSizeArray) = vStaticPaddedArray(A,0)
+@inline VectorizationBase.vectorizable(A::LinearAlgebra.Diagonal{T,<:AbstractConstantFixedSizeArray}) where {T} = vStaticPaddedArray(A.diag,0)
+@inline VectorizationBase.vectorizable(A::LinearAlgebra.Adjoint{T,<:AbstractConstantFixedSizeArray}) where {T} = vStaticPaddedArray(A.parent,0)
 @inline Base.:+(A::vStaticPaddedArray, i) = vStaticPaddedArray(A.spa, A.offset + i)
 @inline Base.:+(i, A::vStaticPaddedArray) = vStaticPaddedArray(A.spa, A.offset + i)
 @inline Base.:-(A::vStaticPaddedArray, i) = vStaticPaddedArray(A.spa, A.offset - i)
@@ -276,7 +237,7 @@ end
         end
         if remainder_full > 0
             v = gensym(:v)
-            push!(q.args, :($v = vload($V, ptr + $(W_full*num_unmasked_loads), $(unsafe_trunc(VectorizationBase.mask_type(W_full), (2^remainder_full-1)) ))))
+            push!(q.args, :($v = vload($V, ptr + $(W_full*num_unmasked_loads), $(unsafe_trunc(VectorizationBase.mask_type(W_full), (1<<remainder_full-1)) ))))
             for w ∈ 1:remainder_full
                 push!(output.args, :($v[$w].value))
             end
@@ -294,7 +255,7 @@ end
         end
         if remainder_full > 0
             v = gensym(:v)
-            push!(q.args, :($v = vload($V, ptr + $(W_full*n), $( mask & unsafe_trunc(VectorizationBase.mask_type(W_full), (2^remainder_full-1)) ))))
+            push!(q.args, :($v = vload($V, ptr + $(W_full*n), $( mask & unsafe_trunc(VectorizationBase.mask_type(W_full), (1<<remainder_full-1)) ))))
             for w ∈ 1:remainder_full
                 push!(output.args, :($v[$w].value))
             end
@@ -311,7 +272,7 @@ end
                 end
             end
             v = gensym(:v)
-            push!(q.args, :($v = vload($V, ptr + $(W_full*num_unmasked_loads_per_row + c*nrow), $(unsafe_trunc(VectorizationBase.mask_type(W_full), (2^remainder-1))))))
+            push!(q.args, :($v = vload($V, ptr + $(W_full*num_unmasked_loads_per_row + c*nrow), $(unsafe_trunc(VectorizationBase.mask_type(W_full), (1<<remainder-1))))))
             for w ∈ 1:W_full
                 push!(output.args, :($v[$w].value))
             end
@@ -336,10 +297,10 @@ end
 end
 
 # vStaticPaddedArray
-@generated function SIMDPirates.vload(::Type{A}, ptr::VectorizationBase.Pointer{T}) where {T, S, A <: AbstractConstantFixedSizePaddedArray{S,T}}
+@generated function SIMDPirates.vload(::Type{A}, ptr::VectorizationBase.Pointer{T}) where {T, S, A <: AbstractConstantFixedSizeArray{S,T}}
     vload_constant_matrix_quote(T, S.parameters, A)
 end
-@generated function SIMDPirates.vload(::Type{A}, ptr::vStaticPaddedArray{SPA}) where {T, S,S2, A <: AbstractConstantFixedSizePaddedArray{S,T}, SPA <: AbstractConstantFixedSizePaddedArray{S2,T}}
+@generated function SIMDPirates.vload(::Type{A}, ptr::vStaticPaddedArray{SPA}) where {T, S,S2, A <: AbstractConstantFixedSizeArray{S,T}, SPA <: AbstractConstantFixedSizeArray{S2,T}}
     vload_constant_matrix_quote(T, S.parameters, A)
 end
 
@@ -361,19 +322,19 @@ end
             indbase += P
         end
         push!(q.args, Expr(:call,
-            Expr(:curly, :ConstantFixedSizePaddedArray, S, V, N, (SV[1])::Int, simple_vec_prod(SV)),
+            Expr(:curly, :ConstantFixedSizeArray, S, V, N, (SV[1])::Int, simple_vec_prod(SV)),
             outtup)
         )
         q
     end
 end
-@generated function SIMDPirates.vbroadcast(::Type{Vec{W,T}}, A::ConstantFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L,W}
+@generated function SIMDPirates.vbroadcast(::Type{Vec{W,T}}, A::ConstantFixedSizeArray{S,T,N,P,L}) where {S,T,N,P,L,W}
     broadcast_array_quote(S, P, W, T, Val(N))
 end
 
-@generated function Base.vcat(a::AbstractConstantFixedSizePaddedVector{M,T}, b::AbstractConstantFixedSizePaddedVector{N,T}) where {M,N,T}
+@generated function Base.vcat(a::AbstractConstantFixedSizeVector{M,T}, b::AbstractConstantFixedSizeVector{N,T}) where {M,N,T}
     MpN = M + N
-    L = pick_L(MpN, T)
+    L = calc_padding(MpN, T)
     outtup = Expr(:tuple,)
     for m ∈ 1:M
         push!(outtup.args, :(a[$m]))
@@ -384,6 +345,6 @@ end
     for z ∈ MpN+1:L
         push!(outtup.args, zero(T))
     end
-    :(@inbounds ConstantFixedSizePaddedVector{$MpN,$T}($outtup))
+    :(@inbounds ConstantFixedSizeVector{$MpN,$T}($outtup))
 end
-Base.vcat(a::AbstractConstantFixedSizePaddedVector, b::AbstractConstantFixedSizePaddedVector, c::AbstractFixedSizePaddedVector...) = vcat(vcat(a,b), c...)
+Base.vcat(a::AbstractConstantFixedSizeVector, b::AbstractConstantFixedSizeVector, c::AbstractFixedSizeVector...) = vcat(vcat(a,b), c...)

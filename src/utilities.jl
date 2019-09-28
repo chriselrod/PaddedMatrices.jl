@@ -6,7 +6,7 @@
 #     num_vectors, num_vectors * W
 # end
 
-@generated function Base.sum(A::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L}
+@generated function Base.sum(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
     quote
         $(Expr(:meta, :inline))
         out = zero($T)
@@ -16,8 +16,8 @@
         out
     end
 end
-@inline Base.sum(A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T}}) where {S,T} = sum(A.parent)
-@generated function Base.prod(A::AbstractFixedSizePaddedVector{L,T}) where {L,T}
+@inline Base.sum(A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T}}) where {S,T} = sum(A.parent)
+@generated function Base.prod(A::AbstractFixedSizeVector{L,T}) where {L,T}
     quote
         $(Expr(:meta, :inline))
         out = one(T)
@@ -28,16 +28,16 @@ end
     end
 end
 
-function Base.cumsum!(A::AbstractMutableFixedSizePaddedVector{M}) where {M}
+function Base.cumsum!(A::AbstractMutableFixedSizeVector{M}) where {M}
     @inbounds for m ∈ 2:M
         A[m] += A[m-1]
     end
     A
 end
-Base.cumsum(A::AbstractMutableFixedSizePaddedVector) = cumsum!(copy(A))
-Base.cumsum(A::AbstractConstantFixedSizePaddedVector) = ConstantFixedSizePaddedVector(cumsum!(MutableFixedSizePaddedVector(A)))
+Base.cumsum(A::AbstractMutableFixedSizeVector) = cumsum!(copy(A))
+Base.cumsum(A::AbstractConstantFixedSizeVector) = ConstantFixedSizeVector(cumsum!(MutableFixedSizeVector(A)))
 
-# @generated function Base.maximum(A::AbstractFixedSizePaddedArray{S,T,P,L}) where {S,T,P,L}
+# @generated function Base.maximum(A::AbstractFixedSizeArray{S,T,P,L}) where {S,T,P,L}
 #     W, Wshift = VectorizationBase.pick_vector_width_shift(L, T)
 #     V = Vec{W,T}
 #     q = quote
@@ -68,7 +68,7 @@ Base.cumsum(A::AbstractConstantFixedSizePaddedVector) = ConstantFixedSizePaddedV
 #     q
 # end
 
-@generated function Base.maximum(::typeof(abs), A::AbstractFixedSizePaddedArray{S,T,P,L}) where {S,T,P,L}
+@generated function Base.maximum(::typeof(abs), A::AbstractFixedSizeArray{S,T,X,L}) where {S,T,X,L}
     SV = S.parameters
     R1 = SV[1]
     D = 1
@@ -111,7 +111,7 @@ Base.cumsum(A::AbstractConstantFixedSizePaddedVector) = ConstantFixedSizePaddedV
     q
 end
 
-@generated function Base.maximum(::typeof(abs), A::AbstractFixedSizePaddedVector{S,T,L}) where {S,T,L}
+@generated function Base.maximum(::typeof(abs), A::AbstractFixedSizeVector{S,T,L}) where {S,T,L}
     W, Wshift = VectorizationBase.pick_vector_width_shift(S, T)
     V = Vec{W,T}
     q = quote
@@ -142,13 +142,13 @@ end
     q
 end
 
-@inline Base.pointer(x::Symmetric{T,MutableFixedSizePaddedMatrix{P,P,T,R,L}}) where {P,T,R,L} = pointer(x.data)
+@inline Base.pointer(x::Symmetric{T,MutableFixedSizeMatrix{P,P,T,R,L}}) where {P,T,R,L} = pointer(x.data)
 
 
 @generated function vexp!(
-    B::AbstractMutableFixedSizePaddedArray{S,T,N,R,L},
-    A::AbstractFixedSizePaddedArray{S,T,N,R,L}
-) where {S,T,N,R,L}
+    B::AbstractMutableFixedSizeArray{S,T,N,X,L},
+    A::AbstractFixedSizeArray{S,T,N,X,L}
+) where {S,T,N,X,L}
     quote
         $(Expr(:meta,:inline))
         LoopVectorization.@vvectorize $T for l ∈ 1:$L
@@ -158,22 +158,22 @@ end
     end
 end
 @inline function vexp(
-    A::AbstractFixedSizePaddedArray{S,T,N,R,L}
+    A::AbstractFixedSizeArray{S,T,N,X,L}
 ) where {S,T,N,R,L}
-    vexp!(MutableFixedSizePaddedArray{S,T,N,R,L}(undef), A)
+    vexp!(MutableFixedSizeArray{S,T,N,X,L}(undef), A)
 end
 @inline function vexp(
-    A::AbstractConstantFixedSizePaddedArray{S,T,N,R,L}
-) where {S,T,N,R,L}
-    MutableFixedSizePaddedArray{S,T,N,R,L}(undef) |>
+    A::AbstractConstantFixedSizeArray{S,T,N,X,L}
+) where {S,T,N,X,L}
+    MutableFixedSizeArray{S,T,N,X,L}(undef) |>
         vexp! |>
-        ConstantFixedSizePaddedArray
+        ConstantFixedSizeArray
 end
 function vexp(
     sp::StackPointer,
-    A::AbstractFixedSizePaddedArray{S,T,N,R,L}
-) where {S,T,N,R,L}
-    B = PtrArray{S,T,N,R,L}(pointer(sp,T))
+    A::AbstractFixedSizeArray{S,T,N,X,L}
+) where {S,T,N,X,L}
+    B = PtrArray{S,T,N,X,L}(pointer(sp,T))
     sp + sizeof(T)*L, vexp!(B)
 end
 
@@ -184,7 +184,7 @@ end
         if sp
             :(PtrVector{$M,$T}($ptrsym))
         else
-            :(MutableFixedSizePaddedVector{$M,$T}(undef))
+            :(MutableFixedSizeVector{$M,$T}(undef))
         end
     else
         if sp
@@ -203,7 +203,7 @@ end
         if sp
             :(PtrMatrix{$M,$N,$T}($ptrsym))
         else
-            :(MutableFixedSizePaddedMatrix{$M,$N,$T}(undef))
+            :(MutableFixedSizeMatrix{$M,$N,$T}(undef))
         end
     else
         if sp

@@ -1,67 +1,65 @@
 
 
-# @generated function Base.:*(A::AbstractConstantFixedSizePaddedMatrix{M,N,T,R1,L1}, B::AbstractConstantFixedSizePaddedMatrix{N,P,T,R2,L2}) where {M,N,P,T,R1,R2,L1,L2}
-@generated function Base.:*(A::AbstractConstantFixedSizePaddedMatrix{M,N,T,R1,L1}, B::AbstractConstantFixedSizePaddedMatrix{N,P,T,R2,L2}) where {M,N,P,T,R1,R2,L2,L1}
+@generated function Base.:*(A::AbstractConstantFixedSizeMatrix{M,N,T,R1,L1}, B::AbstractConstantFixedSizeMatrix{N,P,T,R2,L2}) where {M,N,P,T,R1,R2,L2,L1}
     q = static_mul_quote(M,N,P,T,R1,R2)
-    # push!(q.args,  :(ConstantFixedSizePaddedMatrix( out )) )
-    push!(q.args,  :(ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$(R1*P)}( output_data )) )
+    push!(q.args,  :(ConstantFixedSizeMatrix{$M,$P,$T,$R1,$(R1*P)}( output_data )) )
     q
 end
 @generated function Base.:*(
-            A::AbstractConstantFixedSizePaddedMatrix{M,N,T,R1,L1},
-            B::LinearAlgebra.Adjoint{T,<:AbstractConstantFixedSizePaddedMatrix{P,N,T,R2,L2}}
+            A::AbstractConstantFixedSizeMatrix{M,N,T,R1,L1},
+            B::LinearAlgebra.Adjoint{T,<:AbstractConstantFixedSizeMatrix{P,N,T,R2,L2}}
         ) where {M,N,P,T,R1,R2,L1,L2}
         # ) where {M,N,P,T,R1,R2,L2,L1}
     q = static_mul_nt_quote(M,N,P,T,R1,R2)
-    # push!(q.args,  :(ConstantFixedSizePaddedMatrix( out )) )
-    push!(q.args,  :(ConstantFixedSizePaddedMatrix{$M,$P,$T,$R1,$(R1*P)}( output_data )) )
+    # push!(q.args,  :(ConstantFixedSizeMatrix( out )) )
+    push!(q.args,  :(ConstantFixedSizeMatrix{$M,$P,$T,$R1,$(R1*P)}( output_data )) )
     q
 end
 @generated function Base.:*(
-            A::AbstractConstantFixedSizePaddedVector{M,T,L1},
-            B::LinearAlgebra.Adjoint{T,<:AbstractConstantFixedSizePaddedVector{P,T,L2}}
+            A::AbstractConstantFixedSizeVector{M,T,L1},
+            B::LinearAlgebra.Adjoint{T,<:AbstractConstantFixedSizeVector{P,T,L2}}
         ) where {M,P,T,L1,L2}
         # ) where {M,N,P,T,R1,R2,L2,L1}
     q = static_mul_nt_quote(M,1,P,T,L1,1)
-    # push!(q.args,  :(ConstantFixedSizePaddedMatrix( out )) )
-    push!(q.args,  :(ConstantFixedSizePaddedMatrix{$M,$P,$T,$L1,$(L1*P)}( output_data )) )
+    # push!(q.args,  :(ConstantFixedSizeMatrix( out )) )
+    push!(q.args,  :(ConstantFixedSizeMatrix{$M,$P,$T,$L1,$(L1*P)}( output_data )) )
     q
 end
 # @generated function Base.:*(A::LinearAlgebra.Adjoint{T,StaticSIMDVector{N,T,R1,L1}}, B::StaticSIMDMatrix{N,P,T,R2}) where {N,P,T,R1,R2,L1}
 #     static_mul_quote(1,N,P,T,R1,R2)
 # end
-@generated function Base.:*(A::AbstractConstantFixedSizePaddedMatrix{M,N,T,R1}, B::AbstractConstantFixedSizePaddedVector{N,T,R2}) where {M,N,T,R1,R2}
+@generated function Base.:*(A::AbstractConstantFixedSizeMatrix{M,N,T,R1}, B::AbstractConstantFixedSizeVector{N,T,R2}) where {M,N,T,R1,R2}
     q = static_mul_quote(M,N,1,T,R1,R2)
-    push!(q.args,  :(ConstantFixedSizePaddedVector{$M,$T,$R1,$R1}( output_data )) )
+    push!(q.args,  :(ConstantFixedSizeVector{$M,$T,$R1,$R1}( output_data )) )
     q
 end
 
 
 @generated function Base.:*(
-                A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR},
-                X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}
+                A::AbstractMutableFixedSizeMatrix{M,N,T,ADR},
+                X::AbstractMutableFixedSizeMatrix{N,P,T,XR}
             ) where {M,N,P,T,ADR,XR}
     q = quote
         $(Expr(:meta,:inline))
-        D = MutableFixedSizePaddedMatrix{$M,$P,$T,$ADR,$(ADR*P)}(undef)
+        D = MutableFixedSizeMatrix{$M,$P,$T,$ADR,$(ADR*P)}(undef)
         pD = pointer(D)
         pA = pointer(A)
         pX = pointer(X)
         $(mulquote(ADR,N,P,ADR,XR,T))
-        # ConstantFixedSizePaddedMatrix(D)
+        # ConstantFixedSizeMatrix(D)
     end
     # if M * P > 224
     if M * P > 64
         push!(q.args, :D)
     else
-        push!(q.args, :(ConstantFixedSizePaddedMatrix(D)))
+        push!(q.args, :(ConstantFixedSizeMatrix(D)))
     end
     q
 end
 @generated function Base.:*(
     sp::StackPointer,
-    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,ADR},
-    X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}
+    A::AbstractMutableFixedSizeMatrix{M,N,T,ADR},
+    X::AbstractMutableFixedSizeMatrix{N,P,T,XR}
 ) where {M,N,P,T,ADR,XR}
     quote
         $(Expr(:meta,:inline))
@@ -76,9 +74,9 @@ end
 
 
 @generated function LinearAlgebra.mul!(
-    D::AbstractMutableFixedSizePaddedMatrix{M,P,T,DR},
-    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,AR},
-    X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}
+    D::AbstractMutableFixedSizeMatrix{M,P,T,DR},
+    A::AbstractMutableFixedSizeMatrix{M,N,T,AR},
+    X::AbstractMutableFixedSizeMatrix{N,P,T,XR}
 ) where {M,N,P,T,AR,XR,DR}
 # ) where {M,P,N,T,AR,XR,DR}
     quote
@@ -93,9 +91,9 @@ end
 
 
 @generated function LinearAlgebra.mul!(
-    D::AbstractMutableFixedSizePaddedVector{M,T,DR},
-    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,AR},
-    X::AbstractMutableFixedSizePaddedVector{N,T,XR}
+    D::AbstractMutableFixedSizeVector{M,T,DR},
+    A::AbstractMutableFixedSizeMatrix{M,N,T,AR},
+    X::AbstractMutableFixedSizeVector{N,T,XR}
 ) where {M,N,T,AR,XR,DR}
     quote
         $(Expr(:meta,:inline))
@@ -107,15 +105,11 @@ end
     end
 end
 @generated function LinearAlgebra.mul!(
-    D::PtrMatrix{M,P,T,DR,LD,PD},
-    A::PtrMatrix{M,N,T,AR,LA,PA},
+    D::PtrMatrix{M,P,T,DR,LD,VD},
+    A::PtrMatrix{M,N,T,AR,LA},
     X::PtrMatrix{N,P,T,XR}
-) where {M,N,P,T,AR,XR,DR,LA,PA,LD,PD}
-    if PD && PA && (DR == AR)
-        Meffective = DR
-    else
-        Meffective = M
-    end
+) where {M,N,P,T,AR,XR,DR,LA,LD,VD}
+    Meffective = VD ? M : DR
     quote
         $(Expr(:meta,:inline))
         pD = pointer(D)
@@ -126,16 +120,11 @@ end
     end
 end
 @generated function LinearAlgebra.mul!(
-    D::PtrVector{M,T,DR,PD},
-    A::PtrMatrix{M,N,T,AR,LA,PA},
+    D::PtrVector{M,T,DR,VD},
+    A::PtrMatrix{M,N,T,AR,LA},
     X::PtrVector{N,T,XR}
-) where {M,N,T,AR,XR,DR,PD,LA,PA}
-    if PD && PA && (DR == AR)
-        Meffective = DR
-    else
-        Meffective = M
-    end
-    
+) where {M,N,T,AR,XR,DR,LA,VD}
+    Meffective = VD ? M : DR
     quote
         $(Expr(:meta,:inline))
         pD = pointer(D)
@@ -147,9 +136,9 @@ end
 end
 
 @generated function gemm!(
-    D::AbstractMutableFixedSizePaddedMatrix{M,P,T,DR},
-    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,AR},
-    X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR}
+    D::AbstractMutableFixedSizeMatrix{M,P,T,DR},
+    A::AbstractMutableFixedSizeMatrix{M,N,T,AR},
+    X::AbstractMutableFixedSizeMatrix{N,P,T,XR}
 ) where {M,P,N,T,DR,AR,XR}
     quote
         $(Expr(:meta,:inline))
@@ -165,34 +154,34 @@ end
 function elementwise_product_quote(N,T,P)
     quote
         $(Expr(:meta,:inline)) # do we really want to force inline this?
-        mv = MutableFixedSizePaddedVector{$N,$T,$P,$P}(undef)
-        @vectorize $T for i ∈ 1:$P
+        mv = MutableFixedSizeVector{$N,$T,$P}(undef)
+        @vvectorize $T for i ∈ 1:$P
             mv[i] = A[i] * B[i]
         end
     end
 end
 
-@generated function Base.:*(Adiagonal::Diagonal{T,<:AbstractFixedSizePaddedVector{N,T,P}}, B::AbstractFixedSizePaddedVector{N,T,P}) where {N,T,P}
+@generated function Base.:*(Adiagonal::Diagonal{T,<:AbstractFixedSizeVector{N,T,P}}, B::AbstractFixedSizeVector{N,T,P}) where {N,T,P}
     quote
         A = Adiagonal.diag
         $(elementwise_product_quote(N,T,P))
-        ConstantFixedSizePaddedArray(mv)
+        ConstantFixedSizeArray(mv)
     end
 end
 @generated function Base.:*(
-            Aadjoint::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{N,T,P}},
-            Bdiagonal::Diagonal{T,<:AbstractFixedSizePaddedVector{N,T,P}}
+            Aadjoint::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeVector{N,T,P}},
+            Bdiagonal::Diagonal{T,<:AbstractFixedSizeVector{N,T,P}}
         ) where {N,T,P}
     quote
         A = Aadjoint.parent
         B = Bdiagonal.diag
         $(elementwise_product_quote(N,T,P))
-        ConstantFixedSizePaddedArray(mv)'
+        ConstantFixedSizeArray(mv)'
     end
 end
 @generated function Base.:*(
-            Adiagonal::Diagonal{T,<:AbstractMutableFixedSizePaddedVector{N,T,P}},
-            B::AbstractMutableFixedSizePaddedVector{N,T,P}) where {N,T,P}
+            Adiagonal::Diagonal{T,<:AbstractMutableFixedSizeVector{N,T,P}},
+            B::AbstractMutableFixedSizeVector{N,T,P}) where {N,T,P}
     quote
         A = Adiagonal.diag
         $(elementwise_product_quote(N,T,P))
@@ -200,8 +189,8 @@ end
     end
 end
 @generated function Base.:*(
-    Aadjoint::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedVector{N,T,P1}},
-    Bdiagonal::Diagonal{T,<:AbstractMutableFixedSizePaddedVector{N,T,P2}}
+    Aadjoint::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeVector{N,T,P1}},
+    Bdiagonal::Diagonal{T,<:AbstractMutableFixedSizeVector{N,T,P2}}
 ) where {N,T,P1,P2}
     P = min(P1,P2)
     quote
@@ -213,8 +202,8 @@ end
 end
 @generated function Base.:*(
     sp::StackPointer,
-    Adiagonal::Diagonal{T,<:AbstractMutableFixedSizePaddedVector{N,T,P1}},
-    B::AbstractMutableFixedSizePaddedVector{N,T,P2}
+    Adiagonal::Diagonal{T,<:AbstractMutableFixedSizeVector{N,T,P1}},
+    B::AbstractMutableFixedSizeVector{N,T,P2}
 ) where {N,T,P1,P2}
     P = min(P1,P2)
     quote
@@ -228,8 +217,8 @@ end
 end
 @generated function Base.:*(
     sp::StackPointer,
-    Aadjoint::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedVector{N,T,P1}},
-    Bdiagonal::Diagonal{T,<:AbstractMutableFixedSizePaddedVector{N,T,P2}}
+    Aadjoint::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeVector{N,T,P1}},
+    Bdiagonal::Diagonal{T,<:AbstractMutableFixedSizeVector{N,T,P2}}
 ) where {N,T,P1,P2}
     P = min(P1,P2)
     quote
@@ -246,21 +235,31 @@ end
 
 
 @generated function Base.:+(
-    A::AbstractFixedSizePaddedArray{S,T,N,P,L},
-    B::AbstractFixedSizePaddedArray{S,T,N,P,L}
-) where {S,T<:Number,N,P,L}
+    A::AbstractFixedSizeArray{S,T,N,X,L},
+    B::AbstractFixedSizeArray{S,T,N,X,L}
+) where {S,T<:Number,N,X,L}
     quote
-        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] + B[i]
         end
-        ConstantFixedSizePaddedArray(mv)
+        ConstantFixedSizeArray(mv)
     end
 end
-@generated function Base.:+(A::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}, B::AbstractMutableFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+@generated function Base.:+(A::AbstractMutableFixedSizeArray{S,T,N,X,L}, B::AbstractMutableFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
+    if isview(A) | isview(B) | (first(X.parameters)::Int > 1)
+        return quote
+            $(Expr(:meta,:inline))
+            mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
+            @inbounds for l ∈ 1:$L
+                mv[l] = A[l] + B[l]
+            end
+            mv
+        end
+    end
     quote
         $(Expr(:meta,:inline))
-        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for l ∈ 1:$L
             mv[l] = A[l] + B[l]
         end
@@ -269,13 +268,13 @@ end
 end
 @generated function Base.:+(
     sp::StackPointer,
-    A::AbstractFixedSizePaddedArray{S,T,N,PA,LA},
-    B::AbstractFixedSizePaddedArray{S,T,N,PB,LB}
-) where {S,T<:Number,N,PA,PB,LA,LB}
-    P = min(PA,PB)
+    A::AbstractFixedSizeArray{S,T,N,X,LA},
+    B::AbstractFixedSizeArray{S,T,N,X,LB}
+) where {S,T<:Number,N,X,LA,LB}
     L = min(LA,LB)
+    @assert first(P.parameters)::Int == 1
     quote
-        mv = PtrArray{$S,$T,$N,$P,$L}(pointer(sp,$T))
+        mv = PtrArray{$S,$T,$N,$X,$L}(pointer(sp,$T))
         @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] + B[i]
         end
@@ -284,8 +283,8 @@ end
 end
 @generated function Base.:+(
     sp::StackPointer,
-    A::AbstractFixedSizePaddedVector{N,T,LA},
-    B::AbstractFixedSizePaddedVector{N,T,LB}
+    A::AbstractFixedSizeVector{N,T,LA},
+    B::AbstractFixedSizeVector{N,T,LB}
 ) where {N,T<:Number,LA,LB}
     L = min(LA,LB)
     quote
@@ -296,69 +295,69 @@ end
         sp + $(VectorizationBase.align(sizeof(T)*L)), mv
     end
 end
-@inline function Base.:+(A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}},
-                        B::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}) where {S,T,N,P,L}
+@inline function Base.:+(A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,P,L}},
+                        B::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,P,L}}) where {S,T,N,P,L}
     (A' + B')'
 end
 @inline function Base.:+(
     sp::StackPointer,
-    A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,PA,LA}},
-    B::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,PB,LB}}
-) where {S,T,N,PA,PB,LA,LB}
+    A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,XA,LA}},
+    B::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,XB,LB}}
+) where {S,T,N,XA,XB,LA,LB}
     sp2, C = (+(sp, A', B'))
     sp2, C'
 end
-@generated function Base.:+(a::T, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+@generated function Base.:+(a::T, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
     quote
         # $(Expr(:meta,:inline))
-        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = a + B[i]
         end
-        ConstantFixedSizePaddedArray(mv)
+        ConstantFixedSizeArray(mv)
     end
 end
-@generated function Base.:+(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, b::T) where {S,T<:Number,N,P,L}
+@generated function Base.:+(A::AbstractFixedSizeArray{S,T,N,X,L}, b::T) where {S,T<:Number,N,X,L}
     quote
         # $(Expr(:meta,:inline))
-        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] + b
         end
-        ConstantFixedSizePaddedArray(mv)
+        ConstantFixedSizeArray(mv)
     end
 end
-@generated function Base.:+(a::T, Badj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}) where {S,T<:Number,N,P,L}
+@generated function Base.:+(a::T, Badj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,X,L}}) where {S,T<:Number,N,X,L}
     quote
         $(Expr(:meta,:inline))
-        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = a + B[i]
         end
-        ConstantFixedSizePaddedArray(mv)'
+        ConstantFixedSizeArray(mv)'
     end
 end
-@generated function Base.:+(Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}, b::T) where {S,T<:Number,N,P,L}
+@generated function Base.:+(Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,X,L}}, b::T) where {S,T<:Number,N,X,L}
     quote
         $(Expr(:meta,:inline))
-        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] + b
         end
-        ConstantFixedSizePaddedArray(mv)'
+        ConstantFixedSizeArray(mv)'
     end
 end
-@generated function Base.:-(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+@generated function Base.:-(A::AbstractFixedSizeArray{S,T,N,X,L}, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
     quote
         # $(Expr(:meta,:inline))
-        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] - B[i]
         end
-        ConstantFixedSizePaddedArray(mv)
+        ConstantFixedSizeArray(mv)
     end
 end
-@generated function diff!(C::MutableFixedSizePaddedArray{S,T,N,P,L}, A::AbstractFixedSizePaddedArray{S,T,N,P,L}, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+@generated function diff!(C::MutableFixedSizeArray{S,T,N,X,L}, A::AbstractFixedSizeArray{S,T,N,X,L}, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
     quote
         @vvectorize $T for i ∈ 1:$L
             C[i] = A[i] - B[i]
@@ -366,29 +365,29 @@ end
         C
     end
 end
-@generated function Base.:-(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, b::T) where {S,T<:Number,N,L,P}
+@generated function Base.:-(A::AbstractFixedSizeArray{S,T,N,X,L}, b::T) where {S,T<:Number,N,L,X}
     quote
         # $(Expr(:meta,:inline))
-        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] - b
         end
-        ConstantFixedSizePaddedArray(mv)
+        ConstantFixedSizeArray(mv)
     end
 end
-@generated function Base.:-(a::T, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+@generated function Base.:-(a::T, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
     quote
         # $(Expr(:meta,:inline))
-        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = a - B[i]
         end
-        ConstantFixedSizePaddedArray(mv)
+        ConstantFixedSizeArray(mv)
     end
 end
 
 
-@generated function Base.sum!(s::AbstractMutableFixedSizePaddedVector{P,T,L}, A::AbstractPaddedMatrix{T}) where {T,P,L}
+@generated function Base.sum!(s::AbstractMutableFixedSizeVector{P,T,L}, A::AbstractPaddedMatrix{T}) where {T,P,L}
     stride_bytes = L*sizeof(T)
     sample_mat_stride = L
 
@@ -417,8 +416,8 @@ end
 
     quote
         # $(Expr(:meta,:inline))
-        # x̄ = zero(PaddedMatrices.MutableFixedSizePaddedVector{P,T})
-        # s = PaddedMatrices.MutableFixedSizePaddedVector{$P,$T}(undef)
+        # x̄ = zero(PaddedMatrices.MutableFixedSizeVector{P,T})
+        # s = PaddedMatrices.MutableFixedSizeVector{$P,$T}(undef)
         ptrs = pointer(s)
         ptrA = pointer(A)
         N = size(A,2)
@@ -441,7 +440,7 @@ end
         s
     end
 end
-@generated function negative_sum!(s::AbstractMutableFixedSizePaddedVector{P,T,L}, A::AbstractPaddedMatrix{T}) where {T,P,L}
+@generated function negative_sum!(s::AbstractMutableFixedSizeVector{P,T,L}, A::AbstractPaddedMatrix{T}) where {T,P,L}
     stride_bytes = L*sizeof(T)
     sample_mat_stride = L
 
@@ -470,8 +469,8 @@ end
 
     quote
         # $(Expr(:meta,:inline))
-        # x̄ = zero(PaddedMatrices.MutableFixedSizePaddedVector{P,T})
-        # s = PaddedMatrices.MutableFixedSizePaddedVector{$P,$T}(undef)
+        # x̄ = zero(PaddedMatrices.MutableFixedSizeVector{P,T})
+        # s = PaddedMatrices.MutableFixedSizeVector{$P,$T}(undef)
         ptrs = pointer(s)
         ptrA = pointer(A)
         N = size(A,2)
@@ -494,42 +493,42 @@ end
         s
     end
 end
-# @generated function prodmuls(coefficients::NTuple{N,T}, As::NTuple{N,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}) where {S,T,N,P,L}
+# @generated function prodmuls(coefficients::NTuple{N,T}, As::NTuple{N,<:AbstractFixedSizeArray{S,T,N,P,L}}) where {S,T,N,P,L}
 
 
 # end
 
 @inline extract_λ(a) = a
 @inline extract_λ(a::UniformScaling) = a.λ
-@generated function Base.:*(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,P,L}
+@generated function Base.:*(A::AbstractFixedSizeArray{S,T,N,X,L}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,X,L}
     quote
-        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
         b = extract_λ(bλ)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] * b
         end
-        ConstantFixedSizePaddedArray(mv)
+        ConstantFixedSizeArray(mv)
     end
 end
-@generated function Base.:*(Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,P,L}
+@generated function Base.:*(Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,X,L}}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,X,L}
     quote
         $(Expr(:meta,:inlne))
-        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
         A = Aadj.parent
         b = extract_λ(bλ)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] * b
         end
-        ConstantFixedSizePaddedArray(mv)'
+        ConstantFixedSizeArray(mv)'
     end
 end
 @generated function Base.:*(
     sp::StackPointer,
-    A::AbstractFixedSizePaddedArray{S,T,N,P,L},
+    A::AbstractFixedSizeArray{S,T,N,X,L},
     bλ::Union{T,UniformScaling{T}}
-) where {S,T<:Real,N,P,L}
+) where {S,T<:Real,N,X,L}
     quote
-        mv = PtrArray{$S,$T,$N,$P,$L}(pointer(sp,$T))
+        mv = PtrArray{$S,$T,$N,$X,$L}(pointer(sp,$T))
         b = extract_λ(bλ)
         @vvectorize for i ∈ 1:$L
             mv[i] = A[i] * b
@@ -539,12 +538,12 @@ end
 end
 @generated function Base.:*(
     sp::StackPointer,
-    Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedArray{S,T,N,P,L}},
+    Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,X,L}},
     bλ::Union{T,UniformScaling{T}}
-) where {S,T<:Real,N,P,L}
+) where {S,T<:Real,N,X,L}
     quote
         $(Expr(:meta,:inline))
-        mv = PtrArray{$S,$T,$N,$P,$L}(pointer(sp,$T))
+        mv = PtrArray{$S,$T,$N,$X,$L}(pointer(sp,$T))
         A = Aadj.parent
         b = extract_λ(bλ)
         @vvectorize $T for i ∈ 1:$L
@@ -553,42 +552,42 @@ end
         sp + $(VectorizationBase.align(sizeof(T)*L)), mv'
     end
 end
-@generated function Base.:*(a::T, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+@generated function Base.:*(a::T, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
     quote
-        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = a * B[i]
         end
-        ConstantFixedSizePaddedArray(mv)
+        ConstantFixedSizeArray(mv)
     end
 end
-@generated function SIMDPirates.vmuladd(a::T, x::AbstractFixedSizePaddedArray{S,T,N,P,L}, y::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+@generated function SIMDPirates.vmuladd(a::T, x::AbstractFixedSizeArray{S,T,N,X,L}, y::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
     quote
         # $(Expr(:meta,:inline))
-        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = a * x[i] + y[i]
         end
-        ConstantFixedSizePaddedArray(mv)
+        ConstantFixedSizeArray(mv)
     end
 end
 @generated function SIMDPirates.vmuladd(
     a::T,
-    x::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{N,T,L}},
-    y::LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{N,T,L}}
+    x::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeVector{N,T,L}},
+    y::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeVector{N,T,L}}
 ) where {N,T,L}
     quote
         $(Expr(:meta,:inline))
-        mv = MutableFixedSizePaddedVector{$N,T,$L,$L}(undef)
+        mv = MutableFixedSizeVector{$N,T,$L,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = a * x[i] + y[i]
         end
-        ConstantFixedSizePaddedArray(mv)
+        ConstantFixedSizeArray(mv)
     end
 end
 
 # @generated function SIMDPirates.vmuladd(a::T,
-#                 x::Union{<:AbstractFixedSizePaddedVector{P1,T,L1},LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{P1,T,L1}}}, y::Union{<:AbstractFixedSizePaddedVector{P2,T,L2},LinearAlgebra.Adjoint{T,<:AbstractFixedSizePaddedVector{P2,T,L2}}}
+#                 x::Union{<:AbstractFixedSizeVector{P1,T,L1},LinearAlgebra.Adjoint{T,<:AbstractFixedSizeVector{P1,T,L1}}}, y::Union{<:AbstractFixedSizeVector{P2,T,L2},LinearAlgebra.Adjoint{T,<:AbstractFixedSizeVector{P2,T,L2}}}
 #                 ) where {T,P1,L1,P2,L2}
 #     if x <: LinearAlgebra.Adjoint
 #         @assert y <: LinearAlgebra.Adjoint
@@ -597,50 +596,51 @@ end
 #     end
 #     if L1 < L2
 #         return quote
-#             mv = MutableFixedSizePaddedVector{$P2,$T,$L2}(undef)
+#             mv = MutableFixedSizeVector{$P2,$T,$L2}(undef)
 #             @fastmath @inbounds @simd ivdep for i ∈ 1:$L1
 #                 mv[i] = a * x[i] + y[i]
 #             end
 #             @inbounds @simd ivdep for i ∈ $(L1+1):$L2
 #                 mv[i] = y[i]
 #             end
-#             $( x <: LinearAlgebra.Adjoint ? :(ConstantFixedSizePaddedArray(mv)') : :(ConstantFixedSizePaddedArray(mv)) )
+#             $( x <: LinearAlgebra.Adjoint ? :(ConstantFixedSizeArray(mv)') : :(ConstantFixedSizeArray(mv)) )
 #         end
 #     elseif L1 > L2
 #         return quote
-#             mv = MutableFixedSizePaddedVector{$P1,$T,$L1}(undef)
+#             mv = MutableFixedSizeVector{$P1,$T,$L1}(undef)
 #             @fastmath @inbounds @simd ivdep for i ∈ 1:$L2
 #                 mv[i] = a * x[i] + y[i]
 #             end
 #             @inbounds @simd ivdep for i ∈ $(L2+1):$L1
 #                 mv[i] = a * x[i]
 #             end
-#             $( x <: LinearAlgebra.Adjoint ? :(ConstantFixedSizePaddedArray(mv)') : :(ConstantFixedSizePaddedArray(mv)) )
+#             $( x <: LinearAlgebra.Adjoint ? :(ConstantFixedSizeArray(mv)') : :(ConstantFixedSizeArray(mv)) )
 #         end
 #     else
 #         return quote
-#             mv = MutableFixedSizePaddedVector{$P1,$T,$L1}(undef)
+#             mv = MutableFixedSizeVector{$P1,$T,$L1}(undef)
 #             @fastmath @inbounds @simd ivdep for i ∈ 1:$L1
 #                 mv[i] = a * x[i] + y[i]
 #             end
-#             $( x <: LinearAlgebra.Adjoint ? :(ConstantFixedSizePaddedArray(mv)') : :(ConstantFixedSizePaddedArray(mv)) )
+#             $( x <: LinearAlgebra.Adjoint ? :(ConstantFixedSizeArray(mv)') : :(ConstantFixedSizeArray(mv)) )
 #         end
 #     end
 # end
-@generated function SIMDPirates.vfnmadd(a::T, x::AbstractFixedSizePaddedArray{S,T,N,P,L}, y::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T<:Number,N,P,L}
+@generated function SIMDPirates.vfnmadd(a::T, x::AbstractFixedSizeArray{S,T,N,X,L}, y::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
     quote
         # $(Expr(:meta,:inline))
-        mv = MutableFixedSizePaddedArray{$S,$T,$N,$P,$L}(undef)
+        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = y[i] - a * x[i]
         end
-        ConstantFixedSizePaddedArray(mv)
+        ConstantFixedSizeArray(mv)
     end
 end
 
-@generated function LinearAlgebra.dot(A::AbstractFixedSizePaddedArray{S,T,N,P,L}, B::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L}
+@generated function LinearAlgebra.dot(A::AbstractFixedSizeArray{S,T,N,X,L}, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
     if N > 1
-        ST = ntuple(n -> S.parameters[n], Val(N))
+        ST = tuple(S.parameters...)
+        P = (X.parameters[2])::Int
         return quote
             out = zero(T)
             ind = 0
@@ -648,7 +648,7 @@ end
                 @vectorize $T for i_0 ∈ 1:$(ST[1])
                     out += A[ind + i_0] * B[ind + i_0]
                 end
-                ind += P
+                ind += $P
             end
             out
         end
@@ -662,25 +662,26 @@ end
         end
     end
 end
-@generated function dot_self(A::AbstractFixedSizePaddedArray{S,T,N,P,L}) where {S,T,N,P,L}
+@generated function dot_self(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+    nrows = first(S.parameters)::Int
     if N > 1
-        ST = ntuple(n -> S.parameters[n], Val(N))
+        P = (X.parameters[2])::Int
         return quote
             out = zero(T)
             ind = 0
-            @nloops $(N-1) i j -> 1:$ST[j+1] begin
-                @vectorize $T for i_0 ∈ 1:$(ST[1])
+            Base.Cartesian.@nloops $(N-1) i j -> 1:size(A,j+1) begin
+                @vvectorize $T for i_0 ∈ 1:$nrows
                     Aᵢ = A[ind + i_0]
                     out += Aᵢ * Aᵢ
                 end
-                ind += P
+                ind += $P
             end
             out
         end
     else #if N == 1
         return quote
             out = zero(T)
-            @vectorize $T  for i ∈ 1:$(S.parameters[1])
+            @vectorize $T  for i ∈ 1:$nrows
                 out += A[i] * A[i]
             end
             out
@@ -697,9 +698,9 @@ end
 # end
 
 function mulquote(
-    D::AbstractMutableFixedSizePaddedMatrix{M,P,T,DR},
-    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,AR},
-    X::AbstractMutableFixedSizePaddedMatrix{N,P,T,XR},
+    D::AbstractMutableFixedSizeMatrix{M,P,T,DR},
+    A::AbstractMutableFixedSizeMatrix{M,N,T,AR},
+    X::AbstractMutableFixedSizeMatrix{N,P,T,XR},
     init = :initkernel!
 ) where {M,N,P,T,AR,XR,DR}
     quote
@@ -713,45 +714,21 @@ end
 function mulquote(M,N,P,AR,XR,T,init=:initkernel!,prefetchAX=nothing,DR=AR)
     (L1S, L2S, L3S), num = blocking_structure(M, N, P, T)
     if num == 0 || (M*N*P < 64^3)#104^3)
-        # if init == :kernel! || M*P > 14*16
         return cache_mulquote(M,N,P,AR,XR,L1S,T,init,DR)
-        # else
-            # M, P, strideA, strideX, N, T
-            # return kernel_quote(M,P,ADR,XR,N,T,true,true,CDR)
-        # end
-        # return base_mulquote(M,N,P,ADR,XR,T)
-    # elseif num == 1
-    #     # Loop over L1 cache blocks
-    #     return cache_mulquote(M,N,P,ADR,XR,L1S,T,init)#,prefetchAX)
     elseif T <: LinearAlgebra.BlasFloat
-        # blas_gemm_quote(M,N,P,DR,AR,XR,T,init)
         :(BLAS.gemm!('N','N',one($T),A,X,$(init==:initkernel! ? zero(T) : one(T)),D))
-        #    elseif num == 1
     elseif num == 1
         return cache_mulquote(M,N,P,AR,XR,L1S,T,init,DR)
     else#if num == 2
-        # Loop over L2 cache blocks
         return cache_mulquote(M,N,P,AR,XR,L1S,L2S,T,init)#,true)#prefetchAX)
-  #  else #num == 3
-        # Loop over L3 cache blocks.
-        # return cache_mulquote(ADR,N,P,ADR,XR,L1S,L2S,L3S,T,init)
-        # Except that they are fused, so we aren't doing anything special.
- #       return cache_mulquote(M,N,P,AR,XR,L1S,L3S,T,init,prefetchAX) # should recurse calling mul and gemm!
     end
 end
-
-# function blas_gemm_quote(M,N,P,DR,AR,XR,T,init)
-#     quote
-#         ccall((@blasfunc))
-#     end
-# end
 
 function block_loop_quote_minbandwidth(
 #function block_loop_quote(
     L1M::Int,L1N::Int,L1P::Int,stride_A::Int,stride_X::Int,M_iter::Int,M_remain::Int,P_iter::Int,P_remain::Int,
     T_size::Int,kernel::Symbol=:kernel!,pA::Symbol=:pAₙ,pX::Symbol=:pXₙ,pD::Symbol=:pD,X_transposed::Bool=false,stride_D::Int = stride_A
 )
-    
     if M_remain == 0
         D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_D)*pᵢ)
         A = :($pA + $(T_size*L1M)*mᵢ)
@@ -1483,9 +1460,9 @@ end
 # Inlining the wrapper avoids allocating the "Adjoint" type when the arrays are heap allocated
 # without requiring that we have to actually inline the entire matrix multiplication.
 @generated function A_mul_Xt!(
-    D::AbstractMutableFixedSizePaddedMatrix{M,K,T,PD},
-    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,PA},
-    X::AbstractMutableFixedSizePaddedMatrix{K,N,T,PX}
+    D::AbstractMutableFixedSizeMatrix{M,K,T,PD},
+    A::AbstractMutableFixedSizeMatrix{M,N,T,PA},
+    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
 # ) where {M,K,N,T,PD,PA,PX}
 ) where {M,N,K,T,PD,PA,PX}
     quote
@@ -1493,9 +1470,9 @@ end
     end
 end
 @generated function A_nmul_Xt!(
-    D::AbstractMutableFixedSizePaddedMatrix{M,K,T,PD},
-    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,PA},
-    X::AbstractMutableFixedSizePaddedMatrix{K,N,T,PX}
+    D::AbstractMutableFixedSizeMatrix{M,K,T,PD},
+    A::AbstractMutableFixedSizeMatrix{M,N,T,PA},
+    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
 ) where {M,K,N,T,PD,PA,PX}
 # ) where {M,N,K,T,PD,PA,PX}
     quote
@@ -1503,9 +1480,9 @@ end
     end
 end
 @generated function A_mul_Xt!(
-    D::AbstractMutableFixedSizePaddedMatrix{M,K,T,PD},
-    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,PA},
-    X::AbstractMutableFixedSizePaddedVector{K,T,PX}
+    D::AbstractMutableFixedSizeMatrix{M,K,T,PD},
+    A::AbstractMutableFixedSizeMatrix{M,N,T,PA},
+    X::AbstractMutableFixedSizeVector{K,T,PX}
 ) where {M,K,N,T,PD,PA,PX}
 # ) where {M,K,N,T,PX,PA,PD}
     quote
@@ -1513,9 +1490,9 @@ end
     end
 end
 @generated function A_nmul_Xt!(
-    D::AbstractMutableFixedSizePaddedMatrix{M,K,T,PD},
-    A::AbstractMutableFixedSizePaddedMatrix{M,N,T,PA},
-    X::AbstractMutableFixedSizePaddedVector{K,T,PX}
+    D::AbstractMutableFixedSizeMatrix{M,K,T,PD},
+    A::AbstractMutableFixedSizeMatrix{M,N,T,PA},
+    X::AbstractMutableFixedSizeVector{K,T,PX}
 ) where {M,K,N,T,PD,PA,PX}
 # ) where {M,N,K,T,PD,PA,PX}
     quote
@@ -1526,7 +1503,7 @@ end
 @generated function A_mul_Xt!(
     D::AbstractMatrix{T},
     A::AbstractMatrix{T},
-    X::AbstractMutableFixedSizePaddedMatrix{K,N,T,PX}
+    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
 # ) where {N,K,T,PX}
 ) where {N,K,PX,T}
     quote
@@ -1539,7 +1516,7 @@ end
 @generated function A_nmul_Xt!(
     D::AbstractMatrix{T},
     A::AbstractMatrix{T},
-    X::AbstractMutableFixedSizePaddedMatrix{K,N,T,PX}
+    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
 ) where {N,K,T,PX}
 # ) where {N,K,PX,T}
     quote
@@ -1552,7 +1529,7 @@ end
 @generated function A_mul_Xt!(
     D::AbstractMatrix{T},
     A::AbstractMatrix{T},
-    X::AbstractMutableFixedSizePaddedVector{K,T,PX}
+    X::AbstractMutableFixedSizeVector{K,T,PX}
 ) where {K,T,PX}
     quote
         M, N = size(A)
@@ -1564,7 +1541,7 @@ end
 @generated function A_nmul_Xt!(
     D::AbstractMatrix{T},
     A::AbstractMatrix{T},
-    X::AbstractMutableFixedSizePaddedVector{K,T,PX}
+    X::AbstractMutableFixedSizeVector{K,T,PX}
 ) where {K,T,PX}
     quote
         M, N = size(A)
@@ -1634,28 +1611,28 @@ end
 @inline function LinearAlgebra.mul!(
     D::AbstractMatrix{T},
     A::AbstractMatrix{T},
-    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedMatrix{N,K,T,PX}}
+    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeMatrix{N,K,T,PX}}
 ) where {N,K,T<:BLAS.BlasFloat,PX}
     A_mul_Xt!(D, A, X′.parent)
 end
 @inline function LinearAlgebra.mul!(
     D::AbstractMatrix{T},
     A::AbstractMatrix{T},
-    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedVector{N,T,PX}}
+    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeVector{N,T,PX}}
 ) where {N,T<:BLAS.BlasFloat,PX}
     A_mul_Xt!(D, A, X′.parent)
 end
 @inline function nmul!(
     D::AbstractMatrix{T},
     A::AbstractMatrix{T},
-    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedMatrix{N,K,T,PX}}
+    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeMatrix{N,K,T,PX}}
 ) where {N,K,T<:BLAS.BlasFloat,PX}
     A_nmul_Xt!(D, A, X′.parent)
 end
 @inline function nmul!(
     D::AbstractMatrix{T},
     A::AbstractMatrix{T},
-    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizePaddedVector{N,T,PX}}
+    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeVector{N,T,PX}}
 ) where {N,T<:BLAS.BlasFloat,PX}
     A_nmul_Xt!(D, A, X′.parent)
 end
@@ -1808,28 +1785,28 @@ function mul_tn_quote(
 end
 
 @generated function At_mul_X!(
-    D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
-    A::AbstractMutableFixedSizePaddedMatrix{K,M,T,PA},
-    X::AbstractMutableFixedSizePaddedMatrix{K,N,T,PX}
+    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
+    A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
+    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
 ) where {M,K,N,T,PA,PX,PD}
 # ) where {M,K,N,T,PD,PA,PX}
     return mul_tn_quote(N,K,1,T,true,PX,PA,PD,force_inline=false,Asym = :X,Xsym=:A)
 end
 @generated function At_nmul_X!(
-    D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
-    A::AbstractMutableFixedSizePaddedMatrix{K,M,T,PA},
-    X::AbstractMutableFixedSizePaddedMatrix{K,N,T,PX}
+    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
+    A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
+    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
 # ) where {M,K,N,T,PA,PX,PD}
 ) where {M,K,N,T,PD,PA,PX}
     return mul_tn_quote(M,K,N,T,true,PA,PX,PD,negative = true,force_inline=false)
 end
 function K_unknown_At_mul_X_quote(A, X, M, N, T, PD, negative, Dsym, Asym, Xsym)
-    if A <: AbstractMutableFixedSizePaddedMatrix
+    if A <: AbstractMutableFixedSizeMatrix
         K = A.parameters[1].parameters[1]
         stride_A = A.parameters[4]
         stride_X = gensym(:PX)
         def_quote = :($stride_X = stride(X,2))
-    elseif X <: AbstractMutableFixedSizePaddedMatrix
+    elseif X <: AbstractMutableFixedSizeMatrix
         K = X.parameters[1].parameters[1]
         stride_A = gensym(:PA)
         stride_X = X.parameters[4]
@@ -1851,7 +1828,7 @@ function K_unknown_At_mul_X_quote(A, X, M, N, T, PD, negative, Dsym, Asym, Xsym)
 end
 
 @generated function At_nmul_X!(
-    D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
+    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
     A::AbstractMatrix{T},
     X::AbstractMatrix{T}
 # ) where {M,N,PD,T}
@@ -1859,7 +1836,7 @@ end
     K_unknown_At_mul_X_quote(A, X, M, N, T, PD, true, :D, :A, :X)
 end
 @generated function At_mul_X!(
-    D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
+    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
     A::AbstractMatrix{T},
     X::AbstractMatrix{T}
 ) where {M,N,T,PD}
@@ -1867,14 +1844,14 @@ end
     K_unknown_At_mul_X_quote(A, X, M, N, T, PD, false, :D, :A, :X)
 end
 @inline function LinearAlgebra.mul!(
-    D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
+    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
     A′::LinearAlgebra.Adjoint{T,<:AbstractMatrix{T}},
     X::AbstractMatrix{T}
 ) where {M,N,T <: BLAS.BlasFloat,PD}
     At_mul_X!(D, A′.parent, X)
 end
 @inline function nmul!(
-    D::AbstractMutableFixedSizePaddedMatrix{M,N,T,PD},
+    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
     A′::LinearAlgebra.Adjoint{T,<:AbstractMatrix{T}},
     X::AbstractMatrix{T}
 ) where {M,N,T <: BLAS.BlasFloat,PD}
@@ -1889,12 +1866,12 @@ end
 end
 
 
-@generated function Base.:*(A::LinearAlgebra.Diagonal{T,<:AbstractFixedSizePaddedVector{M,T,P}}, B::AbstractFixedSizePaddedMatrix{M,N,T,P}) where {M,N,T,P}
+@generated function Base.:*(A::LinearAlgebra.Diagonal{T,<:AbstractFixedSizeVector{M,T,P}}, B::AbstractFixedSizeMatrix{M,N,T,P}) where {M,N,T,P}
     W, Wshift = VectorizationBase.pick_vector_width_shift(P, T)
     reps = P >>> Wshift
     V = Vec{W,T}
     q = quote
-        C = MutableFixedSizePaddedMatrix{$M,$N,$T}(undef)
+        C = MutableFixedSizeMatrix{$M,$N,$T}(undef)
         va = VectorizationBase.vectorizable(A.diag)
         vB = VectorizationBase.vectorizable(B)
         vC = VectorizationBase.vectorizable(C)
@@ -1907,8 +1884,8 @@ end
         end
         #C
     end
-    if B <: AbstractConstantFixedSizePaddedMatrix
-        push!(q.args, :(ConstantFixedSizePaddedMatrix(C)))
+    if B <: AbstractConstantFixedSizeMatrix
+        push!(q.args, :(ConstantFixedSizeMatrix(C)))
     else
         push!(q.args, :(C))
     end
@@ -1916,8 +1893,8 @@ end
 end
 @generated function Base.:*(
     sp::StackPointer,
-    A::LinearAlgebra.Diagonal{T,<:AbstractFixedSizePaddedVector{M,T,P}},
-    B::AbstractFixedSizePaddedMatrix{M,N,T,P}
+    A::LinearAlgebra.Diagonal{T,<:AbstractFixedSizeVector{M,T,P}},
+    B::AbstractFixedSizeMatrix{M,N,T,P}
 ) where {M,N,T,P}
     W, Wshift = VectorizationBase.pick_vector_width_shift(P, T)
     reps = P >>> Wshift

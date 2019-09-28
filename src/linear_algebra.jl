@@ -4,28 +4,28 @@ Fall back definition for scalars.
 """
 @inline invchol(x) = SIMDPirates.rsqrt(x)
 
-@generated function invchol(A::Diagonal{T,<:ConstantFixedSizePaddedVector{N,T,P}}) where {N,T,P}
+@generated function invchol(A::Diagonal{T,<:ConstantFixedSizeVector{N,T,P}}) where {N,T,P}
     quote
         $(Expr(:meta,:inline)) # do we really want to force inline this?
-        mv = MutableFixedSizePaddedVector{N,T}(undef)
+        mv = MutableFixedSizeVector{N,T}(undef)
         Adiag = A.diag
         @vectorize $T for i ∈ 1:$P
             mv[i] = rsqrt(Adiag[i])
         end
-        Diagonal(ConstantFixedSizePaddedArray(mv))
+        Diagonal(ConstantFixedSizeArray(mv))
     end
 end
 
 
-# @generated function invchol(A::AbstractConstantFixedSizePaddedMatrix{P,P,T,L}) where {P,T,L}
+# @generated function invchol(A::AbstractConstantFixedSizeMatrix{P,P,T,L}) where {P,T,L}
 #     quote
 #         $(Expr(:meta,:inline)) # do we really want to force inline this?
-#         mv = MutableFixedSizePaddedVector{N,T}(undef)
+#         mv = MutableFixedSizeVector{N,T}(undef)
 #         Adiag = A.diag
 #         @vectorize $T for i ∈ 1:$P
 #             mv[i] = rsqrt(Adiag[i])
 #         end
-#         Diagonal(ConstantFixedSizePaddedArray(mv))
+#         Diagonal(ConstantFixedSizeArray(mv))
 #     end
 # end
 
@@ -142,7 +142,7 @@ end
             push!(outtup, zero(T))
         end
     end
-    push!(qa, :(ConstantFixedSizePaddedMatrix{$P,$P,$T,$R,$(P*R)}($(
+    push!(qa, :(ConstantFixedSizeMatrix{$P,$P,$T,$R,$(P*R)}($(
         Expr(:tuple, outtup...)
     ))))
 end
@@ -159,7 +159,7 @@ end
             push!(outtup, zero(T))
         end
     end
-    push!(qa, :(ConstantFixedSizePaddedMatrix{$P,$P,$T,$R,$(P*R)}($(
+    push!(qa, :(ConstantFixedSizeMatrix{$P,$P,$T,$R,$(P*R)}($(
         Expr(:tuple, outtup...)
     ))))
 end
@@ -167,7 +167,7 @@ end
 Assumes the input matrix is positive definite (no checking is done; will return NaNs if not PD).
 Uses the lower triangle of the input matrix S, and returns the upper triangle of the input matrix.
 """
-@generated function invchol(S::AbstractConstantFixedSizePaddedMatrix{P,P,T,R}) where {P,T,R}
+@generated function invchol(S::AbstractConstantFixedSizeMatrix{P,P,T,R}) where {P,T,R}
     # q = quote @fastmath @inbounds begin end end
     # qa = q.args[2].args[3].args[3].args
     q = quote end
@@ -187,7 +187,7 @@ end
 ### invcholdet, LLi
 ### for Lower of S, Lower triangle out, and det is of the inverse
 ###
-@generated function invcholdetLLi!(L::AbstractMutableFixedSizePaddedMatrix{P,P,T,R}, S::AbstractFixedSizePaddedMatrix{P,P,T,R}) where {P,T,R}
+@generated function invcholdetLLi!(L::AbstractMutableFixedSizeMatrix{P,P,T,R}, S::AbstractFixedSizeMatrix{P,P,T,R}) where {P,T,R}
     # q = quote @fastmath @inbounds begin end end
     # qa = q.args[2].args[3].args[3].args
     q = quote end
@@ -220,7 +220,7 @@ end
         end
     end
 end
-@generated function invcholdetLLc!(L::AbstractMutableFixedSizePaddedMatrix{P2,P1,T,R1}, S::AbstractFixedSizePaddedMatrix{P3,P3,T,R2}) where {P1,P2,P3,T,R1,R2}
+@generated function invcholdetLLc!(L::AbstractMutableFixedSizeMatrix{P2,P1,T,R1}, S::AbstractFixedSizeMatrix{P3,P3,T,R2}) where {P1,P2,P3,T,R1,R2}
     # q = quote @fastmath @inbounds begin end end
     # qa = q.args[2].args[3].args[3].args
     q = quote end
@@ -258,7 +258,7 @@ end
 Assumes the input matrix is positive definite (no checking is done; will return NaNs if not PD).
 Uses the lower triangle of the input matrix S, and returns the upper triangle of the input matrix.
 """
-@generated function chol(S::AbstractFixedSizePaddedMatrix{P,P,T,R}) where {P,R,T}
+@generated function chol(S::AbstractFixedSizeMatrix{P,P,T,R}) where {P,R,T}
     # q = quote @fastmath @inbounds begin end end
     # qa = q.args[2].args[3].args[3].args
     q = quote end
@@ -275,19 +275,19 @@ Uses the lower triangle of the input matrix S, and returns the upper triangle of
     # q
 end
 
-function LAPACK_chol!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, UPLO::Char = 'U') where {N,LDA}
+function LAPACK_chol!(A::AbstractMutableFixedSizeMatrix{N,N,Float64,LDA}, UPLO::Char = 'U') where {N,LDA}
     INFO = 0
     ccall((LinearAlgebra.BLAS.@blasfunc(dpotrf_), LinearAlgebra.BLAS.libblas), Cvoid,
         (Ref{UInt8}, Ref{LinearAlgebra.BLAS.BlasInt}, Ptr{Float64}, Ref{LinearAlgebra.BLAS.BlasInt}, Ref{LinearAlgebra.BLAS.BlasInt}),
         UPLO, N, A, LDA, INFO)
 end
-function LAPACK_tri_inv!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, UPLO::Char = 'U', DIAG::Char = 'N') where {N,LDA}
+function LAPACK_tri_inv!(A::AbstractMutableFixedSizeMatrix{N,N,Float64,LDA}, UPLO::Char = 'U', DIAG::Char = 'N') where {N,LDA}
     INFO = 0
     ccall((LinearAlgebra.BLAS.@blasfunc(dtrtri_), LinearAlgebra.BLAS.libblas), Cvoid,
         (Ref{UInt8}, Ref{UInt8}, Ref{LinearAlgebra.BLAS.BlasInt}, Ptr{Float64}, Ref{LinearAlgebra.BLAS.BlasInt}, Ref{LinearAlgebra.BLAS.BlasInt}),
         UPLO, DIAG, N, A, LDA, INFO)
 end
-function BLAS_dtrmv!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, x::AbstractMutableFixedSizePaddedVector{N,Float64,LDA}, UPLO::Char = 'U', TRANS::Char = 'N', DIAG::Char = 'N') where {N,LDA}
+function BLAS_dtrmv!(A::AbstractMutableFixedSizeMatrix{N,N,Float64,LDA}, x::AbstractMutableFixedSizeVector{N,Float64,LDA}, UPLO::Char = 'U', TRANS::Char = 'N', DIAG::Char = 'N') where {N,LDA}
     INCX = 1
 
     ccall((LinearAlgebra.BLAS.@blasfunc(dtrmv_), LinearAlgebra.BLAS.libblas), Cvoid,
@@ -295,7 +295,7 @@ function BLAS_dtrmv!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, x
         UPLO, TRANS, DIAG, N, A, LDA, x, INCX)
 
 end
-function BLAS_dsymv!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, x::AbstractMutableFixedSizePaddedVector{N,Float64,LDA}, y::AbstractMutableFixedSizePaddedVector{N,Float64,LDA}, α::Float64 = 1.0, β::Float64 = 0.0, UPLO::Char = 'U') where {N,LDA}
+function BLAS_dsymv!(A::AbstractMutableFixedSizeMatrix{N,N,Float64,LDA}, x::AbstractMutableFixedSizeVector{N,Float64,LDA}, y::AbstractMutableFixedSizeVector{N,Float64,LDA}, α::Float64 = 1.0, β::Float64 = 0.0, UPLO::Char = 'U') where {N,LDA}
     INCX = 1
     INCY = 1
 
@@ -304,7 +304,7 @@ function BLAS_dsymv!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, x
         UPLO, N, α, A, LDA, x, INCX, β, y, INCY)
 
 end
-# function LAPACK_dsyrk!(A::AbstractMutableFixedSizePaddedMatrix{N,N,Float64,LDA}, UPLO = 'U', DIAG = 'N') where {N,LDA}
+# function LAPACK_dsyrk!(A::AbstractMutableFixedSizeMatrix{N,N,Float64,LDA}, UPLO = 'U', DIAG = 'N') where {N,LDA}
 #     INFO = 0
 #     ccall((LinearAlgebra.BLAS.@blasfunc(dsyrk_), LinearAlgebra.BLAS.libblas), Cvoid,
 #         (Ref{UInt8}, Ref{UInt8}, Ref{LinearAlgebra.BLAS.BlasInt}, Ptr{Float64}, Ref{LinearAlgebra.BLAS.BlasInt}, Ref{LinearAlgebra.BLAS.BlasInt}),
@@ -316,7 +316,7 @@ end
 """
 Assumes the input matrix is lower triangular.
 """
-@generated function ltinv(L::AbstractConstantFixedSizePaddedMatrix{P,P,T,R}) where {P,T,R}
+@generated function ltinv(L::AbstractConstantFixedSizeMatrix{P,P,T,R}) where {P,T,R}
     # q = quote @fastmath @inbounds begin end end
     # qa = q.args[2].args[3].args[3].args
     q = quote end
@@ -349,7 +349,7 @@ end
         end
     end
 end
-@generated function safecholdet!(L::AbstractMutableFixedSizePaddedMatrix{P,P,T,R}) where {P,T,R}
+@generated function safecholdet!(L::AbstractMutableFixedSizeMatrix{P,P,T,R}) where {P,T,R}
     q = quote @fastmath @inbounds begin end end
     qa = q.args[2].args[3].args[3].args
     load_L_quote!(qa, P, R, :L, :L)

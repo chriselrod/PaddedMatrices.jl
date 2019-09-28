@@ -1,10 +1,11 @@
 
-struct StaticUnitRange{L,S} <: AbstractFixedSizePaddedVector{L,Int,L} end
-Base.getindex(::StaticUnitRange{L,S}, i::Integer) where {L,S} = Int(i+S-1)
+struct StaticUnitRange{L,S} <: AbstractFixedSizeVector{L,Int,L} end
+Base.getindex(::StaticUnitRange{L,S}, i::Integer) where {L,S} = Int(i+S)
 Base.size(::StaticUnitRange{L}) where {L} = (L,)
 Base.length(::StaticUnitRange{L}) where {L} = L
+
 Base.IndexStyle(::Type{<:StaticUnitRange}) = Base.IndexLinear()
-@generated StaticUnitRange(::Val{Start}, ::Val{Stop}) where {Start,Stop} = StaticUnitRange{Stop-Start+1,Start}()
+@generated StaticUnitRange(::Val{Start}, ::Val{Stop}) where {Start,Stop} = StaticUnitRange{Stop-Start+1,Start-1}()
 macro StaticRange(rq)
     @assert rq.head == :call
     @assert rq.args[1] == :(:)
@@ -12,8 +13,9 @@ macro StaticRange(rq)
 end
 
 
-@generated function Base.getindex(A::AbstractMutableFixedSizePaddedArray{SV,T,N,R}, I...) where {SV,T,N,R}
-    S = Int[S.parameters...]
+@generated function Base.getindex(A::AbstractMutableFixedSizeArray{SV,T,N,XV}, I...) where {SV,T,N,XV}
+    S = Int[SV.parameters...]
+    X = Int[XV.parameters...]
     offset = 0
     stride = 1
     dims = Int[]
@@ -21,8 +23,8 @@ end
         if TT <: Integer
 
         elseif TT <: StaticUnitRange
-            L, U = first(TT.parameters)::Int, last(TT.parameters)::Int - 1
-            push!(dims, U - L)
+            L, S = first(TT.parameters)::Int, last(TT.parameters)::Int
+            push!(dims, L)
             offset += stride * L
         elseif TT === Colon
             push!(dims, S[i])
