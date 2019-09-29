@@ -131,7 +131,7 @@ Converts Cartesian one-based index into linear one-based index.
 Just subtract 1 for a zero based index.
 """
 @noinline function sub2ind_expr(X::Core.SimpleVector)#, N::Int = length(X)) 
-    x1 = first(X)::Int
+    x1 = first(X)::Int; N = length(X)
     if N == 1
         return x1 == 1 ? :(@inbounds i[1] - 1) : :(@inbounds (i[1] - 1) * $x1 )
     end

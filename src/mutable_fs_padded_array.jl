@@ -1,7 +1,6 @@
 
 @noinline function calc_NPL(SV::Core.SimpleVector, T, align_stride::Bool = true, pad_to_align_length::Bool = false)#true)
     nrow = (SV[1])::Int
-    N = length(SV)
     if align_stride
         padded_rows = calc_padding(nrow, T)
     else
@@ -19,6 +18,7 @@
 end
 function calc_NXL(SV::Core.SimpleVector, T, padded_rows::Int, align_stride::Bool = true, pad_to_align_length::Bool = false)
     L = padded_rows
+    N = length(SV)
     X = Int[ 1 ]
     for n ∈ 2:N
         push!(X, L)
@@ -68,6 +68,11 @@ const MutableFixedSizeMatrix{M,N,T,P,L} = MutableFixedSizeArray{Tuple{M,N},T,2,T
 @generated function MutableFixedSizeVector{S,T}(::UndefInitializer) where {S,T}
     L = calc_padding(S,T)
     :(MutableFixedSizeVector{$S,$T,$L}(undef))
+end
+
+@generated function MutableFixedSizeMatrix{M,N,T}(::UndefInitializer) where {M,N,T}
+    P = calc_padding(M,T)
+    :(MutableFixedSizeMatrix{$M,$N,$T,$P,$(P*N)}(undef))
 end
 
 # @inline MutableFixedSizeVector(A::AbstractConstantFixedSizeVector{M,T,L}) where {M,T,L} = MutableFixedSizeVector{M,T,L}(A.data)
@@ -256,7 +261,7 @@ end
         sp + $(VectorizationBase.align(8L)), PtrArray{$S,Float64,$N,$X,$L,$V}(pointer(sp, Float64))
     end
 end
-@generated function PtrArray{S,T}(sp::StackPointer, ::Val{P} = Val{false}()) where {S,T,V}
+@generated function PtrArray{S,T}(sp::StackPointer, ::Val{V} = Val{false}()) where {S,T,V}
     N,X,L = calc_NPL(S.parameters,T,true,false)
     quote
         $(Expr(:meta,:inline))
@@ -280,7 +285,7 @@ end
 #        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
 end
-@generated function PtrArray{S,T,N,R,L}(sp::StackPointer, ::Val{V} = Val{false}()) where {S,T,N,X,V,L}
+@generated function PtrArray{S,T,N,X,L}(sp::StackPointer, ::Val{V} = Val{false}()) where {S,T,N,X,V,L}
     quote
         $(Expr(:meta,:inline))
         ptr = Base.unsafe_convert(Ptr{$T}, sp.ptr)
@@ -349,7 +354,7 @@ isview(::Type{PtrArray{S,T,N,X,L,V}}) where {S,T,N,X,L,V} = V
     end
 end
 @generated function Base.setindex!(A::AbstractMutableFixedSizeArray{S,T,N,X,L}, v, i::Vararg{Integer,M}) where {S,T,N,X,L,M}
-    if M == 1 && !issubmatrix(A)
+    if M == 1 && !isview(A)
         bound_check = :(i[1] > $L && ThrowBoundsError("index == $(i[1]) > $L == length of array"))
         ex = :(@inbounds i[1] - 1)
     else
@@ -371,7 +376,7 @@ end
     A::AbstractMutableFixedSizeArray{S,NTuple{W,Core.VecElement{T}},N,X,L},
     v::NTuple{W,Core.VecElement{T}}, i::CartesianIndex{N}
 ) where {S,T,N,X,L,W}
-    R = issubmatrix(A) ? (S.parameters[1])::Int : (X.parameters[2])::Int
+    R = isview(A) ? (S.parameters[1])::Int : (X.parameters[2])::Int
     ex = sub2ind_expr(X.parameters)
     quote
         $(Expr(:meta, :inline))
@@ -386,7 +391,7 @@ end
     A::AbstractMutableFixedSizeArray{S,NTuple{W,Core.VecElement{T}},N,X,L},
     v::NTuple{W,Core.VecElement{T}}, i::Vararg{Integer,M}
 ) where {S,T,N,X,L,M,W}
-    R = issubmatrix(A) ? (S.parameters[1])::Int : (X.parameters[2])::Int
+    R = isview(A) ? (S.parameters[1])::Int : (X.parameters[2])::Int
     ex = sub2ind_expr(X.parameters)
     if M == 1
         ex = :(@inbounds i[1] - 1)
@@ -408,7 +413,7 @@ end
                                             
 # @inline Base.@propagate_inbounds Base.getindex(A::AbstractMutableFixedSizeArray, i...) = A.data[i...]
 
-@inline function Base.getindex(A::AbstractMutableFixedSizeVector{S,TN,L}, i::Int) where {S,T,L}
+@inline function Base.getindex(A::AbstractMutableFixedSizeVector{S,T,L}, i::Int) where {S,T,L}
     @boundscheck i <= L || ThrowBoundsError("Index $i > full length $L.")
     VectorizationBase.load(pointer(A) + sizeof(T) * (i - 1))
 end
@@ -432,7 +437,7 @@ end
 
 
 @generated function Base.getindex(A::AbstractMutableFixedSizeArray{S,T,N,X,L}, i::Vararg{Int,N}) where {S,T,N,X,L}
-    R = issubmatrix(A) ? (S.parameters[1])::Int : (X.parameters[2])::Int
+    R = isview(A) ? (S.parameters[1])::Int : (X.parameters[2])::Int
     ex = sub2ind_expr(X.parameters)
     quote
         $(Expr(:meta, :inline))
@@ -443,18 +448,18 @@ end
     end
 end
 @generated function Base.getindex(A::AbstractMutableFixedSizeArray{S,T,N,X,L}, i::CartesianIndex{N}) where {S,T,N,X,L}
-    R = issubmatrix(A) ? (S.parameters[1])::Int : (X.parameters[2])::Int
+    R = isview(A) ? (S.parameters[1])::Int : (X.parameters[2])::Int
     ex = sub2ind_expr(X.parameters)
     quote
         $(Expr(:meta, :inline))
         @boundscheck begin
-            Base.Cartesian.@nif $(N+1) d->(d == 1 ? i[d] > $R : i[d] > size(A, d) d->ThrowBoundsError() d -> nothing
+            Base.Cartesian.@nif $(N+1) d->(d == 1 ? i[d] > $R : i[d] > size(A, d)) d->ThrowBoundsError() d -> nothing
         end
-        VectorizationBase.load(pointer(A) + $(sizeof(T)) * $ex ))
+        VectorizationBase.load(pointer(A) + $(sizeof(T)) * $ex )
     end
 end
 @generated function Base.getindex(A::AbstractMutableFixedSizeArray{S,Vec{W,T},N,X,L}, i::Vararg{Int,N}) where {S,T,N,X,L,W}
-    R = issubmatrix(A) ? (S.parameters[1])::Int : (X.parameters[2])::Int
+    R = isview(A) ? (S.parameters[1])::Int : (X.parameters[2])::Int
     ex = sub2ind_expr(X.parameters)
     quote
         $(Expr(:meta, :inline))
@@ -465,7 +470,7 @@ end
     end
 end
 @generated function Base.getindex(A::AbstractMutableFixedSizeArray{S,Vec{W,T},N,X,L}, i::CartesianIndex{N}) where {S,T,N,X,L,W}
-    R = issubmatrix(A) ? (S.parameters[1])::Int : (X.parameters[2])::Int
+    R = isview(A) ? (S.parameters[1])::Int : (X.parameters[2])::Int
     ex = sub2ind_expr(X.parameters)
     quote
         $(Expr(:meta, :inline))
@@ -497,64 +502,6 @@ end
 # Do we want this, or L?
 @generated Base.length(::AbstractFixedSizeArray{S}) where {S} = simple_vec_prod(S.parameters)
 
-staticrangelength(::Type{Static{R}}) where R = 1 + last(R) - first(R)
-
-"""
-Note that the stride will currently only be correct when N <= 2.
-Perhaps R should be made into a stride-tuple?
-"""
-@generated function Base.getindex(A::AbstractMutableFixedSizeArray{S,T,N,X,L}, inds...) where {S,T,N,X,L}
-    @assert length(inds) == N
-    SV = S.parameters
-    XV = X.parameters
-    s2 = Int[]
-    x2 = Int[]
-    offset::Int = 0
-    offset_expr = Expr[]
-    for n ∈ 1:N
-        xvn = (XV[n])::Int
-        if inds[n] == Colon
-            push!(s2, (SV[n])::Int)
-            push!(x2, xvn)
-        elseif inds[n] <: Integer
-            offset += sizeof(T) * (inds[n] - 1) * xvn
-        else
-            @assert inds[n] <: Static
-            push!(s2, staticrangelength(inds[n]))
-            push!(x2, xvn)
-            offset += sizeof(T) * (first(static_type(inds[n])) - 1) * xvn
-        end
-    end
-    S2 = Tuple{s2...}
-    X2 = Tuple{x2...}
-    if length(offset_expr) == 0 && offset = 0
-        ex = :(pointer(A))
-    elseif offset == 0
-        ex = Expr(:call, :+, :(pointer(A)), offset_expr...)
-    else
-        ex = Expr(:call, :+, :(pointer(A)), offset, offset_expr...)
-    end
-    quote
-        $(Expr(:meta,:inline))
-        PtrArray{$S2,$T,$(length(s2)),$X2,$L,true}($ex)
-    end
-end
-
-
-# macro copy(expr)
-    # @assert expr.head == :ref
-    # q = Expr(:call, :(PaddedMatrices.sview), expr.args[1])
-    # for n ∈ 2:length(expr.args)
-        # original_ind = expr.args[n]
-        # if original_ind isa Expr && original_ind.args[1] == :(:)
-            # new_ind = :(PaddedMatrices.Static{$original_ind}())
-        # else
-            # new_ind = original_ind
-        # end
-        # push!(q.args, new_ind)
-    # end
-    # esc(q)
-# end
 
 """
 This function is not safe -- make sure the underlying data is protected!!!

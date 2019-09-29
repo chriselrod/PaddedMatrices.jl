@@ -159,7 +159,7 @@ end
 end
 @inline function vexp(
     A::AbstractFixedSizeArray{S,T,N,X,L}
-) where {S,T,N,R,L}
+) where {S,T,N,X,L}
     vexp!(MutableFixedSizeArray{S,T,N,X,L}(undef), A)
 end
 @inline function vexp(
