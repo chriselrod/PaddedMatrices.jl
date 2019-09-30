@@ -147,6 +147,17 @@ end
 
 @generated function vexp!(
     B::AbstractMutableFixedSizeArray{S,T,N,X,L},
+) where {S,T,N,X,L}
+    quote
+        $(Expr(:meta,:inline))
+        LoopVectorization.@vvectorize $T for l ∈ 1:$L
+            B[l] = SLEEFPirates.exp(B[l])
+        end
+        B
+    end
+end
+@generated function vexp!(
+    B::AbstractMutableFixedSizeArray{S,T,N,X,L},
     A::AbstractFixedSizeArray{S,T,N,X,L}
 ) where {S,T,N,X,L}
     quote
@@ -174,7 +185,7 @@ function vexp(
     A::AbstractFixedSizeArray{S,T,N,X,L}
 ) where {S,T,N,X,L}
     B = PtrArray{S,T,N,X,L}(pointer(sp,T))
-    sp + sizeof(T)*L, vexp!(B)
+    sp + VectorizationBase.align(sizeof(T)*L), vexp!(B, A)
 end
 
 @noinline function pointer_vector_expr(

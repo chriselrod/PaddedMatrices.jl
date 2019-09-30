@@ -6,7 +6,6 @@
     else
         W, Wshift = VectorizationBase.pick_vector_width_shift(T)
         TwoN = 2nrow
-
         while W >= TwoN
             W >>>= 1
         end
@@ -91,14 +90,14 @@ end
     N,P,L = calc_NPL(S, T)
     quote
         $(Expr(:meta,:inline))
-        ma = MutableFixedSizeArray{$S,$T,$N,$P,$L}(undef)
+        ma = MutableFixedSizeArray{$(Tuple{S...}),$T,$N,$P,$L}(undef)
         @inbounds for l ∈ 1:$L
             ma[l] = zero($T)
         end
         ma
     end
 end
-@generated function Base.zero(::Type{<:MutableFixedSizeArray{S,T}}) where {S,T}
+@generated function Base.zero(::Type{<:MutableFixedSizeArray{S,T}}) where {T,S}
     mutable_zero_quote(S.parameters, T)
 end
 @generated function Base.zero(::Type{<:MutableFixedSizeArray{S}}) where {S}
@@ -377,7 +376,6 @@ end
         bound_check = :(Base.Cartesian.@nif $(N+1) d->( d == 1 ? i[d] > $R : i[d] > size(A,d)) d-> ThrowBoundsError("Dimension $d out of bounds") d -> nothing)
     end
     quote
-        
         $(Expr(:meta, :inline))
         @boundscheck begin
             $bound_check
@@ -506,6 +504,12 @@ end
         SIMDPirates.vload(Vec{W,T}, pointer(A.parent) + $(sizeof(Vec{W,T})) * ( (i-1)*$R + j-1 ))
     end
 end
+function Base.getindex(A::AbstractMutableFixedSizeVector{S,T,L}, i::Int, j::Int) where {S,T,L}
+    @boundscheck begin
+        (j != 1 || i > S || i < 1) && ThrowBoundsError()
+    end
+    @inbounds A[i]
+end
 
 @inline Base.unsafe_convert(::Type{Ptr{T}}, A::AbstractMutableFixedSizeArray) where {T} = Base.unsafe_convert(Ptr{T}, pointer(A))
 @generated Base.strides(A::AbstractFixedSizeArray{S,T,N,X}) where {S,T,N,X} = tuple(X.parameters...)
@@ -524,13 +528,20 @@ This function is not safe -- make sure the underlying data is protected!!!
     N == 1 || (S.parameters[1])::Int == (X.parameters[2])::Int || throw("vec-ing multidimensional arrays with padding would lead to weird behavior.")
     :(PtrVector{$L,$T,$L}(pointer(a)))
 end
-@generated function Base.reshape(A::AbstractMutableFixedSizeArray{S1,T,N,X,L}, ::Union{Val{S2},Static{S2}}) where {S1,S2,T,N,X,L}
+@noinline function reshape_quote(S1,S2,T,N,X,L)
     N == 1 || (S1.parameters[1])::Int == (X.parameters[2])::Int || throw("Reshaping multidimensional arrays with padding would lead to weird behavior.")
     prod(S2.parameters) == prod(S1.parameters) || throw("Total length of reshaped array should equal original length\n\n$(S1)\n\n$(S2)\n\n.")
     N2 = length(S2.parameters)
     R2 = (S2.parameters[1])::Int
-    :(PtrArray{$S2,$T,$N2,$R2,$L}(pointer(A)))
+    X2 = Vector{Int}(undef, N2); X2[1] = 1
+    for n in 2:N2
+        X2[n] = X2[n-1] * (S2.parameters[n-1])::Int
+    end
+    :(PtrArray{$S2,$T,$N2,$(Tuple{X2...}),$L}(pointer(A)))
+
 end
+@generated Base.reshape(A::AbstractMutableFixedSizeArray{S1,T,N,X,L}, ::Val{S2}) where {S1,S2,T,N,X,L} = reshape_quote(S1,S2,T,N,X,L)
+@generated Base.reshape(A::AbstractMutableFixedSizeArray{S1,T,N,X,L}, ::Static{S2}) where {S1,S2,T,N,X,L} = reshape_quote(S1,S2,T,N,X,L)
 @generated function Base.reshape(A::AbstractArray, ::Static{S}) where {S}
     tupexpr = Expr(:tuple, S.parameters...)
     :(reshape(A, $tupexpr))

@@ -191,11 +191,12 @@ function calc_padding(nrow::Int, T)
 end
 @noinline function calc_strides(SV::Core.SimpleVector, T)
     P = calc_padding(first(SV)::Int, T)::Int
-    X = [ P ]
-    for n in 2:length(SV)
-        P *= (SV[n])::Int
+    X = [ 1 ]
+    for n in 2:length(SV)-1
         push!(X, P)
+        P *= (SV[n])::Int
     end
+    push!(X, P)
     X
 end
 # calc_padding(nrow::Int, T) = VectorizationBase.ispow2(nrow) ? nrow : VectorizationBase.align(nrow, T)

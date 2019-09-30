@@ -205,25 +205,29 @@ abstract type AbstractPaddedMatrixStyle{S,T,A} <: Broadcast.BroadcastStyle end
 
 struct FixedSizeMatrixDefaultStyle{S,T,R,A} <: AbstractPaddedMatrixStyle{S,T,A} end
 
-function pick_R(R1, R2)
+function pick_R(R1::Int, R2::Int)
     R3 = R1 == 1 ? typemax(R1) : R1
     R4 = R2 == 1 ? typemax(R2) : R2
 #    R = min(R3, R4)
+    # @show R1, R2, R3, R4
+    R = min(R3,R4)
     if R3 != R4
-        R = min(R3,R4)
-        if (R3 == typemax(R1)) || (R2 == typemax(R2))
+        if (R3 == typemax(R1)) || (R4 == typemax(R2))
             access_pattern = LinearIndexing
         else
             access_pattern = CartesianIndexing
         end
     else
-        R = R3
         access_pattern = LinearIndexing
     end
+    # @show R
     R, access_pattern
 end
 
-Base.BroadcastStyle(::Type{<:AbstractFixedSizeArray{S,T,N,R}}) where {S,T,N,R} = FixedSizeMatrixDefaultStyle{S,T,R,LinearIndexing}()
+@generated function Base.BroadcastStyle(::Type{<:AbstractFixedSizeArray{S,T,N,R,L}}) where {S,T,N,R,L}
+    P = N == 1 ? L : (R.parameters[2])::Int
+    FixedSizeMatrixDefaultStyle{S,T,P,LinearIndexing}()
+end
 Base.BroadcastStyle(::Type{LinearAlgebra.Adjoint{T,V}}) where {S,T,R,V<:AbstractFixedSizeVector{S,T,R}} = FixedSizeMatrixDefaultStyle{Tuple{1,S},T,1,CartesianIndexing}()
 #Base.BroadcastStyle(::Type{LinearAlgebra.Adjoint{T,<:AbstractFixedSizeMatrix{M,N,T,R}}}) where {M,N,T,R} = FixedSizeMatrixDefaultStyle{Tuple{N,M},T,R,LinearIndexing}()
 
@@ -236,10 +240,9 @@ end
 
 @generated function Base.Broadcast.combine_styles(
     s::Vararg{<:Union{AbstractFixedSizeArray{S} where S,
-                      <:LinearAlgebra.Adjoint{<:Any,<:AbstractFixedSizeArray{S}} where S,
-                      <:Base.Broadcast.Broadcasted{<:AbstractPaddedMatrixStyle},
-                      BLAS.BlasFloat,Int32,Int64}, N}) where {N}
-
+    <:LinearAlgebra.Adjoint{<:Any,<:AbstractFixedSizeArray{S}} where S,
+    <:Base.Broadcast.Broadcasted{<:AbstractPaddedMatrixStyle},BLAS.BlasFloat,Int32,Int64}, N}
+) where {N}
     is_padded_array = Vector{Bool}(undef, N)
  #   is_adj_padded_array = Vector{Bool}(undef, N)
     for n ∈ 1:N
@@ -256,6 +259,7 @@ end
     end
     any(is_padded_array) || return Base.Broadcast.DefaultArrayStyle{0}()
     
+    # Svec = DataType[]
     A = LinearIndexing
     Svec = DataType[]
     # println("About to iterate over:")
@@ -285,11 +289,14 @@ end
             # @show bs
             sₙ = typeof(bs).parameters
 #            sₙ = s[n].parameters
+            # @show sₙ[1]
             push!(Svec, sₙ[1])
             # @show sₙ[1]
             T = promote_type(T, sₙ[2])
-            R, access_pattern = pick_R(R, sₙ[3])
-            A = max(A, sₙ[4], access_pattern)
+            # X = sₙ[3].parameters
+            # @show R, sₙ[3]
+            R, access_pattern = pick_R(R, (sₙ[3])::Int)#length(X) == 1 ?  : (X[2])::Int)
+            A = max(A, (sₙ[4])::AccessPattern, access_pattern)
         else
             push!(Svec, Tuple{})
             T = promote_type(T, s[2])
@@ -376,7 +383,6 @@ end
     if (((A1 == BatchedColumnMajor) || (A2 == BatchedColumnMajor)) && (max(l1,l2)>2))
         return FixedSizeMatrixDefaultStyle{Tuple{S1,S2},T,R,CartesianIndexing}()
     end
-    # 
     equal_lengths = l1 == l2
     if equal_lengths
         equal_dims = sa1 .== sa2
@@ -450,24 +456,28 @@ end
 # Base.BroadcastStyle(::Base.Broadcast.DefaultArrayStyle{0}, style::AbstractPaddedMatrixStyle) = style
 
 
-@generated function Base.similar(bc::Base.Broadcast.Broadcasted{FixedSizeMatrixDefaultStyle{S,T,R,A}}) where {S,A,T,R}
+@generated function Base.similar(bc::Base.Broadcast.Broadcasted{FixedSizeMatrixDefaultStyle{S,T,R,A}}) where {S,A,R,T}
     Salloc = reduce_size(S.parameters)
     #    N, R, L = calc_NPL(Salloc, T)
     N = length(Salloc)
-    L = R
+    X = Vector{Int}(undef, N); X[1] = 1
+    L::Int = R
     for n ∈ 2:N
-        L *= Salloc[n]
+        X[n] = L
+        L *= (Salloc[n])::Int
     end
     ST = Tuple{Salloc...}
-    :(MutableFixedSizeArray{$ST,$T,$N,$R,$L}(undef))
+    :(MutableFixedSizeArray{$ST,$T,$N,$(Tuple{X...}),$L}(undef))
 end
 @generated function Base.similar(bc::Base.Broadcast.Broadcasted{FixedSizeMatrixDefaultStyle{S,T1,R,A}}, mystack::Ptr{T2}) where {S,A,T1,T2,R}
     Salloc = reduce_size(S.parameters)
     #    N, R, L = calc_NPL(Salloc, T)
     N = length(Salloc)
-    L = R
+    X = Vector{Int}(undef, N); X[1] = 1
+    L::Int = R
     for n ∈ 2:N
-        L *= Salloc[n]
+        X[n] = L
+        L *= (Salloc[n])::Int
     end
     ST = Tuple{Salloc...}
     # allocates from mystack, and advances that pointer.
@@ -526,8 +536,6 @@ function broadcast_index_expression!(q, preq, SBV, inds, bcsym, assign)
             push!(preq.args, :($argsym = @inbounds PaddedMatrices.extract($bcsym.args[$l])))
             push!(callexpr.args, argsym)
             continue
-#        else
-
         end
         SBVₗ₁ = (SBVₗ[1])::Union{Int,DataType}
         if SBVₗ₁ isa Int # array argument
@@ -671,8 +679,11 @@ end
 # FIXME:
 # D .= A .+ B
 # does not work when A is a matrix and B a 3d array
-@generated function Base.Broadcast.materialize!(out::AbstractMutableFixedSizeArray{S,T,N,P}, bc::Base.Broadcast.Broadcasted{FixedSizeMatrixDefaultStyle{SB,T,R,A}}) where {S,A,T,SB,N,P,R}
-    materialize_quote(S.parameters, A, T, SB, N, P, R)
+@generated function Base.Broadcast.materialize!(
+    out::AbstractMutableFixedSizeArray{S,T,N,P,L}, bc::Base.Broadcast.Broadcasted{FixedSizeMatrixDefaultStyle{SB,T,R,A}}
+) where {S,A,T,SB,N,R,P,L}
+#) where {S,A,T,SB,N,P,R}
+    materialize_quote(S.parameters, A, T, SB, N, N == 1 ? L : P.parameters[2], R)
 end
 
 

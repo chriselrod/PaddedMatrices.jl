@@ -227,9 +227,10 @@ function Base.view(A::DynamicPtrMatrix{T}, ::Colon, i::UnitRange) where {T}
     ptrA = pointer(A)
     M,N = A.size
     P = A.stride
-    ptrB = ptrA + P * sizeof(T) * (first(i) - 1)
+    f = first(i) - 1; l = last(i)
+    ptrB = ptrA + P * sizeof(T) * f
     DynamicPtrMatrix{T}(
-        ptrB, (M,length(i)), P
+        ptrB, (M,(l - f)), P
     )
 end
 

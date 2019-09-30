@@ -2,7 +2,7 @@
 struct ConstantFixedSizeArray{S,T,N,X,L} <: AbstractConstantFixedSizeArray{S,T,N,X,L}
     data::NTuple{L,T}
 end
-const ConstantFixedSizeVector{S,T,L} = ConstantFixedSizeArray{Tuple{S},T,Tuple{1},L}
+const ConstantFixedSizeVector{S,T,L} = ConstantFixedSizeArray{Tuple{S},T,1,Tuple{1},L}
 const ConstantFixedSizeMatrix{M,N,T,P,L} = ConstantFixedSizeArray{Tuple{M,N},T,2,Tuple{1,P},L}
 
 @noinline function calc_NP(SV::Core.SimpleVector, L)
