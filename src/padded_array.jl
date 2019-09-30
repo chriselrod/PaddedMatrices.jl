@@ -31,25 +31,25 @@ function full_length(Asize::NTuple{N,Int}, L::Int = Asize[1]) where {N}
 end
 full_length(A::DynamicPtrArray) = full_length(A.size, A.stride)
 
-function DynamicPaddedArray{T}(::UndefInitializer, S::NTuple{N}) where {T,N}#, ::Val{Z} = Val(true)) where {T,N,Z}
-    nrow = S[1]
+# function DynamicPaddedArray{T}(::UndefInitializer, S::NTuple{N}) where {T,N}#, ::Val{Z} = Val(true)) where {T,N,Z}
+    # nrow = S[1]
+    # W, Wshift = VectorizationBase.pick_vector_width_shift(T)
+    # TwoN = 2nrow
+    # Wm1 = W - 1
+    # rem = nrow & Wm1
+    # padded_rows = (nrow + Wm1) & ~Wm1
+    # padded_size = Base.setindex(S, padded_rows, 1)
+    # data = Array{T,N}(undef, padded_size)
+    # return DynamicPaddedArray{T,N}(data, S)
+# end
+function DynamicPaddedArray{T,N}(::UndefInitializer, S::NTuple{N,Int}, padded_rows::Int = calc_padding(first(S),T)) where {T,N}#, ::Val{Z} = Val(true)) where {T,N,Z}
     W, Wshift = VectorizationBase.pick_vector_width_shift(T)
-    TwoN = 2nrow
-    Wm1 = W - 1
-    rem = nrow & Wm1
-    padded_rows = (nrow + Wm1) & ~Wm1
 #    nvector_loads = padded_rows >>> Wshift
     padded_size = Base.setindex(S, padded_rows, 1)
     data = Array{T,N}(undef, padded_size)
     return DynamicPaddedArray{T,N}(data, S)
 end
-function DynamicPaddedArray{T}(::UndefInitializer, S::NTuple{N,Int}, padded_rows::Int) where {T,N}#, ::Val{Z} = Val(true)) where {T,N,Z}
-    W, Wshift = VectorizationBase.pick_vector_width_shift(T)
-#    nvector_loads = padded_rows >>> Wshift
-    padded_size = Base.setindex(S, padded_rows, 1)
-    data = Array{T,N}(undef, padded_size)
-    return DynamicPaddedArray{T,N}(data, S)
-end
+DynamicPaddedArray{T}(::UndefInitializer, S::NTuple{N,Int}, pr::Int = calc_padding(first(S), T)) where {T,N} = DynamicPaddedArray{T,N}(undef, S, pr)
 
 function DynamicPaddedArray(A::AbstractArray{T,N}) where {T,N}
     pA = DynamicPaddedArray{T}(undef, size(A))
@@ -60,6 +60,9 @@ function DynamicPaddedArray(A::AbstractArray{T,N}) where {T,N}
 end
 function DynamicPaddedArray{<:Any, N}(A::Array{T,N}, s::NTuple{N,<:Integer}) where {N,T}
     DynamicPaddedArray{T,N}(A, s)
+end
+function DynamicPaddedVector{T}(::UndefInitializer, M, N = calc_padding(M, T)) where {T}
+    DynamicPaddedArray{T,1}(Vector{T}(undef, N), (M,))
 end
 
 function DynamicPtrArray{<:Any, N}(ptr::Ptr{T}, size::NTuple{N,<:Integer}, stride::Integer) where {T,N}
@@ -85,6 +88,10 @@ end
 function DynamicPtrVector{T}(sp::StackPointer, s::Integer) where {T}
     L = VectorizationBase.align(s,T)
     sp + L*sizeof(T), DynamicPtrArray(pointer(sp, T), (s,), L)
+end
+function DynamicPtrVector{T}(ptr::Ptr{T}, s::Integer) where {T}
+    L = VectorizationBase.align(s,T)
+    DynamicPtrArray(ptr, (s,), L)
 end
 
 # function DynamicPaddedArray{T where T,N}(A::AbstractArray{T,N}) where {T,N}

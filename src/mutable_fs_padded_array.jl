@@ -277,7 +277,7 @@ end
     end
 end
 @generated function PtrArray{S,T,N,X}(sp::StackPointer, ::Val{V} = Val{false}()) where {S,T,N,X,V}
-    L = simple_vec_prod(X) * last(S.parameters)::Int
+    L = simple_vec_prod(X.parameters) * last(S.parameters)::Int
     quote
         $(Expr(:meta,:inline))
         ptr = Base.unsafe_convert(Ptr{$T}, sp.ptr)
@@ -314,10 +314,24 @@ end
     L = calc_padding(P, T)
     quote
         $(Expr(:meta,:inline))
-        sp + $(VectorizationBase.align(L*sizeof(T))), PtrArray{Tuple{$P},$T,1,Tuple{1},$L}(pointer(a,$T))
+        a + $(VectorizationBase.align(L*sizeof(T))), PtrArray{Tuple{$P},$T,1,Tuple{1},$L}(pointer(a,$T))
     end
 end
 
+@generated function PtrMatrix{M,N,T}(a::Ptr{T}) where {M,N,T}
+    L = calc_padding(M, T)
+    quote
+        $(Expr(:meta,:inline))
+        PtrArray{Tuple{$M,$N},$T,2,Tuple{1,$L},$(L*N)}(a)
+    end
+end
+@generated function PtrMatrix{M,N,T}(a::StackPointer) where {M,N,T}
+    L = calc_padding(M, T)
+    quote
+        $(Expr(:meta,:inline))
+        a + $(VectorizationBase.align(L*N*sizeof(T))), PtrArray{Tuple{$M,$N},$T,2,Tuple{1,$L},$(L*N)}(pointer(a,$T))
+    end
+end
 
 @inline Base.pointer(A::PtrArray) = A.ptr
 @inline Base.pointer(A::AbstractMutableFixedSizeArray{S,T}) where {S,T} = Base.unsafe_convert(Ptr{T}, pointer_from_objref(A))
