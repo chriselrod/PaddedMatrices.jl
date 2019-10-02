@@ -272,7 +272,7 @@ end
     B::AbstractFixedSizeArray{S,T,N,X,LB}
 ) where {S,T<:Number,N,X,LA,LB}
     L = min(LA,LB)
-    @assert first(P.parameters)::Int == 1
+    @assert first(X.parameters)::Int == 1
     quote
         mv = PtrArray{$S,$T,$N,$X,$L}(pointer(sp,$T))
         @vvectorize $T for i ∈ 1:$L
