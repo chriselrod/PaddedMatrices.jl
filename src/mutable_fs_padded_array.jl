@@ -332,6 +332,10 @@ end
     end
 end
 
+function Base.similar(sp::StackPointer, A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+    PtrArray{S,T,N,X,L}(sp)
+end
+
 @inline Base.pointer(A::PtrArray) = A.ptr
 @inline Base.pointer(A::AbstractMutableFixedSizeArray{S,T}) where {S,T} = Base.unsafe_convert(Ptr{T}, pointer_from_objref(A))
 @inline Base.pointer(A::AbstractMutableFixedSizeArray{S,NTuple{W,Core.VecElement{T}}}) where {S,T,W} = Base.unsafe_convert(Ptr{T}, pointer_from_objref(A))
@@ -425,30 +429,30 @@ end
                                             
 # @inline Base.@propagate_inbounds Base.getindex(A::AbstractMutableFixedSizeArray, i...) = A.data[i...]
 
-@inline function Base.getindex(A::AbstractMutableFixedSizeVector{S,T,L}, i::Int) where {S,T,L}
+@inline function Base.getindex(A::AbstractMutableFixedSizeVector{S,T,L}, i::Integer) where {S,T,L}
     @boundscheck i <= L || ThrowBoundsError("Index $i > full length $L.")
     VectorizationBase.load(pointer(A) + sizeof(T) * (i - 1))
 end
-@inline function Base.getindex(A::AbstractMutableFixedSizeArray, i::Int)
+@inline function Base.getindex(A::AbstractMutableFixedSizeArray, i::Integer)
     @boundscheck i <= full_length(A) || ThrowBoundsError("Index $i > full length $(full_length(A)).")
     T = eltype(A)
     VectorizationBase.load(pointer(A) + sizeof(T) * (i - 1))
 end
-@inline function Base.getindex(A::AbstractMutableFixedSizeVector{S,Vec{W,T},L}, i::Int) where {S,T,L,W}
+@inline function Base.getindex(A::AbstractMutableFixedSizeVector{S,Vec{W,T},L}, i::Integer) where {S,T,L,W}
     @boundscheck i <= full_length(A) || ThrowBoundsError("Index $i > full length $L.")
     SIMDPirates.vload(Vec{W,T}, pointer(A) + sizeof(Vec{W,T}) * (i - 1))
 end
-@inline function Base.getindex(A::AbstractMutableFixedSizeArray{S,Vec{W,T},N,X,L}, i::Int) where {S,T,L,W,N,X}
+@inline function Base.getindex(A::AbstractMutableFixedSizeArray{S,Vec{W,T},N,X,L}, i::Integer) where {S,T,L,W,N,X}
     @boundscheck i <= L || ThrowBoundsError("Index $i > full length $L.")
     SIMDPirates.vload(Vec{W,T}, pointer(A) + sizeof(Vec{W,T}) * (i - 1))
 end
-@inline function Base.getindex(A::LinearAlgebra.Adjoint{Union{},<: AbstractMutableFixedSizeArray{S,Vec{W,T},N,X,L}}, i::Int) where {S,T,L,W,N,X}
+@inline function Base.getindex(A::LinearAlgebra.Adjoint{Union{},<: AbstractMutableFixedSizeArray{S,Vec{W,T},N,X,L}}, i::Integer) where {S,T,L,W,N,X}
     @boundscheck i <= L || ThrowBoundsError("Index $i > full length $L.")
     SIMDPirates.vload(Vec{W,T}, pointer(A.parent) + sizeof(Vec{W,T}) * (i - 1))
 end
 
 
-@generated function Base.getindex(A::AbstractMutableFixedSizeArray{S,T,N,X,L}, i::Vararg{Int,N}) where {S,T,N,X,L}
+@generated function Base.getindex(A::AbstractMutableFixedSizeArray{S,T,N,X,L}, i::Vararg{<:Integer,N}) where {S,T,N,X,L}
     R = isview(A) ? (S.parameters[1])::Int : (X.parameters[2])::Int
     ex = sub2ind_expr(X.parameters)
     quote
@@ -513,7 +517,7 @@ end
 
 @inline Base.unsafe_convert(::Type{Ptr{T}}, A::AbstractMutableFixedSizeArray) where {T} = Base.unsafe_convert(Ptr{T}, pointer(A))
 @generated Base.strides(A::AbstractFixedSizeArray{S,T,N,X}) where {S,T,N,X} = tuple(X.parameters...)
-@generated Base.stride(A::AbstractFixedSizeArray{S,T,N,X}, n::Integer) where {S,T,N,X} = :(@inbounds $(tuple(X.parameters...))[n])
+@generated Base.stride(A::AbstractFixedSizeArray{S,T,N,X,L}, n::Integer) where {S,T,N,X,L} = :(n > $N ? $L : @inbounds $(tuple(X.parameters...))[n])
 
 @generated Base.size(::AbstractFixedSizeArray{S}) where {S} = tuple(S.parameters...)#to_tuple(S)
 

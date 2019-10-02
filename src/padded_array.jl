@@ -69,6 +69,8 @@ function DynamicPtrArray{<:Any, N}(ptr::Ptr{T}, size::NTuple{N,<:Integer}, strid
     DynamicPtrArray(ptr, size, stride)
 end
 
+
+
 #function DynamicPaddedArray{<:Any, N}(A::Array{T,N}, s::NTuple{N,<:Integer}) where {N,T}
 #    DynamicPaddedArray{T,N}(A, s)
 #end
@@ -89,10 +91,18 @@ function DynamicPtrVector{T}(sp::StackPointer, s::Integer) where {T}
     L = VectorizationBase.align(s,T)
     sp + L*sizeof(T), DynamicPtrArray(pointer(sp, T), (s,), L)
 end
+function DynamicPtrVector{T}(ptr::Ptr{T}, s::Integer, L::Integer) where {T}
+    DynamicPtrArray(ptr, (s,), L)
+end
 function DynamicPtrVector{T}(ptr::Ptr{T}, s::Integer) where {T}
     L = VectorizationBase.align(s,T)
     DynamicPtrArray(ptr, (s,), L)
 end
+
+function Base.similar(sp::StackPointer, A::AbstractArray{T,N}) where {T,N}
+    DynamicPtrArray{T,N}(sp, size(A), stride(A,2))
+end
+
 
 # function DynamicPaddedArray{T where T,N}(A::AbstractArray{T,N}) where {T,N}
 #     pA = DynamicPaddedArray{T}(undef, size(A))

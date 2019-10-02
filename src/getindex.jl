@@ -18,7 +18,7 @@ function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Boo
             push!(s2, (SV[n])::Int)
             push!(x2, xvn)
         elseif inds[n] <: Integer
-            push!(offset_expr, :($(sizeof(T)) * $xvn * (inds[n] - 1)))
+            push!(offset_expr, :($(sizeof(T)) * $xvn * (inds[$n] - 1)))
         else
             @assert inds[n] <: Static
             push!(s2, staticrangelength(inds[n]))
