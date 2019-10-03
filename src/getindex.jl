@@ -28,6 +28,7 @@ function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Boo
     end
     S2 = Tuple{s2...}
     X2 = Tuple{x2...}
+    L = prod(x2) * last(s2)
     if partial
         if length(offset_expr) == 0 && offset == 0
             exo = 0
@@ -70,60 +71,62 @@ Perhaps R should be made into a stride-tuple?
     generalized_getindex_quote(S.parameters, X.parameters, T, inds, false)
 end
 
-function ∂getindex(A::AbstractMutableFixedSizeArray{S,T,N,X,L}, inds...) where {S,T,N,X,L}
+@generated function ∂getindex(A::AbstractMutableFixedSizeArray{S,T,N,X,L}, inds...) where {S,T,N,X,L}
     @assert length(inds) == N
     generalized_getindex_quote(S.parameters, X.parameters, T, inds, true)
 end
 @generated function RESERVED_INCREMENT_SEED_RESERVED(
     sp::StackPointer,
-    a::AbstractMutableFixedSizeArray{SV,T,NV,XV},
+    a::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeArray{SV,T,NV,XA}},
     b::ViewAdjoint{SP,SV,XP,XV},
-    c::AbstractMutableFixedSizeArray{SP,T,NP,XP}
-) where {SP,SV,XP,XV,T,NP,NV}
-    LV = last(SV.parameters)::Int * last(XV.parameters)::Int
+    c::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeArray{SP,T,NP,XP}}
+) where {SP,SV,XP,XA,XV,T,NP,NV}
     # q = quote
         # d = PtrArray{$SV,$T,$NV,$XV,$LV,true}(pointer(c) + b.offset)
     # end
-    if (XV.parameters[1])::Int > 1
+    if (XA.parameters[1])::Int > 1
+        LV = last(SV.parameters)::Int * last(XV.parameters)::Int
         SVT = tuple(SV.parameters...)
         return quote
-            d = PtrArray{$SV,$T,$NV,$XV,$LV,true}(pointer(c) + b.offset)
+            d = PtrArray{$SV,$T,$NV,$XV,$LV,true}(pointer(c') + b.offset)
+            ap = a'
             @inbounds @nloops $NV i j -> $SVT[j] begin
-                @nref $NV d i = @nref $NV a i
+                @nref $NV d i += @nref $NV ap i
             end
             sp, c
         end
     end
     if NV == 1
         return quote
-            ptra = pointer(a)
-            ptrc = pointer(c) + b.offset
+            ptra = pointer(a')
+            ptrc = pointer(c') + b.offset
             @vvectorize $T 4 for r in 1:$(SV.parameters[1])
                 ptrc[r] = ptra[r] + ptrc[r]
             end
             sp, c
         end
     elseif NV == 2
-        if NP == 2 && (first(SV.parameters)::Int == first(SP.parameters)::Int)
+        if NP == 2 && (first(SV.parameters)::Int == first(SP.parameters)::Int) && (XV.parameters[2])::Int == (XA.parameters[2])::Int
             L = ((SV.parameters[2])::Int) * (XP.parameters[2])::Int
             return quote
-                ptra = pointer(a)
-                ptrc = pointer(c) + b.offset
+                ptra = pointer(a')
+                ptrc = pointer(c') + b.offset
                 @vvectorize $T 4 for r in 1:$L
                     ptrc[r] = ptra[r] + ptrc[r]
                 end
             end
             sp, c
         else
-            P = (XV.parameters[2])::Int
+            PV = (XV.parameters[2])::Int * sizeof(T) # Take strides along the view's second axis
+            PA = (XA.parameters[2])::Int * sizeof(T)
             return quote
-                ptra = pointer(a)
-                ptrc = pointer(c) + b.offset
+                ptra = pointer(a')
+                ptrc = pointer(c') + b.offset
                 for c in 1:$(SV.parameters[2])
                     @vvectorize $T 4 for r in 1:$(SV.parameters[1])
                         ptrc[r] = ptra[r] + ptrc[r]
                     end
-                    ptra += $P; ptrc += $P
+                    ptra += $PA; ptrc += $PV
                 end
                 sp, c
             end
@@ -131,23 +134,24 @@ end
     elseif NV ≥ 3
         SVT = tuple(SV.parameters...)
         return quote
+            cp = a'; ap = a'
             @nloops $(NV-1) i j -> 0:$SVT[j+1]-1 begin
-                offa = $(Expr(:call, :(+), [:( $(Symbol(:i_,n-1)) * $((XV.parameters[n])::Int) ) for n in 2:NV]...))
-                offc = b.offset + offa
+                offc = $(Expr(:call, :(+), :(b.offset), [:( $(Symbol(:i_,n-1)) * $((XV.parameters[n])::Int) ) for n in 2:NV]...))
+                offa = $(Expr(:call, :(+), [:( $(Symbol(:i_,n-1)) * $((XA.parameters[n])::Int) ) for n in 2:NV]...))
                 @vectorize $T for i_0 ∈ 1:$(ST[1])
-                    c[n + offc] = a[n + offa] + c[n + offc]
+                    cp[n + offc] = ap[n + offa] + cp[n + offc]
                 end
             end
             sp, c
         end
     end
 end
-@generated function RESERVED_INCREMENT_SEED_RESERVED(
+@generated function RESERVED_MULTIPLY_SEED_RESERVED(
     sp::StackPointer,
-    a::AbstractMutableFixedSizeArray{SV,T,NV,XV},
+    a::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeArray{SV,T,NV,XA}},
     b::ViewAdjoint{SP,SV,XP,XV}
 #    c::AbstractMutableFixedSizeArray{SP,T,NP,XP}
-) where {SP,SV,XP,XV,T,NV}
+) where {SP,SV,XA,XP,XV,T,NV}
     NP = length(SP.parameters)
     LP = last(SP.parameters)::Int * last(XP.parameters)::Int
     quote
@@ -156,7 +160,7 @@ end
         @inbounds for l in 1:$LP
             c[l] = zero($T)
         end
-        RESERVED_INCREMENT_SEED_RESERVED(sp, a, b, c)
+        RESERVED_INCREMENT_SEED_RESERVED(sp, a, b, c')
     end
 end
 
