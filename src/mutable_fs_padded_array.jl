@@ -146,52 +146,22 @@ end
 Base.similar(A::AbstractMutableFixedSizeArray{S,T,N,P,L}) where {S,T,N,P,L} = MutableFixedSizeArray{S,T,N,P,L}(undef)
 Base.similar(A::AbstractMutableFixedSizeArray{S,T1,N,P,L},::Type{T2}) where {S,T1,T2,N,P,L} = MutableFixedSizeArray{S,T2,N}(undef)
 
-function MutableFixedSizeArray(A::AbstractArray{T,N}) where {T,N}
-    mA = MutableFixedSizeArray{Tuple{size(A)...},T}(undef)
-    mA .= A
-    mA
-end
-function MutableFixedSizeVector(A::AbstractVector{T}) where {T}
-    mA = MutableFixedSizeVector{length(A),T}(undef)
-    mA .= A
-    mA
-end
+MutableFixedSizeArray(A::AbstractArray{T,N}) where {T,N} = copyto!(MutableFixedSizeArray{Tuple{size(A)...},T}(undef), A)
+MutableFixedSizeVector(A::AbstractVector{T}) where {T} = copyto!(MutableFixedSizeVector{length(A),T}(undef), A)
 function MutableFixedSizeMatrix(A::AbstractMatrix{T}) where {T}
     M,N = size(A)
-    mA = MutableFixedSizeMatrix{M,N,T}(undef)
-    mA .= A
-    mA
+    copyto!(MutableFixedSizeMatrix{M,N,T}(undef), A)
 end
-function MutableFixedSizeArray{S}(A::AbstractArray{T,N}) where {S,T,N}
-    mA = MutableFixedSizeArray{S,T}(undef)
-    mA .= A
-    mA
-end
-function MutableFixedSizeVector{L}(A::AbstractVector{T}) where {L,T}
-    mA = MutableFixedSizeVector{L,T}(undef)
-    mA .= A
-    mA
-end
-function MutableFixedSizeMatrix{M,N}(A::AbstractMatrix{T}) where {M,N,T}
-    mA = MutableFixedSizeMatrix{M,N,T}(undef)
-    mA .= A
-    mA
-end
-function MutableFixedSizeArray{S,T1}(A::AbstractArray{T2,N}) where {S,T1,T2,N}
-    mA = MutableFixedSizeArray{S,T1}(undef)
-    mA .= A
-    mA
-end
-function MutableFixedSizeVector{L,T1}(A::AbstractVector{T2}) where {L,T1,T2}
-    mA = MutableFixedSizeVector{L,T1}(undef)
-    mA .= A
-    mA
-end
-function MutableFixedSizeMatrix{M,N,T1}(A::AbstractMatrix{T2}) where {M,N,T1,T2}
-    mA = MutableFixedSizeMatrix{M,N,T1}(undef)
-    mA .= A
-    mA
-end
+MutableFixedSizeArray{S}(A::AbstractArray{T,N}) where {S,T,N} = copyto!(MutableFixedSizeArray{S,T}(undef), A)
+MutableFixedSizeArray{S,T}(A::AbstractArray{T,N}) where {S,T,N} = copyto!(MutableFixedSizeArray{S,T}(undef), A)
+MutableFixedSizeArray{S,T,N}(A::AbstractArray{T,N}) where {S,T,N} = copyto!(MutableFixedSizeArray{S,T}(undef), A)
+MutableFixedSizeArray{S,T,N,X}(A::AbstractArray{T,N}) where {S,T,N,X} = copyto!(MutableFixedSizeArray{S,T,N,X}(undef), A)
+MutableFixedSizeArray{S,T,N,X,L}(A::AbstractArray{T,N}) where {S,T,N,X,L} = copyto!(MutableFixedSizeArray{S,T,N,X,L}(undef), A)
+MutableFixedSizeVector{L}(A::AbstractVector{T}) where {L,T} = copyto!(MutableFixedSizeVector{L,T}(undef), A)
+MutableFixedSizeMatrix{M,N}(A::AbstractMatrix{T}) where {M,N,T} = copyto!(MutableFixedSizeMatrix{M,N,T}(undef), A)
+MutableFixedSizeArray{S,T1}(A::AbstractArray{T2,N}) where {S,T1,T2,N} = copyto!(MutableFixedSizeArray{S,T1}(undef), A)
+MutableFixedSizeVector{L,T1}(A::AbstractVector{T2}) where {L,T1,T2} = copyto!(MutableFixedSizeVector{L,T1}(undef), A)
+MutableFixedSizeMatrix{M,N,T1}(A::AbstractMatrix{T2}) where {M,N,T1,T2} = copyto!(MutableFixedSizeMatrix{M,N,T1}(undef), A)
 
 mutable_similar(A::AbstractArray) = similar(A)
 mutable_similar(A::AbstractFixedSizeArray{S,T,N,R,L}) where {S,T,N,R,L} = MutableFixedSizeArray{S,T,N,R,L}(undef)
