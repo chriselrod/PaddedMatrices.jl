@@ -143,7 +143,7 @@ end
             ) where {T,MP,mp}
     M, P = MP
     mk, pk = mp
-    out = MutableFixedSizeMatrix{mk,pk,T}(undef)
+    out = FixedSizeMatrix{mk,pk,T}(undef)
     # Should write new, simpler kernel function
     # that can take N as a symbol, and accepts arbitrary strides.
     quote
@@ -191,7 +191,7 @@ end
 
 # @enum ContainerType begin # First has highest priority
 #     PaddedUnsized
-#     MutableFixedSize
+#     FixedSize
 #     ConstantFixedSize
 # end
 @enum AccessPattern begin # Last has highest priority
@@ -467,7 +467,7 @@ end
         L *= (Salloc[n])::Int
     end
     ST = Tuple{Salloc...}
-    :(MutableFixedSizeArray{$ST,$T,$N,$(Tuple{X...}),$L}(undef))
+    :(FixedSizeArray{$ST,$T,$N,$(Tuple{X...}),$L}(undef))
 end
 @generated function Base.similar(bc::Base.Broadcast.Broadcasted{FixedSizeMatrixDefaultStyle{S,T1,R,A}}, mystack::Ptr{T2}) where {S,A,T1,T2,R}
     Salloc = reduce_size(S.parameters)

@@ -41,7 +41,7 @@ end
             ) where {M,N,P,T,ADR,XR}
     q = quote
         $(Expr(:meta,:inline))
-        D = MutableFixedSizeMatrix{$M,$P,$T,$ADR,$(ADR*P)}(undef)
+        D = FixedSizeMatrix{$M,$P,$T,$ADR,$(ADR*P)}(undef)
         pD = pointer(D)
         pA = pointer(A)
         pX = pointer(X)
@@ -154,7 +154,7 @@ end
 function elementwise_product_quote(N,T,P)
     quote
         $(Expr(:meta,:inline)) # do we really want to force inline this?
-        mv = MutableFixedSizeVector{$N,$T,$P}(undef)
+        mv = FixedSizeVector{$N,$T,$P}(undef)
         @vvectorize $T for i ∈ 1:$P
             mv[i] = A[i] * B[i]
         end
@@ -239,7 +239,7 @@ end
     B::AbstractFixedSizeArray{S,T,N,X,L}
 ) where {S,T<:Number,N,X,L}
     quote
-        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
+        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] + B[i]
         end
@@ -250,7 +250,7 @@ end
     if isview(A) | isview(B) | (first(X.parameters)::Int > 1)
         return quote
             $(Expr(:meta,:inline))
-            mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
+            mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
             @inbounds for l ∈ 1:$L
                 mv[l] = A[l] + B[l]
             end
@@ -259,7 +259,7 @@ end
     end
     quote
         $(Expr(:meta,:inline))
-        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
+        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for l ∈ 1:$L
             mv[l] = A[l] + B[l]
         end
@@ -310,7 +310,7 @@ end
 @generated function Base.:+(a::T, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
     quote
         # $(Expr(:meta,:inline))
-        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
+        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = a + B[i]
         end
@@ -320,7 +320,7 @@ end
 @generated function Base.:+(A::AbstractFixedSizeArray{S,T,N,X,L}, b::T) where {S,T<:Number,N,X,L}
     quote
         # $(Expr(:meta,:inline))
-        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
+        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] + b
         end
@@ -330,7 +330,7 @@ end
 @generated function Base.:+(a::T, Badj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,X,L}}) where {S,T<:Number,N,X,L}
     quote
         $(Expr(:meta,:inline))
-        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
+        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = a + B[i]
         end
@@ -340,7 +340,7 @@ end
 @generated function Base.:+(Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,X,L}}, b::T) where {S,T<:Number,N,X,L}
     quote
         $(Expr(:meta,:inline))
-        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
+        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] + b
         end
@@ -350,14 +350,14 @@ end
 @generated function Base.:-(A::AbstractFixedSizeArray{S,T,N,X,L}, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
     quote
         # $(Expr(:meta,:inline))
-        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
+        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] - B[i]
         end
         ConstantFixedSizeArray(mv)
     end
 end
-@generated function diff!(C::MutableFixedSizeArray{S,T,N,X,L}, A::AbstractFixedSizeArray{S,T,N,X,L}, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
+@generated function diff!(C::AbstractMutableFixedSizeArray{S,T,N,X,L}, A::AbstractFixedSizeArray{S,T,N,X,L}, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
     quote
         @vvectorize $T for i ∈ 1:$L
             C[i] = A[i] - B[i]
@@ -368,7 +368,7 @@ end
 @generated function Base.:-(A::AbstractFixedSizeArray{S,T,N,X,L}, b::T) where {S,T<:Number,N,L,X}
     quote
         # $(Expr(:meta,:inline))
-        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
+        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] - b
         end
@@ -378,7 +378,7 @@ end
 @generated function Base.:-(a::T, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
     quote
         # $(Expr(:meta,:inline))
-        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
+        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = a - B[i]
         end
@@ -416,8 +416,8 @@ end
 
     quote
         # $(Expr(:meta,:inline))
-        # x̄ = zero(PaddedMatrices.MutableFixedSizeVector{P,T})
-        # s = PaddedMatrices.MutableFixedSizeVector{$P,$T}(undef)
+        # x̄ = zero(PaddedMatrices.FixedSizeVector{P,T})
+        # s = PaddedMatrices.FixedSizeVector{$P,$T}(undef)
         ptrs = pointer(s)
         ptrA = pointer(A)
         N = size(A,2)
@@ -469,8 +469,8 @@ end
 
     quote
         # $(Expr(:meta,:inline))
-        # x̄ = zero(PaddedMatrices.MutableFixedSizeVector{P,T})
-        # s = PaddedMatrices.MutableFixedSizeVector{$P,$T}(undef)
+        # x̄ = zero(PaddedMatrices.FixedSizeVector{P,T})
+        # s = PaddedMatrices.FixedSizeVector{$P,$T}(undef)
         ptrs = pointer(s)
         ptrA = pointer(A)
         N = size(A,2)
@@ -502,7 +502,7 @@ end
 @inline extract_λ(a::UniformScaling) = a.λ
 @generated function Base.:*(A::AbstractFixedSizeArray{S,T,N,X,L}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,X,L}
     quote
-        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
+        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
         b = extract_λ(bλ)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] * b
@@ -513,7 +513,7 @@ end
 @generated function Base.:*(Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,X,L}}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,X,L}
     quote
         $(Expr(:meta,:inlne))
-        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
+        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
         A = Aadj.parent
         b = extract_λ(bλ)
         @vvectorize $T for i ∈ 1:$L
@@ -554,7 +554,7 @@ end
 end
 @generated function Base.:*(a::T, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
     quote
-        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
+        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = a * B[i]
         end
@@ -564,7 +564,7 @@ end
 @generated function SIMDPirates.vmuladd(a::T, x::AbstractFixedSizeArray{S,T,N,X,L}, y::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
     quote
         # $(Expr(:meta,:inline))
-        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
+        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = a * x[i] + y[i]
         end
@@ -578,7 +578,7 @@ end
 ) where {N,T,L}
     quote
         $(Expr(:meta,:inline))
-        mv = MutableFixedSizeVector{$N,T,$L,$L}(undef)
+        mv = FixedSizeVector{$N,T,$L,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = a * x[i] + y[i]
         end
@@ -596,7 +596,7 @@ end
 #     end
 #     if L1 < L2
 #         return quote
-#             mv = MutableFixedSizeVector{$P2,$T,$L2}(undef)
+#             mv = FixedSizeVector{$P2,$T,$L2}(undef)
 #             @fastmath @inbounds @simd ivdep for i ∈ 1:$L1
 #                 mv[i] = a * x[i] + y[i]
 #             end
@@ -607,7 +607,7 @@ end
 #         end
 #     elseif L1 > L2
 #         return quote
-#             mv = MutableFixedSizeVector{$P1,$T,$L1}(undef)
+#             mv = FixedSizeVector{$P1,$T,$L1}(undef)
 #             @fastmath @inbounds @simd ivdep for i ∈ 1:$L2
 #                 mv[i] = a * x[i] + y[i]
 #             end
@@ -618,7 +618,7 @@ end
 #         end
 #     else
 #         return quote
-#             mv = MutableFixedSizeVector{$P1,$T,$L1}(undef)
+#             mv = FixedSizeVector{$P1,$T,$L1}(undef)
 #             @fastmath @inbounds @simd ivdep for i ∈ 1:$L1
 #                 mv[i] = a * x[i] + y[i]
 #             end
@@ -629,7 +629,7 @@ end
 @generated function SIMDPirates.vfnmadd(a::T, x::AbstractFixedSizeArray{S,T,N,X,L}, y::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
     quote
         # $(Expr(:meta,:inline))
-        mv = MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef)
+        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = y[i] - a * x[i]
         end

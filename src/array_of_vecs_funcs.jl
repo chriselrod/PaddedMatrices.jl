@@ -124,7 +124,7 @@ end
     q = quote
         $(Expr(:meta,:inline))
         # Inline, to prevent C from getting heap allocated, so long as it doesn't escape the calling function.
-        C = MutableFixedSizeMatrix{$M,$P,Core.VecElement{$W,$T}}(undef)
+        C = FixedSizeMatrix{$M,$P,Core.VecElement{$W,$T}}(undef)
         @inbounds for mkern in 0:$(mk-1)
             # handle remainder in N first, to initialize
             Base.Cartesian.@nexpr $kernel_size_m m -> begin
@@ -259,14 +259,14 @@ end
 #     end
 # end
 @inline function SIMDPirates.vsum(vA::AbstractFixedSizeVector{L,Vec{W,T}}) where {L,W,T}
-    out = MutableFixedSizeVector{L,T}(undef)
+    out = FixedSizeVector{L,T}(undef)
     @inbounds for l ∈ 1:L
         out[l] = SIMDPirates.vsum(vA[l])
     end
     ConstantFixedSizeArray(out)
 end
 @inline function SIMDPirates.vsum(vA::AbstractFixedSizeMatrix{M,N,Vec{W,T},P}) where {M,N,W,T,P}
-    out = MutableFixedSizeMatrix{M,N,T}(undef)
+    out = FixedSizeMatrix{M,N,T}(undef)
     @inbounds for n ∈ 1:N, m ∈ 1:M
         out[m,n] = SIMDPirates.vsum(vA[m,n])
     end

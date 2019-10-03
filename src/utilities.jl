@@ -35,7 +35,7 @@ function Base.cumsum!(A::AbstractMutableFixedSizeVector{M}) where {M}
     A
 end
 Base.cumsum(A::AbstractMutableFixedSizeVector) = cumsum!(copy(A))
-Base.cumsum(A::AbstractConstantFixedSizeVector) = ConstantFixedSizeVector(cumsum!(MutableFixedSizeVector(A)))
+Base.cumsum(A::AbstractConstantFixedSizeVector) = ConstantFixedSizeVector(cumsum!(FixedSizeVector(A)))
 
 # @generated function Base.maximum(A::AbstractFixedSizeArray{S,T,P,L}) where {S,T,P,L}
 #     W, Wshift = VectorizationBase.pick_vector_width_shift(L, T)
@@ -142,7 +142,7 @@ end
     q
 end
 
-@inline Base.pointer(x::Symmetric{T,MutableFixedSizeMatrix{P,P,T,R,L}}) where {P,T,R,L} = pointer(x.data)
+@inline Base.pointer(x::Symmetric{T,<:AbstractMutableFixedSizeMatrix{P,P,T,R,L}}) where {P,T,R,L} = pointer(x.data)
 
 
 @generated function vexp!(
@@ -171,12 +171,12 @@ end
 @inline function vexp(
     A::AbstractFixedSizeArray{S,T,N,X,L}
 ) where {S,T,N,X,L}
-    vexp!(MutableFixedSizeArray{S,T,N,X,L}(undef), A)
+    vexp!(FixedSizeArray{S,T,N,X,L}(undef), A)
 end
 @inline function vexp(
     A::AbstractConstantFixedSizeArray{S,T,N,X,L}
 ) where {S,T,N,X,L}
-    MutableFixedSizeArray{S,T,N,X,L}(undef) |>
+    FixedSizeArray{S,T,N,X,L}(undef) |>
         vexp! |>
         ConstantFixedSizeArray
 end
@@ -195,7 +195,7 @@ end
         if sp
             :(PtrVector{$M,$T}($ptrsym))
         else
-            :(MutableFixedSizeVector{$M,$T}(undef))
+            :(FixedSizeVector{$M,$T}(undef))
         end
     else
         if sp
@@ -214,7 +214,7 @@ end
         if sp
             :(PtrMatrix{$M,$N,$T}($ptrsym))
         else
-            :(MutableFixedSizeMatrix{$M,$N,$T}(undef))
+            :(FixedSizeMatrix{$M,$N,$T}(undef))
         end
     else
         if sp

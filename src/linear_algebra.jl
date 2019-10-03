@@ -7,7 +7,7 @@ Fall back definition for scalars.
 @generated function invchol(A::Diagonal{T,<:ConstantFixedSizeVector{N,T,P}}) where {N,T,P}
     quote
         $(Expr(:meta,:inline)) # do we really want to force inline this?
-        mv = MutableFixedSizeVector{N,T}(undef)
+        mv = FixedSizeVector{N,T}(undef)
         Adiag = A.diag
         @vectorize $T for i ∈ 1:$P
             mv[i] = rsqrt(Adiag[i])
@@ -20,7 +20,7 @@ end
 # @generated function invchol(A::AbstractConstantFixedSizeMatrix{P,P,T,L}) where {P,T,L}
 #     quote
 #         $(Expr(:meta,:inline)) # do we really want to force inline this?
-#         mv = MutableFixedSizeVector{N,T}(undef)
+#         mv = FixedSizeVector{N,T}(undef)
 #         Adiag = A.diag
 #         @vectorize $T for i ∈ 1:$P
 #             mv[i] = rsqrt(Adiag[i])

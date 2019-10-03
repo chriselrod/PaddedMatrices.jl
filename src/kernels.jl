@@ -224,7 +224,7 @@ end
     piter = cld(P, num_reps)
     q = quote
         $(Expr(:meta, :inline))
-        out = MutableFixedSizeMatrix{$M,$P,$T,$R1,$L3}(undef)
+        out = FixedSizeMatrix{$M,$P,$T,$R1,$L3}(undef)
         vout = VectorizationBase.vectorizable(out)
         plow = 0
         vA = VectorizationBase.vectorizable(A)
@@ -264,7 +264,7 @@ end
     piter = cld(P, num_reps)
     q = quote
         $(Expr(:meta, :inline))
-        out = MutableFixedSizeMatrix{$M,$P,$T,$R1,$L3}(undef)
+        out = FixedSizeMatrix{$M,$P,$T,$R1,$L3}(undef)
         vout = VectorizationBase.vectorizable(out)
         plow = 0
         Bparent = B.parent

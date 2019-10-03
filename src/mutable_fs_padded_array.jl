@@ -35,7 +35,7 @@ end
     N, X, LA = calc_NPL(SV, T)
     quote
         $(Expr(:meta,:inline))
-        MutableFixedSizeArray{Tuple{$(SV...)},$T,$N,$X,$LA}(undef)
+        FixedSizeArray{Tuple{$(SV...)},$T,$N,$X,$LA}(undef)
     end
 end
 
@@ -47,67 +47,67 @@ N, the number of axis
 R, the actual number of rows, where the excess R > S[1] are zero.
 L, number of elements (including buffer zeros).
 """
-mutable struct MutableFixedSizeArray{S,T,N,X,L} <: AbstractMutableFixedSizeArray{S,T,N,X,L}
+mutable struct FixedSizeArray{S,T,N,X,L} <: AbstractMutableFixedSizeArray{S,T,N,X,L}
     data::NTuple{L,T}
-    @inline function MutableFixedSizeArray{S,T,N,X,L}(::UndefInitializer) where {S,T,N,X,L}
+    @inline function FixedSizeArray{S,T,N,X,L}(::UndefInitializer) where {S,T,N,X,L}
         new()
     end
-    @inline function MutableFixedSizeArray{S,T,N,X,L}(data::NTuple{L,T}) where {S,T,N,X,L}
+    @inline function FixedSizeArray{S,T,N,X,L}(data::NTuple{L,T}) where {S,T,N,X,L}
         new(data)
     end
 end
-@generated function MutableFixedSizeArray{S,T}(::UndefInitializer) where {S,T}
+@generated function FixedSizeArray{S,T}(::UndefInitializer) where {S,T}
     init_mutable_fs_padded_array_quote(S.parameters, T)
 end
-@generated function MutableFixedSizeArray{S,T,N}(::UndefInitializer) where {S,T,N}
+@generated function FixedSizeArray{S,T,N}(::UndefInitializer) where {S,T,N}
     init_mutable_fs_padded_array_quote(S.parameters, T)
 end
-const MutableFixedSizeVector{M,T,L} = MutableFixedSizeArray{Tuple{M},T,1,Tuple{1},L}
-const MutableFixedSizeMatrix{M,N,T,P,L} = MutableFixedSizeArray{Tuple{M,N},T,2,Tuple{1,P},L}
-@generated function MutableFixedSizeVector{S,T}(::UndefInitializer) where {S,T}
+const FixedSizeVector{M,T,L} = FixedSizeArray{Tuple{M},T,1,Tuple{1},L}
+const FixedSizeMatrix{M,N,T,P,L} = FixedSizeArray{Tuple{M,N},T,2,Tuple{1,P},L}
+@generated function FixedSizeVector{S,T}(::UndefInitializer) where {S,T}
     L = calc_padding(S,T)
-    :(MutableFixedSizeVector{$S,$T,$L}(undef))
+    :(FixedSizeVector{$S,$T,$L}(undef))
 end
 
-@generated function MutableFixedSizeMatrix{M,N,T}(::UndefInitializer) where {M,N,T}
+@generated function FixedSizeMatrix{M,N,T}(::UndefInitializer) where {M,N,T}
     P = calc_padding(M,T)
-    :(MutableFixedSizeMatrix{$M,$N,$T,$P,$(P*N)}(undef))
+    :(FixedSizeMatrix{$M,$N,$T,$P,$(P*N)}(undef))
 end
 
-# @inline MutableFixedSizeVector(A::AbstractConstantFixedSizeVector{M,T,L}) where {M,T,L} = MutableFixedSizeVector{M,T,L}(A.data)
-# @inline MutableFixedSizeMatrix(A::AbstractConstantFixedSizeArray{M,N,T,P,L}) where {M,N,T,P,L} = MutableFixedSizeMatrix{M,N,T,P,L}(A.data)
-@inline MutableFixedSizeArray(A::AbstractConstantFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = MutableFixedSizeArray{S,T,N,X,L}(A.data)
+# @inline FixedSizeVector(A::AbstractConstantFixedSizeVector{M,T,L}) where {M,T,L} = FixedSizeVector{M,T,L}(A.data)
+# @inline FixedSizeMatrix(A::AbstractConstantFixedSizeArray{M,N,T,P,L}) where {M,N,T,P,L} = FixedSizeMatrix{M,N,T,P,L}(A.data)
+@inline FixedSizeArray(A::AbstractConstantFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = FixedSizeArray{S,T,N,X,L}(A.data)
 
-@generated function MutableFixedSizeArray(::UndefInitializer, ::Val{S}, ::Type{T1}=Float64) where {S,T1}
+@generated function FixedSizeArray(::UndefInitializer, ::Val{S}, ::Type{T1}=Float64) where {S,T1}
     init_mutable_fs_padded_array_quote(Tuple{S...}.parameters, T1)
 end
-@generated function MutableFixedSizeArray{S,T,N,X}(::UndefInitializer) where {S,T,N,X}
+@generated function FixedSizeArray{S,T,N,X}(::UndefInitializer) where {S,T,N,X}
     L = simple_vec_prod(X.parameters) * last(S.parameters)::Int
-    :(MutableFixedSizeArray{$S,$T,$N,$X,$L}(undef))
+    :(FixedSizeArray{$S,$T,$N,$X,$L}(undef))
 end
 
 @noinline function mutable_zero_quote(S::Core.SimpleVector, T)
     N,P,L = calc_NPL(S, T)
     quote
         $(Expr(:meta,:inline))
-        ma = MutableFixedSizeArray{$(Tuple{S...}),$T,$N,$P,$L}(undef)
+        ma = FixedSizeArray{$(Tuple{S...}),$T,$N,$P,$L}(undef)
         @inbounds for l ∈ 1:$L
             ma[l] = zero($T)
         end
         ma
     end
 end
-@generated function Base.zero(::Type{<:MutableFixedSizeArray{S,T}}) where {T,S}
+@generated function Base.zero(::Type{<:FixedSizeArray{S,T}}) where {T,S}
     mutable_zero_quote(S.parameters, T)
 end
-@generated function Base.zero(::Type{<:MutableFixedSizeArray{S}}) where {S}
+@generated function Base.zero(::Type{<:FixedSizeArray{S}}) where {S}
     mutable_zero_quote(S.parameters, Float64)
 end
-@generated function Base.zero(::Type{<:MutableFixedSizeArray{S,Vec{W,T}}}) where {S,W,T}
+@generated function Base.zero(::Type{<:FixedSizeArray{S,Vec{W,T}}}) where {S,W,T}
     N, P, L = calc_NPL(S.parameters, Vec{W,T})
     quote
         $(Expr(:meta,:inline))
-        ma = MutableFixedSizeArray{$S,Vec{$W,$T},$N,$P,$L}(undef)
+        ma = FixedSizeArray{$S,Vec{$W,$T},$N,$P,$L}(undef)
         @inbounds for l ∈ 1:$L
             ma[l] = SIMDPirates.vbroadcast(Vec{$W,$T}, zero($T))
         end
@@ -126,16 +126,16 @@ function zero!(A::AbstractMutableFixedSizeArray{S,Vec{W,T},N,P,L}) where {S,W,T,
     end
 end
 
-@generated function Base.copy(A::AbstractMutableFixedSizeArray{S,T,N,P,L}) where {S,T,N,P,L}
+@generated function Base.copy(A::AbstractFixedSizeArray{S,T,N,P,L}) where {S,T,N,P,L}
     quote
-        B = MutableFixedSizeArray{$S,$T,$N,$P,$L}(undef)
+        B = FixedSizeArray{$S,$T,$N,$P,$L}(undef)
         @vvectorize $T for l ∈ 1:$L
             B[l] = A[l]
         end
         B
     end
 end
-@generated function Base.copyto!(B::AbstractMutableFixedSizeArray{S,T,N,P,L}, A::AbstractMutableFixedSizeArray{S,T,N,P,L}) where {S,T,N,P,L}
+@generated function Base.copyto!(B::AbstractMutableFixedSizeArray{S,T,N,P,L}, A::AbstractFixedSizeArray{S,T,N,P,L}) where {S,T,N,P,L}
     quote
         @vvectorize $T for l ∈ 1:$L
             B[l] = A[l]
@@ -143,30 +143,30 @@ end
         B
     end
 end
-Base.similar(A::AbstractMutableFixedSizeArray{S,T,N,P,L}) where {S,T,N,P,L} = MutableFixedSizeArray{S,T,N,P,L}(undef)
-Base.similar(A::AbstractMutableFixedSizeArray{S,T1,N,P,L},::Type{T2}) where {S,T1,T2,N,P,L} = MutableFixedSizeArray{S,T2,N}(undef)
+Base.similar(A::AbstractMutableFixedSizeArray{S,T,N,P,L}) where {S,T,N,P,L} = FixedSizeArray{S,T,N,P,L}(undef)
+Base.similar(A::AbstractMutableFixedSizeArray{S,T1,N,P,L},::Type{T2}) where {S,T1,T2,N,P,L} = FixedSizeArray{S,T2,N}(undef)
 
-MutableFixedSizeArray(A::AbstractArray{T,N}) where {T,N} = copyto!(MutableFixedSizeArray{Tuple{size(A)...},T}(undef), A)
-MutableFixedSizeVector(A::AbstractVector{T}) where {T} = copyto!(MutableFixedSizeVector{length(A),T}(undef), A)
-function MutableFixedSizeMatrix(A::AbstractMatrix{T}) where {T}
+FixedSizeArray(A::AbstractArray{T,N}) where {T,N} = copyto!(FixedSizeArray{Tuple{size(A)...},T}(undef), A)
+FixedSizeVector(A::AbstractVector{T}) where {T} = copyto!(FixedSizeVector{length(A),T}(undef), A)
+function FixedSizeMatrix(A::AbstractMatrix{T}) where {T}
     M,N = size(A)
-    copyto!(MutableFixedSizeMatrix{M,N,T}(undef), A)
+    copyto!(FixedSizeMatrix{M,N,T}(undef), A)
 end
-MutableFixedSizeArray{S}(A::AbstractArray{T,N}) where {S,T,N} = copyto!(MutableFixedSizeArray{S,T}(undef), A)
-MutableFixedSizeArray{S,T}(A::AbstractArray{T,N}) where {S,T,N} = copyto!(MutableFixedSizeArray{S,T}(undef), A)
-MutableFixedSizeArray{S,T,N}(A::AbstractArray{T,N}) where {S,T,N} = copyto!(MutableFixedSizeArray{S,T}(undef), A)
-MutableFixedSizeArray{S,T,N,X}(A::AbstractArray{T,N}) where {S,T,N,X} = copyto!(MutableFixedSizeArray{S,T,N,X}(undef), A)
-MutableFixedSizeArray{S,T,N,X,L}(A::AbstractArray{T,N}) where {S,T,N,X,L} = copyto!(MutableFixedSizeArray{S,T,N,X,L}(undef), A)
-MutableFixedSizeVector{L}(A::AbstractVector{T}) where {L,T} = copyto!(MutableFixedSizeVector{L,T}(undef), A)
-MutableFixedSizeMatrix{M,N}(A::AbstractMatrix{T}) where {M,N,T} = copyto!(MutableFixedSizeMatrix{M,N,T}(undef), A)
-MutableFixedSizeArray{S,T1}(A::AbstractArray{T2,N}) where {S,T1,T2,N} = copyto!(MutableFixedSizeArray{S,T1}(undef), A)
-MutableFixedSizeVector{L,T1}(A::AbstractVector{T2}) where {L,T1,T2} = copyto!(MutableFixedSizeVector{L,T1}(undef), A)
-MutableFixedSizeMatrix{M,N,T1}(A::AbstractMatrix{T2}) where {M,N,T1,T2} = copyto!(MutableFixedSizeMatrix{M,N,T1}(undef), A)
+FixedSizeArray{S}(A::AbstractArray{T,N}) where {S,T,N} = copyto!(FixedSizeArray{S,T}(undef), A)
+FixedSizeArray{S,T}(A::AbstractArray{T,N}) where {S,T,N} = copyto!(FixedSizeArray{S,T}(undef), A)
+FixedSizeArray{S,T,N}(A::AbstractArray{T,N}) where {S,T,N} = copyto!(FixedSizeArray{S,T}(undef), A)
+FixedSizeArray{S,T,N,X}(A::AbstractArray{T,N}) where {S,T,N,X} = copyto!(FixedSizeArray{S,T,N,X}(undef), A)
+FixedSizeArray{S,T,N,X,L}(A::AbstractArray{T,N}) where {S,T,N,X,L} = copyto!(FixedSizeArray{S,T,N,X,L}(undef), A)
+FixedSizeVector{L}(A::AbstractVector{T}) where {L,T} = copyto!(FixedSizeVector{L,T}(undef), A)
+FixedSizeMatrix{M,N}(A::AbstractMatrix{T}) where {M,N,T} = copyto!(FixedSizeMatrix{M,N,T}(undef), A)
+FixedSizeArray{S,T1}(A::AbstractArray{T2,N}) where {S,T1,T2,N} = copyto!(FixedSizeArray{S,T1}(undef), A)
+FixedSizeVector{L,T1}(A::AbstractVector{T2}) where {L,T1,T2} = copyto!(FixedSizeVector{L,T1}(undef), A)
+FixedSizeMatrix{M,N,T1}(A::AbstractMatrix{T2}) where {M,N,T1,T2} = copyto!(FixedSizeMatrix{M,N,T1}(undef), A)
 
 mutable_similar(A::AbstractArray) = similar(A)
-mutable_similar(A::AbstractFixedSizeArray{S,T,N,R,L}) where {S,T,N,R,L} = MutableFixedSizeArray{S,T,N,R,L}(undef)
+mutable_similar(A::AbstractFixedSizeArray{S,T,N,R,L}) where {S,T,N,R,L} = FixedSizeArray{S,T,N,R,L}(undef)
 mutable_similar(A::AbstractArray, T) = similar(A, T)
-mutable_similar(A::AbstractFixedSizeArray{S,T1,N,R,L}, ::Type{T2}) where {S,T1,T2,N,R,L} = MutableFixedSizeArray{S,T2,R,L}(undef)
+mutable_similar(A::AbstractFixedSizeArray{S,T1,N,R,L}, ::Type{T2}) where {S,T1,T2,N,R,L} = FixedSizeArray{S,T2,R,L}(undef)
 function Base.fill!(A::AbstractMutableFixedSizeArray{S,T,N,R,L}, v::T) where {S,T,N,R,L}
     @inbounds for l ∈ 1:L
         A[l] = v
