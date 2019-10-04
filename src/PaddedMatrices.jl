@@ -211,7 +211,6 @@ include("array_of_vecs_funcs.jl")
 include("linear_algebra.jl")
 include("rand.jl")
 include("utilities.jl")
-include("seed_increments.jl")
 include("broadcast.jl")
 include("getindex.jl")
 
