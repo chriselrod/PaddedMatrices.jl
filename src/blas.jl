@@ -1683,7 +1683,7 @@ function mul_tn_quote(
                     pX += $size_T*$stride_X*$cols
                 end
             end
-            push!(q.ags, loop)
+            push!(q.args, loop)
         end
         if col_rem > 0
             kernel = DynamicKernel(M,col_rem,K,stride_D,stride_A,stride_X,T,negative=negative)
@@ -1717,7 +1717,7 @@ function mul_tn_quote(
         return q
     end
     push!(q.args, :(pD = pointer($Dsym); pX = pointer($Xsym)))
-    kernel = DynamicKernel(rowr,cols,K,stride_D,stride_A,stride_X,T,negative=negative)
+    kernel = DynamicKernel(rows,cols,K,stride_D,stride_A,stride_X,T,negative=negative)
     kql = kernel_tn_quote(kernel, init, false)
     inner = quote pA = pointer($Asym) end
     # @show col_reps
