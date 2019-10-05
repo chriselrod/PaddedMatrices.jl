@@ -8,6 +8,11 @@ using VectorizationBase, SIMDPirates,
     LoopVectorization, LinearAlgebra,
     Random, MacroTools, StackPointers
 
+import ReverseDiffExpressionsBase:
+    RESERVED_INCREMENT_SEED_RESERVED,
+    RESERVED_MULTIPLY_SEED_RESERVED,
+    ∂getindex
+
 using Parameters: @unpack
 using MacroTools: @capture, prettify, postwalk
 
