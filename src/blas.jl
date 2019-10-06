@@ -387,15 +387,60 @@ end
 end
 
 
-@generated function Base.sum!(s::AbstractMutableFixedSizeVector{P,T,L}, A::AbstractPaddedMatrix{T}) where {T,P,L}
-    stride_bytes = L*sizeof(T)
-    sample_mat_stride = L
-
+#### This function problematically assumes padding.
+@generated function Base.sum!(s::AbstractMutableFixedSizeVector{P,T,Ls}, A::AbstractMutableFixedSizeMatrix{P,N,T,LA}) where {P,T,Ls,N,LA}
+    stride_bytes = LA*sizeof(T)
+#    L = max(Ls, LA)
     W, Wshift = VectorizationBase.pick_vector_width_shift(P, T)
-
     WT = W * sizeof(T)
     V = Vec{W,T}
-
+    # +2, to divide by an additional 4
+    iterations = Ls >>> (Wshift + 2)
+    r = Ls & ((W << 2) - 1)
+    riter = r >>> Wshift
+    remainder_quote = quote
+            Base.Cartesian.@nexprs $riter j -> begin
+            offset_j = $(4WT*iterations) + $WT*(j-1)
+            x_j = SIMDPirates.vbroadcast($V, zero($T))
+        end
+        for n ∈ 0:$(N-1)
+            offset_n = n * $stride_bytes
+            Base.Cartesian.@nexprs $riter j -> begin
+                x_j = SIMDPirates.vadd(x_j, SIMDPirates.vload($V, ptrA + offset_n + offset_j))
+            end
+        end
+        Base.Cartesian.@nexprs $riter j -> SIMDPirates.vstore!(ptrs + offset_j, x_j)
+    end
+    quote
+        # $(Expr(:meta,:inline))
+        # x̄ = zero(PaddedMatrices.FixedSizeVector{P,T})
+        # s = PaddedMatrices.FixedSizeVector{$P,$T}(undef)
+        ptrs = pointer(s)
+        ptrA = pointer(A)
+        GC.@preserve s A begin
+            for i ∈ 0:$(iterations-1)
+                Base.Cartesian.@nexprs 4 j -> begin
+                    offset_j = $(4WT)*i + $WT*(j-1)
+                    x_j = SIMDPirates.vbroadcast($V, zero($T))
+                end
+                for n ∈ 0:$(N-1)
+                    offset_n = n * $stride_bytes
+                    Base.Cartesian.@nexprs 4 j -> begin
+                        x_j = SIMDPirates.vadd(x_j, SIMDPirates.vload($V, ptrA + offset_n + offset_j))
+                    end
+                end
+                Base.Cartesian.@nexprs 4 j -> SIMDPirates.vstore!(ptrs + offset_j, x_j)
+            end
+            $(riter == 0 ? nothing : remainder_quote)
+        end
+        s
+    end
+end
+@generated function Base.sum!(s::AbstractMutableFixedSizeVector{P,T,L}, A::AbstractPaddedMatrix{T}) where {T,P,L}
+    stride_bytes = L*sizeof(T)
+    W, Wshift = VectorizationBase.pick_vector_width_shift(P, T)
+    WT = W * sizeof(T)
+    V = Vec{W,T}
     # +2, to divide by an additional 4
     iterations = L >>> (Wshift + 2)
     r = L & ((W << 2) - 1)
@@ -413,7 +458,6 @@ end
         end
         Base.Cartesian.@nexprs $riter j -> SIMDPirates.vstore!(ptrs + offset_j, x_j)
     end
-
     quote
         # $(Expr(:meta,:inline))
         # x̄ = zero(PaddedMatrices.FixedSizeVector{P,T})
@@ -442,8 +486,6 @@ end
 end
 @generated function negative_sum!(s::AbstractMutableFixedSizeVector{P,T,L}, A::AbstractPaddedMatrix{T}) where {T,P,L}
     stride_bytes = L*sizeof(T)
-    sample_mat_stride = L
-
     W, Wshift = VectorizationBase.pick_vector_width_shift(P, T)
 
     WT = W * sizeof(T)
