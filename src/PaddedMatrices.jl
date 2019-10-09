@@ -52,7 +52,7 @@ tonumber(::Static{N}) where {N} = N
     i
 end
 
-abstract type AbstractPaddedArray{T,N} <: AbstractArray{T,N} end
+abstract type AbstractPaddedArray{T,N} <: DenseArray{T,N} end # AbstractArray{T,N} end
 abstract type AbstractFixedSizeArray{S<:Tuple,T,N,X<:Tuple,L} <: AbstractPaddedArray{T,N} end
 abstract type AbstractMutableFixedSizeArray{S,T,N,X,L} <: AbstractFixedSizeArray{S,T,N,X,L} end
 abstract type AbstractConstantFixedSizeArray{S,T,N,X,L} <: AbstractFixedSizeArray{S,T,N,X,L} end
