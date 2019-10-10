@@ -187,7 +187,7 @@ end
 
 
 @inline Base.strides(A::DynamicPaddedArray) = strides(A.data)
-@inline Base.stride(A::DynamicPaddedArray, n::Integer) = stride(A.data, n)
+@inline Base.stride(A::DynamicPaddedArray, n::Int) = stride(A.data, n)
 @generated function Base.strides(A::DynamicPtrArray{T,N}) where {T,N}
     N == 1 && return (1,)
     s = Expr(:tuple,1,:(A.stride))
@@ -197,7 +197,7 @@ end
     end
     :(sizeA = A.size; @inbounds $s)
 end
-@inline function Base.stride(A::DynamicPtrArray, n::Integer)
+@inline function Base.stride(A::DynamicPtrArray, n::Int)
     n == 1 && return 1
     n == 2 && return A.stride
     @boundscheck n > N && ThrowBoundsError("$n > $N")

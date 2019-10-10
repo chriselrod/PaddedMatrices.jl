@@ -487,7 +487,7 @@ end
 
 @inline Base.unsafe_convert(::Type{Ptr{T}}, A::AbstractMutableFixedSizeArray) where {T} = Base.unsafe_convert(Ptr{T}, pointer(A))
 @generated Base.strides(A::AbstractFixedSizeArray{S,T,N,X}) where {S,T,N,X} = tuple(X.parameters...)
-@generated Base.stride(A::AbstractFixedSizeArray{S,T,N,X,L}, n::Integer) where {S,T,N,X,L} = :(n > $N ? $L : @inbounds $(tuple(X.parameters...))[n])
+@generated Base.stride(A::AbstractFixedSizeArray{S,T,N,X,L}, n::Int) where {S,T,N,X,L} = :(n > $N ? $L : @inbounds $(tuple(X.parameters...))[n])
 
 @generated Base.size(::AbstractFixedSizeArray{S}) where {S} = tuple(S.parameters...)#to_tuple(S)
 
