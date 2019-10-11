@@ -1651,15 +1651,15 @@ end
 
 
 @inline function LinearAlgebra.mul!(
-    D::DenseMatrix{T},
-    A::DenseMatrix{T},
+    D::StridedMatrix{T},
+    A::StridedMatrix{T},
     X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeMatrix{N,K,T,PX}}
 ) where {N,K,T<:Union{Float32,Float64},PX}
     A_mul_Xt!(D, A, X′.parent)
 end
 @inline function LinearAlgebra.mul!(
-    D::DenseMatrix{T},
-    A::DenseMatrix{T},
+    D::StridedMatrix{T},
+    A::StridedMatrix{T},
     X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeVector{N,T,PX}}
 ) where {N,T<:Union{Float32,Float64},PX}
     A_mul_Xt!(D, A, X′.parent)
@@ -1887,8 +1887,8 @@ end
 end
 @inline function LinearAlgebra.mul!(
     D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
-    A′::LinearAlgebra.Adjoint{T,<:DenseMatrix{T}},
-    X::DenseMatrix{T}
+    A′::LinearAlgebra.Adjoint{T,<:StridedMatrix{T}},
+    X::StridedMatrix{T}
 ) where {M,N,T <: Union{Float32,Float64},PD}
     At_mul_X!(D, A′.parent, X)
 end
