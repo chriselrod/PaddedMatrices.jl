@@ -1524,6 +1524,72 @@ end
 @generated function A_mul_Xt!(
     D::AbstractMutableFixedSizeMatrix{M,K,T,PD},
     A::AbstractMutableFixedSizeMatrix{M,N,T,PA},
+    X::StridedMatrix{T}
+# ) where {M,K,N,T,PD,PA,PX}
+) where {M,N,K,T,PD,PA}
+    quote
+        PX = stride(X,2)
+        $(mul_nt_quote(M,K,N,T,true,PA,:PX,PD,negative=false,force_inline=false))
+    end
+end
+@generated function A_nmul_Xt!(
+    D::AbstractMutableFixedSizeMatrix{M,K,T,PD},
+    A::AbstractMutableFixedSizeMatrix{M,N,T,PA},
+    X::StridedMatrix{T}
+) where {M,K,N,T,PD,PA}
+# ) where {M,N,K,T,PD,PA,PX}
+    quote
+        PX = stride(X,2)
+        $(mul_nt_quote(M,K,N,T,true,PA,:PX,PD,negative=true,force_inline=false))
+    end
+end
+@generated function A_mul_Xt!(
+    D::AbstractMutableFixedSizeMatrix{M,K,T,PD},
+    A::StridedMatrix{T},
+    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
+# ) where {M,K,N,T,PD,PX}
+) where {M,N,K,T,PD,PX}
+    quote
+        PA = stride(A,2)
+        $(mul_nt_quote(M,K,N,T,true,:PA,PX,PD,negative=false,force_inline=false))
+    end
+end
+@generated function A_nmul_Xt!(
+    D::AbstractMutableFixedSizeMatrix{M,K,T,PD},
+    A::StridedMatrix{T},
+    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
+) where {M,K,N,T,PD,PX}
+# ) where {M,N,K,T,PD,PX}
+    quote
+        PA = stride(A,2)
+        $(mul_nt_quote(M,K,N,T,true,:PA,PX,PD,negative=true,force_inline=false))
+    end
+end
+@generated function A_mul_Xt!(
+    D::StridedMatrix{T},
+    A::AbstractMutableFixedSizeMatrix{M,N,T,PA},
+    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
+# ) where {M,K,N,T,PD,PA,PX}
+) where {M,N,K,T,PA,PX}
+    quote
+        PD = stride(D,2)
+        $(mul_nt_quote(M,K,N,T,true,PA,PX,:PD,negative=false,force_inline=false))
+    end
+end
+@generated function A_nmul_Xt!(
+    D::StridedMatrix{T},
+    A::AbstractMutableFixedSizeMatrix{M,N,T,PA},
+    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
+) where {M,K,N,T,PA,PX}
+# ) where {M,N,K,T,PD,PA,PX}
+    quote
+        PD = stride(D,2)
+        $(mul_nt_quote(M,K,N,T,true,PA,PX,:PD,negative=true,force_inline=false))
+    end
+end
+@generated function A_mul_Xt!(
+    D::AbstractMutableFixedSizeMatrix{M,K,T,PD},
+    A::AbstractMutableFixedSizeMatrix{M,N,T,PA},
     X::AbstractMutableFixedSizeVector{K,T,PX}
 ) where {M,K,N,T,PD,PA,PX}
 # ) where {M,K,N,T,PX,PA,PD}
@@ -1842,6 +1908,79 @@ end
 ) where {M,K,N,T,PD,PA,PX}
     return mul_tn_quote(M,K,N,T,true,PA,PX,PD,negative = true,force_inline=false)
 end
+@generated function At_mul_X!(
+    D::StridedMatrix{T},
+    A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
+    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
+) where {M,K,N,T,PA,PX}
+# ) where {M,K,N,T,PA,PX}
+    q = mul_tn_quote(N,K,1,T,true,PX,PA,:PD,force_inline=false,Asym = :X,Xsym=:A)
+    quote
+        PD = stride(D,2)
+        $q
+    end
+end
+@generated function At_nmul_X!(
+    D::StridedMatrix{T},
+    A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
+    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
+# ) where {M,K,N,T,PA,PX}
+) where {M,K,N,T,PA,PX}
+    q = mul_tn_quote(M,K,N,T,true,PA,PX,:PD,negative = true,force_inline=false)
+    quote
+        PD = stride(D,2)
+        $q
+    end
+end
+@generated function At_mul_X!(
+    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
+    A::StridedMatrix{T},
+    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
+) where {M,K,N,T,PX,PD}
+# ) where {M,K,N,T,PD,PX}
+    q = mul_tn_quote(N,K,1,T,true,PX,:PA,PD,force_inline=false,Asym = :X,Xsym=:A)
+    quote
+        PA = stride(A,2)
+        $q
+    end
+end
+@generated function At_nmul_X!(
+    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
+    A::StridedMatrix{T},
+    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
+# ) where {M,K,N,T,PX,PD}
+) where {M,K,N,T,PD,PX}
+    q = mul_tn_quote(M,K,N,T,true,:PA,PX,PD,negative = true,force_inline=false)
+    quote
+        PA = stride(A,2)
+        $q
+    end
+end
+@generated function At_mul_X!(
+    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
+    A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
+    X::StridedMatrix{T}
+) where {M,K,N,T,PA,PD}
+# ) where {M,K,N,T,PD,PA}
+    q = mul_tn_quote(N,K,1,T,true,:PX,PA,PD,force_inline=false,Asym = :X,Xsym=:A)
+    quote
+        PX = stride(X,2)
+        $q
+    end
+end
+@generated function At_nmul_X!(
+    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
+    A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
+    X::StridedMatrix{T}
+# ) where {M,K,N,T,PA,PD}
+) where {M,K,N,T,PD,PA}
+    q = mul_tn_quote(M,K,N,T,true,PA,:PX,PD,negative = true,force_inline=false)
+    quote
+        PX = stride(X,2)
+        $q
+    end
+end
+
 function K_unknown_At_mul_X_quote(A, X, M, N, T, PD, negative, Dsym, Asym, Xsym)
     if A <: AbstractMutableFixedSizeMatrix
         K = A.parameters[1].parameters[1]
