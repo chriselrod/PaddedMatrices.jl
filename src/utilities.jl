@@ -6,26 +6,51 @@
 #     num_vectors, num_vectors * W
 # end
 
-@generated function Base.sum(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
-    quote
-        $(Expr(:meta, :inline))
-        out = zero($T)
-        @vectorize $T for i ∈ 1:$L
-            out += A[i]
+@noinline function reduction_expr(S,T,N,X,L,op,f,reduction,init)
+    FL = simple_vec_prod(S.parameters)
+    if N == 1 || L == FL#first(S.parameters)::Int == (X.parameters[2])::Int
+        FL = N == 1 ? first(S.parameters)::Int : FL
+        return quote
+            $(Expr(:meta, :inline))
+            out = $init
+            @vvectorize $T for i ∈ 1:$FL
+                $(Expr(op, :out, :(A[i])))
+                out += A[i]
+            end
+            out
         end
-        out
+    end
+    W = VectorizationBase.pick_vector_width(T)
+    Xv = X.parameters
+    Sv = S.parameters
+    @assert first(Xv) == 1 "Sum for non-unit stride not yet implemented."
+    q = quote
+        @vvectorize for i_1 ∈ 1:$(first(Sv))
+            out = $f(A[i_1 + incr_1], out)
+        end
+    end
+    for n ∈ 2:N
+        i_n = Symbol(:i_,n)
+        q = quote
+            for $i_n ∈ 0:$(Sv[n] - 1)
+                $(Symbol(:incr_,n-1)) = $(n == N ? :($i_n * $(Xv[N])) : :($(Symbol(:incr_,n)) + $i_n * $(Xv[n])))
+                $q
+            end
+        end
+    end
+    quote
+        out = vbroadcast(Vec{$W,$T}, $init)
+        $q
+        $reduction(out)
     end
 end
+
+@generated function Base.sum(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+    reduction_expr(S,T,N,X,L,:(+=),:vadd,:vsum,zero(T))
+end
 @inline Base.sum(A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T}}) where {S,T} = sum(A.parent)
-@generated function Base.prod(A::AbstractFixedSizeVector{L,T}) where {L,T}
-    quote
-        $(Expr(:meta, :inline))
-        out = one(T)
-        @vectorize $T for i ∈ 1:$L
-            out *= A[i]
-        end
-        out
-    end
+@generated function Base.prod(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+    reduction_expr(S,T,N,X,L,:(*=),:vmul,:vprod,one(T))
 end
 
 function Base.cumsum!(A::AbstractMutableFixedSizeVector{M}) where {M}
@@ -184,8 +209,8 @@ function vexp(
     sp::StackPointer,
     A::AbstractFixedSizeArray{S,T,N,X,L}
 ) where {S,T,N,X,L}
-    B = PtrArray{S,T,N,X,L}(pointer(sp,T))
-    sp + VectorizationBase.align(sizeof(T)*L), vexp!(B, A)
+    sp, B = PtrArray{S,T,N,X,L}(sp)
+    sp, vexp!(B, A)
 end
 
 @noinline function pointer_vector_expr(
@@ -199,7 +224,7 @@ end
         end
     else
         if sp
-            :(DynamicPointerArray{$T}($ptrsym, ($M,), VectorizationBase.align($M, $T)))# $(align_dynamic ? :(VectorizationBase.align($M, $T)) : $M) ))
+            :(DynamicPointerArray{$T}($ptrsym, ($M,), PaddedMatrices.calc_padding($M, $T)))# $(align_dynamic ? :(VectorizationBase.align($M, $T)) : $M) ))
         else
             :(Vector{$T}(undef, $M))
         end
@@ -218,7 +243,7 @@ end
         end
     else
         if sp
-            :(DynamicPointerArray{$T}($ptrsym, ($M,$N), $(M isa Int ? VectorizationBase.align(M,T) : :(VectorizationBase.align($M, $T)))))# $(align_dynamic ? :(VectorizationBase.align($M, $T)) : $M) ))
+            :(DynamicPointerArray{$T}($ptrsym, ($M,$N), $(M isa Int ? calc_padding(M,T) : :(PaddedMatrices.calc_padding($M, $T)))))# $(align_dynamic ? :(VectorizationBase.align($M, $T)) : $M) ))
         else
             :(Matrix{$T}(undef, $M, $N))
         end

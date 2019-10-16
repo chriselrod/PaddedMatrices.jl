@@ -6,8 +6,8 @@ module PaddedMatrices
 using VectorizationBase, SIMDPirates,
     SLEEFPirates, VectorizedRNG,
     LoopVectorization, LinearAlgebra,
-    Random, MacroTools, StackPointers,
-    Requires
+    Random, MacroTools, StackPointers
+
 
 import ReverseDiffExpressionsBase:
     RESERVED_INCREMENT_SEED_RESERVED,
@@ -227,7 +227,7 @@ include("getindex.jl")
 function __init__()
     @add_stackpointer_method vexp ∂getindex ∂materialize DynamicPtrVector DynamicPtrMatrix DynamicPtrArray RESERVED_INCREMENT_SEED_RESERVED RESERVED_DECREMENT_SEED_RESERVED RESERVED_NMULTIPLY_SEED_RESERVED RESERVED_MULTIPLY_SEED_RESERVED
     set_zero_subnormals(true)
-    @require ForwardDiff="f6369f11-7733-5829-9624-2563aa707210" @eval using PaddedMatricesForwardDiff
+    # @require ForwardDiff="f6369f11-7733-5829-9624-2563aa707210" @eval using PaddedMatricesForwardDiff
 end
 
 
