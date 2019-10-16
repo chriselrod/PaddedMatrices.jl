@@ -5,6 +5,11 @@
     push!(q.args,  :(ConstantFixedSizeMatrix{$M,$P,$T,$R1,$(R1*P)}( output_data )) )
     q
 end
+@generated function Base.:*(A::AbstractConstantFixedSizeMatrix{M,N,T,R1,L1}, B::AbstractFixedSizeVector{N,T,R2}) where {M,N,T,R1,R2,L1}
+    q = static_mul_quote(M,N,1,T,R1,R2)
+    push!(q.args,  :(ConstantFixedSizeVector{$M,$T,$R1}( output_data )) )
+    q
+end
 @generated function Base.:*(
             A::AbstractConstantFixedSizeMatrix{M,N,T,R1,L1},
             B::LinearAlgebra.Adjoint{T,<:AbstractConstantFixedSizeMatrix{P,N,T,R2,L2}}
