@@ -223,9 +223,9 @@ include("utilities.jl")
 include("broadcast.jl")
 include("getindex.jl")
 
-@def_stackpointer_fallback vexp ∂getindex ∂materialize DynamicPtrVector DynamicPtrMatrix DynamicPtrArray RESERVED_INCREMENT_SEED_RESERVED RESERVED_DECREMENT_SEED_RESERVED RESERVED_NMULTIPLY_SEED_RESERVED RESERVED_MULTIPLY_SEED_RESERVED
+@def_stackpointer_fallback vexp ∂materialize DynamicPtrVector DynamicPtrMatrix DynamicPtrArray 
 function __init__()
-    @add_stackpointer_method vexp ∂getindex ∂materialize DynamicPtrVector DynamicPtrMatrix DynamicPtrArray RESERVED_INCREMENT_SEED_RESERVED RESERVED_DECREMENT_SEED_RESERVED RESERVED_NMULTIPLY_SEED_RESERVED RESERVED_MULTIPLY_SEED_RESERVED
+    @add_stackpointer_method vexp ∂materialize DynamicPtrVector DynamicPtrMatrix DynamicPtrArray 
     set_zero_subnormals(true)
     # @require ForwardDiff="f6369f11-7733-5829-9624-2563aa707210" @eval using PaddedMatricesForwardDiff
 end
