@@ -15,7 +15,6 @@
             out = $init
             @vvectorize $T for i ∈ 1:$FL
                 $(Expr(op, :out, :(A[i])))
-                out += A[i]
             end
             out
         end
@@ -45,7 +44,7 @@
     end
 end
 
-@generated function Base.sum(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+@generated function Base.sum(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,X,N,L}
     reduction_expr(S,T,N,X,L,:(+=),:vadd,:vsum,zero(T))
 end
 @inline Base.sum(A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T}}) where {S,T} = sum(A.parent)
