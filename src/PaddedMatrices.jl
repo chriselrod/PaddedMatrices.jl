@@ -11,8 +11,7 @@ using VectorizationBase, SIMDPirates,
 
 import ReverseDiffExpressionsBase:
     RESERVED_INCREMENT_SEED_RESERVED,
-    RESERVED_MULTIPLY_SEED_RESERVED,
-    ∂getindex
+    ∂getindex, seed, uninitialized
 
 using Parameters: @unpack
 using MacroTools: @capture, prettify, postwalk
@@ -93,6 +92,7 @@ Base.IndexStyle(::Type{<:AbstractPaddedVector}) = IndexLinear()
 end
 
 
+@inline val_length(::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = Val{L}()
 @inline full_length(::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = L
 @inline full_length(::Type{<: AbstractFixedSizeArray{S,T,N,X,L}}) where {S,T,N,X,L} = L
 @inline full_length(A::AbstractPaddedArray) = length(A.data)
@@ -192,7 +192,7 @@ end
 
 ## WHAT IS THIS FOR?
 ## ADD DOCS FOR STUBS
-function vload! end
+# function vload! end
 
 function calc_padding(nrow::Int, T)
     W = VectorizationBase.pick_vector_width(T)
@@ -222,6 +222,32 @@ include("rand.jl")
 include("utilities.jl")
 include("broadcast.jl")
 include("getindex.jl")
+
+function pointer_array_type(::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+    PtrArray{S,T,N,X,L,false}
+end
+macro temporary_similar(A)
+    :(pointer_array_type($A)(SIMDPirates.alloca(val_length($A), eltype($A))))
+end
+@inline function seed(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+    PtrArray{S,T,N,X,L,false}(SIMDPirates.alloca(Val(L), T))
+end
+# @inline function radj(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+    # PtrArray{S,T,N,X,L,false}(SIMDPirates.alloca(Val(L),T))
+# end
+@inline function seed(sptr::StackPointer, A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+    PtrArray{S,T,N,X,L,false}(sptr)
+end
+# @inline function radj(sptr::StackPointer, A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+    # PtrArray{S,T,N,X,L,false}(sptr)
+# end
+struct UninitializedArray{S,T,N,X,L} <: AbstractMutableFixedSizeArray{S,T,N,X,L}
+    ptr::Ptr{T}
+end
+@inline Base.pointer(A::UninitializedArray) = A.ptr
+@inline function uninitialized(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+    UninitializedArray{S,T,N,X,L}(pointer(A))
+end
 
 @def_stackpointer_fallback vexp ∂materialize DynamicPtrVector DynamicPtrMatrix DynamicPtrArray 
 function __init__()

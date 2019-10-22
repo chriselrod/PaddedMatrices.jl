@@ -10,10 +10,12 @@
     FL = simple_vec_prod(S.parameters)
     if N == 1 || L == FL#first(S.parameters)::Int == (X.parameters[2])::Int
         FL = N == 1 ? first(S.parameters)::Int : FL
+        # W, Wshift = VectorizationBase.pick_vector_width_shift(FL, T)
         return quote
             $(Expr(:meta, :inline))
             out = $init
-            @vvectorize $T for i ∈ 1:$FL
+            # @vvectorize $T 4 for i ∈ 1:$FL
+            @inbounds @simd for i ∈ 1:$FL
                 $(Expr(op, :out, :(A[i])))
             end
             out
@@ -24,7 +26,8 @@
     Sv = S.parameters
     @assert first(Xv) == 1 "Sum for non-unit stride not yet implemented."
     q = quote
-        @vvectorize for i_1 ∈ 1:$(first(Sv))
+        # @vvectorize for i_1 ∈ 1:$(first(Sv))
+        @inbounds @simd for i_1 ∈ 1:$(first(Sv))
             out = $f(A[i_1 + incr_1], out)
         end
     end
@@ -92,7 +95,10 @@ Base.cumsum(A::AbstractConstantFixedSizeVector) = ConstantFixedSizeVector(cumsum
 #     q
 # end
 
-@generated function Base.maximum(::typeof(abs), A::AbstractFixedSizeArray{S,T,X,L}) where {S,T,X,L}
+@generated function Base.maximum(
+    ::typeof(abs),
+    A::AbstractFixedSizeArray{S,T,X,L}
+) where {S,T,X,L}
     SV = S.parameters
     R1 = SV[1]
     D = 1
@@ -135,7 +141,10 @@ Base.cumsum(A::AbstractConstantFixedSizeVector) = ConstantFixedSizeVector(cumsum
     q
 end
 
-@generated function Base.maximum(::typeof(abs), A::AbstractFixedSizeVector{S,T,L}) where {S,T,L}
+@generated function Base.maximum(
+    ::typeof(abs),
+    A::AbstractFixedSizeVector{S,T,L}
+) where {S,T,L}
     W, Wshift = VectorizationBase.pick_vector_width_shift(S, T)
     V = Vec{W,T}
     q = quote

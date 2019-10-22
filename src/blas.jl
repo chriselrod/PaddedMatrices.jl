@@ -1,49 +1,55 @@
 
 
-@generated function Base.:*(A::AbstractConstantFixedSizeMatrix{M,N,T,R1,L1}, B::AbstractConstantFixedSizeMatrix{N,P,T,R2,L2}) where {M,N,P,T,R1,R2,L2,L1}
+@generated function Base.:*(
+    A::AbstractConstantFixedSizeMatrix{M,N,T,R1,L1},
+    B::AbstractConstantFixedSizeMatrix{N,P,T,R2,L2}
+) where {M,N,P,T,R1,R2,L2,L1}
     q = static_mul_quote(M,N,P,T,R1,R2)
     push!(q.args,  :(ConstantFixedSizeMatrix{$M,$P,$T,$R1,$(R1*P)}( output_data )) )
     q
 end
-@generated function Base.:*(A::AbstractConstantFixedSizeMatrix{M,N,T,R1,L1}, B::AbstractFixedSizeVector{N,T,R2}) where {M,N,T,R1,R2,L1}
+@generated function Base.:*(
+    A::AbstractConstantFixedSizeMatrix{M,N,T,R1,L1},
+    B::AbstractFixedSizeVector{N,T,R2}
+) where {M,N,T,R1,R2,L1}
     q = static_mul_quote(M,N,1,T,R1,R2)
     push!(q.args,  :(ConstantFixedSizeVector{$M,$T,$R1}( output_data )) )
     q
 end
 @generated function Base.:*(
-            A::AbstractConstantFixedSizeMatrix{M,N,T,R1,L1},
-            B::LinearAlgebra.Adjoint{T,<:AbstractConstantFixedSizeMatrix{P,N,T,R2,L2}}
-        ) where {M,N,P,T,R1,R2,L1,L2}
-        # ) where {M,N,P,T,R1,R2,L2,L1}
+    A::AbstractConstantFixedSizeMatrix{M,N,T,R1,L1},
+    B::LinearAlgebra.Adjoint{T,<:AbstractConstantFixedSizeMatrix{P,N,T,R2,L2}}
+) where {M,N,P,T,R1,R2,L1,L2}
+# ) where {M,N,P,T,R1,R2,L2,L1}
     q = static_mul_nt_quote(M,N,P,T,R1,R2)
     # push!(q.args,  :(ConstantFixedSizeMatrix( out )) )
     push!(q.args,  :(ConstantFixedSizeMatrix{$M,$P,$T,$R1,$(R1*P)}( output_data )) )
     q
 end
 @generated function Base.:*(
-            A::AbstractConstantFixedSizeVector{M,T,L1},
-            B::LinearAlgebra.Adjoint{T,<:AbstractConstantFixedSizeVector{P,T,L2}}
-        ) where {M,P,T,L1,L2}
-        # ) where {M,N,P,T,R1,R2,L2,L1}
+    A::AbstractConstantFixedSizeVector{M,T,L1},
+    B::LinearAlgebra.Adjoint{T,<:AbstractConstantFixedSizeVector{P,T,L2}}
+) where {M,P,T,L1,L2}
+# ) where {M,N,P,T,R1,R2,L2,L1}
     q = static_mul_nt_quote(M,1,P,T,L1,1)
     # push!(q.args,  :(ConstantFixedSizeMatrix( out )) )
     push!(q.args,  :(ConstantFixedSizeMatrix{$M,$P,$T,$L1,$(L1*P)}( output_data )) )
     q
 end
-# @generated function Base.:*(A::LinearAlgebra.Adjoint{T,StaticSIMDVector{N,T,R1,L1}}, B::StaticSIMDMatrix{N,P,T,R2}) where {N,P,T,R1,R2,L1}
-#     static_mul_quote(1,N,P,T,R1,R2)
-# end
-@generated function Base.:*(A::AbstractConstantFixedSizeMatrix{M,N,T,R1}, B::AbstractConstantFixedSizeVector{N,T,R2}) where {M,N,T,R1,R2}
+
+@generated function Base.:*(
+    A::AbstractConstantFixedSizeMatrix{M,N,T,R1},
+    B::AbstractConstantFixedSizeVector{N,T,R2}
+) where {M,N,T,R1,R2}
     q = static_mul_quote(M,N,1,T,R1,R2)
     push!(q.args,  :(ConstantFixedSizeVector{$M,$T,$R1,$R1}( output_data )) )
     q
 end
 
-
 @generated function Base.:*(
-                A::AbstractMutableFixedSizeMatrix{M,N,T,ADR},
-                X::AbstractMutableFixedSizeMatrix{N,P,T,XR}
-            ) where {M,N,P,T,ADR,XR}
+    A::AbstractMutableFixedSizeMatrix{M,N,T,ADR},
+    X::AbstractMutableFixedSizeMatrix{N,P,T,XR}
+) where {M,N,P,T,ADR,XR}
     q = quote
         $(Expr(:meta,:inline))
         D = FixedSizeMatrix{$M,$P,$T,$ADR,$(ADR*P)}(undef)

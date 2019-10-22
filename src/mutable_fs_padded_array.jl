@@ -521,10 +521,7 @@ end
     :(reshape(A, $tupexpr))
 end
 
-#@generated function Base.view(A::AbstractMutableFixedSizeArray{S,T,N,P}, args...) where {S,T,N,P}
-#    @assert length(args) == N
-#    outdim = Vector{Int}
-#end
+
 
 
 
