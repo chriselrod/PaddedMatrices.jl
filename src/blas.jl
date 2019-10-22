@@ -780,7 +780,8 @@ end
 function block_loop_quote_minbandwidth(
 #function block_loop_quote(
     L1M::Int,L1N::Int,L1P::Int,stride_A::Int,stride_X::Int,M_iter::Int,M_remain::Int,P_iter::Int,P_remain::Int,
-    T_size::Int,kernel::Symbol=:kernel!,pA::Symbol=:pAₙ,pX::Symbol=:pXₙ,pD::Symbol=:pD,X_transposed::Bool=false,stride_D::Int = stride_A
+    T_size::Int,kernel::Symbol=:kernel!,pA::Symbol=:pAₙ,pX::Symbol=:pXₙ,pD::Symbol=:pD,X_transposed::Bool=false,prefetch::Bool=false,
+    stride_D::Int = stride_A,negative::Bool=false
 )
     if M_remain == 0
         D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_D)*pᵢ)
@@ -791,18 +792,18 @@ function block_loop_quote_minbandwidth(
             q = quote
                     for pmᵣ ∈ 1:$PM_ratio, pᵢ ∈ (pmᵣ-1)*$M_iter:$M_iter*pmᵣ - 1
                         for mᵢ ∈ $M_iter*pmᵣ - pᵢ:$(M_iter-1)
-                            $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
+                            $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                         end
                         for mᵢ ∈ 0:$M_iter*pmᵣ - pᵢ - 1
-                            $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
+                            $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                         end
                     end
                     for pᵢ ∈ $(M_iter*PM_ratio):$(P_iter-1)
                         for mᵢ ∈ $(M_iter*(PM_ratio+1))-pᵢ:$(M_iter-1)
-                            $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
+                            $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                         end
                         for mᵢ ∈ 0:$(M_iter*(PM_ratio+1)-1)-pᵢ
-                            $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
+                            $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                         end
                     end
             end
@@ -812,10 +813,10 @@ function block_loop_quote_minbandwidth(
                 # $prefetch_quote
                 for pᵢ ∈ 0:$(P_iter-1)
                     for mᵢ ∈ $(M_iter)-pᵢ:$(M_iter-1)
-                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
+                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                     end
                     for mᵢ ∈ 0:$(M_iter-1)-pᵢ
-                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
+                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                     end
                 end # for pᵢ ∈ 0:$(P_iter-1)
             end # quote
@@ -835,25 +836,25 @@ function block_loop_quote_minbandwidth(
             q = quote
                 # $prefetch_quote
                 for mᵢ ∈ 0:$(M_iter-1)
-                    $(kernel)($pD + $(T_size*L1M)*mᵢ, $A, $pX, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
+                    $(kernel)($pD + $(T_size*L1M)*mᵢ, $A, $pX, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                 end
-                $(kernel)($pD + $(T_size*L1M*M_iter), $A_r, $pX, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
+                $(kernel)($pD + $(T_size*L1M*M_iter), $A_r, $pX, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                 for pᵢ ∈ 1:$(M_iter+1)
                     for mᵢ ∈ $(M_iter+1) - pᵢ:$(M_iter-1)
-                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
+                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                     end
-                    $(kernel)($D_r, $A_r, $X, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
+                    $(kernel)($D_r, $A_r, $X, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                     for mᵢ ∈ 0:$M_iter - pᵢ
-                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
+                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                     end
                 end
                 for pmᵣ ∈ 2:$(PM_ratio+1), pᵢ ∈ (pmᵣ-1)*$(M_iter+1)+1:min($(M_iter+1)*pmᵣ,$(P_iter-1))
                     for mᵢ ∈ $(M_iter+1)*pmᵣ - pᵢ:$(M_iter-1)
-                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
+                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                     end
-                    $(kernel)($D_r, $A_r, $X, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
+                    $(kernel)($D_r, $A_r, $X, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                     for mᵢ ∈ 0:$(M_iter+1)*pmᵣ - pᵢ - 1
-                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
+                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                     end
                 end
             end
@@ -862,16 +863,16 @@ function block_loop_quote_minbandwidth(
         else
             q = quote
                 for mᵢ ∈ 0:$(M_iter-1)
-                    $(kernel)($pD + $(T_size*L1M)*mᵢ, $A, $pX, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
+                    $(kernel)($pD + $(T_size*L1M)*mᵢ, $A, $pX, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                 end
-                $(kernel)($pD + $(T_size*L1M*M_iter), $A_r, $pX, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
+                $(kernel)($pD + $(T_size*L1M*M_iter), $A_r, $pX, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                 for pᵢ ∈ 1:$(P_iter-1)
                     for mᵢ ∈ $(M_iter+1)-pᵢ:$(M_iter-1)
-                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
+                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                     end
-                    $(kernel)($D_r, $A_r, $X, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
+                    $(kernel)($D_r, $A_r, $X, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                     for mᵢ ∈ 0:$M_iter-pᵢ
-                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}())
+                        $(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                     end
                 end
             end
@@ -887,10 +888,10 @@ function block_loop_quote_minbandwidth(
             push!(q.args,
             quote
                 for mᵢ ∈ $(MP_terminal):$(M_iter-1)
-                    $(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}())
+                    $(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                 end
                 for mᵢ ∈ 0:$(MP_terminal-1)
-                    $(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}())
+                    $(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                 end
             end
             )
@@ -903,11 +904,11 @@ function block_loop_quote_minbandwidth(
             push!(q.args,
             quote
                 for mᵢ ∈ $(MP_terminal):$(M_iter-1)
-                    $(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}())
+                    $(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                 end
-                $(kernel)($D_r, $A_r, $X, Kernel{$M_remain,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}())
+                $(kernel)($D_r, $A_r, $X, Kernel{$M_remain,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                 for mᵢ ∈ 0:$(MP_terminal-1)
-                    $(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}())
+                    $(kernel)($D, $A, $X, Kernel{$L1M,$P_remain,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}())
                 end
             end
             )
@@ -920,12 +921,13 @@ end
 #function block_loop_quote_test_simple_prefetch(
 function block_loop_quote(
     L1M::Int,L1N::Int,L1P::Int,stride_A::Int,stride_X::Int,M_iter::Int,M_remain::Int,P_iter::Int,P_remain::Int,
-    T_size::Int,kernel::Symbol=:kernel!,pA::Symbol=:pAₙ,pX::Symbol=:pXₙ,pD::Symbol=:pD,X_transposed::Bool=false,prefetch::Bool = false, stride_D::Int = stride_A
+    T_size::Int,kernel::Symbol=:kernel!,pA::Symbol=:pAₙ,pX::Symbol=:pXₙ,pD::Symbol=:pD,X_transposed::Bool=false,prefetch::Bool = false,
+    stride_D::Int = stride_A, negative::Bool = false
 )
     #    prefetch = true
     #    @show T_size, L1P, stride_D
     prefetch = false
-    kernel = Symbol(:inline_, kernel)
+    # kernel = Symbol(:inline_, kernel)
     D = :($pD + $(T_size*L1M)*mᵢ + $(T_size*L1P*stride_D)*pᵢ)
     A = :($pA + $(T_size*L1M)*mᵢ)
     X = X_transposed ? pX : :($pX + $(T_size*L1P*stride_X)*pᵢ)
@@ -937,12 +939,12 @@ function block_loop_quote(
     kernel_call = if prefetch
         :($(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$(PrefetchA(L1M))}()))
     else
-        :($(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}()))
+        :($(kernel)($D, $A, $X, Kernel{$L1M,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}()))
     end
     kernel_call_Mremain = if prefetch
         :($(kernel)($D, $A, $X, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}()),Val{$(PrefetchAX(-L1M*M_iter,L1P*stride_X))}())
     else
-        :($(kernel)($D, $A, $X, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}()))
+        :($(kernel)($D, $A, $X, Kernel{$M_remain,$L1P,$stride_A,$stride_X,$stride_D,$L1N}(), Val{$negative}()))
     end
     ploopbody = if M_iter isa Integer
         if M_iter == 1
