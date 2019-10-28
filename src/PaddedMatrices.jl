@@ -10,8 +10,8 @@ using VectorizationBase, SIMDPirates,
 
 
 import ReverseDiffExpressionsBase:
-    RESERVED_INCREMENT_SEED_RESERVED!,
-    ∂getindex, seed, uninitialized
+    RESERVED_INCREMENT_SEED_RESERVED!, ∂getindex,
+    alloc_adjoint, uninitialized, isinitialized
 
 using Parameters: @unpack
 using MacroTools: @capture, prettify, postwalk
@@ -230,13 +230,13 @@ end
 macro temporary_similar(A)
     :(pointer_array_type($A)(SIMDPirates.alloca(val_length($A), eltype($A))))
 end
-@inline function seed(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+@inline function alloc_adjoint(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
     PtrArray{S,T,N,X,L,false}(SIMDPirates.alloca(Val(L), T))
 end
 # @inline function radj(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
     # PtrArray{S,T,N,X,L,false}(SIMDPirates.alloca(Val(L),T))
 # end
-@inline function seed(sptr::StackPointer, A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+@inline function alloc_adjoint(sptr::StackPointer, A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
     PtrArray{S,T,N,X,L,false}(sptr)
 end
 # @inline function radj(sptr::StackPointer, A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
@@ -245,10 +245,13 @@ end
 struct UninitializedArray{S,T,N,X,L} <: AbstractMutableFixedSizeArray{S,T,N,X,L}
     ptr::Ptr{T}
 end
+const UninitializedVector{P,T,L} = UninitializedArray{Tuple{P},T,1,Tuple{1},L}
+const UninitializedMatrix{M,N,T,P,L} = UninitializedArray{Tuple{M,N},T,2,Tuple{1,P},L}
 @inline Base.pointer(A::UninitializedArray) = A.ptr
 @inline function uninitialized(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
     UninitializedArray{S,T,N,X,L}(pointer(A))
 end
+isinitialized(::Type{<:UninitializedArray}) = false
 
 @def_stackpointer_fallback vexp ∂materialize DynamicPtrVector DynamicPtrMatrix DynamicPtrArray 
 function __init__()
