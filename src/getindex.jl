@@ -5,7 +5,7 @@ staticrangelength(::Type{Static{R}}) where R = 1 + last(R) - first(R)
 struct ViewAdjoint{SP,SV,XP,XV}
     offset::Int
 end
-nn
+
 function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Bool = false)
     N = length(SV)
     s2 = Int[]

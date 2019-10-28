@@ -222,6 +222,7 @@ include("rand.jl")
 include("utilities.jl")
 include("broadcast.jl")
 include("getindex.jl")
+include("lazy_maps.jl")
 
 function pointer_array_type(::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
     PtrArray{S,T,N,X,L,false}
