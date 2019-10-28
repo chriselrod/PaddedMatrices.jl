@@ -13,7 +13,7 @@ end
 @inline Base.:+(i::Integer, m::VectorizableMap{F,T}) where {F,T} = VectorizableMap{F,T}(m.f, m.ptr + sizeof(T)*i)
 @inline Base.:-(m::VectorizableMap{F,T}, i::Integer) where {F,T} = VectorizableMap{F,T}(m.f, m.ptr - sizeof(T)*i)
 
-@inline function LazyMap(f::F, A::AbstractMutableFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+@inline function LazyMap(f::F, A::AbstractMutableFixedSizeArray{S,T,N,X,L}) where {F,S,T,N,X,L}
     LazyMap{F,S,T,N,X,L}(f, pointer(A))
 end
 
@@ -29,6 +29,9 @@ end
 @inline function SIMDPirates.vload(::Type{Vec{W,T}}, m::VectorizableMap{F,T}, mask) where {W,F,T}
     m.f(vload(Vec{W,T}, m.ptr, mask))
 end
-
+@inline function Base.getindex(A::LazyMap{F,S,T,N,X,L}, i::Int) where {F,S,T,N,X,L}
+    @boundscheck i < L || ThrowBoundsError("i = $i > $L = L")
+    A.f(VectorizationBase.load(A.ptr + (i-1)*sizeof(T)))
+end
 
 

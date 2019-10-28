@@ -10,7 +10,7 @@ using VectorizationBase, SIMDPirates,
 
 
 import ReverseDiffExpressionsBase:
-    RESERVED_INCREMENT_SEED_RESERVED,
+    RESERVED_INCREMENT_SEED_RESERVED!,
     ∂getindex, seed, uninitialized
 
 using Parameters: @unpack
