@@ -28,7 +28,8 @@ export @Constant, @Mutable,
     DynamicPaddedArray,
     PtrVector, DynamicPtrVector,
     PtrMatrix, DynamicPtrMatrix,
-    PtrArray, DynamicPtrArray
+    PtrArray, DynamicPtrArray,
+    LazyMap
 
 
     
