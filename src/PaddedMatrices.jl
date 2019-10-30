@@ -11,7 +11,7 @@ using VectorizationBase, SIMDPirates,
 
 import ReverseDiffExpressionsBase:
     RESERVED_INCREMENT_SEED_RESERVED!, ∂getindex,
-    alloc_adjoint, uninitialized, isinitialized
+    alloc_adjoint, uninitialized, initialized, isinitialized
 
 using Parameters: @unpack
 using MacroTools: @capture, prettify, postwalk
@@ -251,6 +251,9 @@ const UninitializedMatrix{M,N,T,P,L} = UninitializedArray{Tuple{M,N},T,2,Tuple{1
 @inline Base.pointer(A::UninitializedArray) = A.ptr
 @inline function uninitialized(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
     UninitializedArray{S,T,N,X,L}(pointer(A))
+end
+@inline function initialized(A::UninitializedArray{S,T,N,X,L}) where {S,T,N,X,L}
+    PtrArray{S,T,N,X,L,true}(pointer(A))
 end
 isinitialized(::Type{<:UninitializedArray}) = false
 
