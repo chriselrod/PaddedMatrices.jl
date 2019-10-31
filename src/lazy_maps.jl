@@ -29,9 +29,35 @@ end
 @inline function SIMDPirates.vload(::Type{Vec{W,T}}, m::VectorizableMap{F,T}, mask) where {W,F,T}
     m.f(vload(Vec{W,T}, m.ptr, mask))
 end
-@inline function Base.getindex(A::LazyMap{F,S,T,N,X,L}, i::Int) where {F,S,T,N,X,L}
-    @boundscheck i < L || ThrowBoundsError("i = $i > $L = L")
-    A.f(VectorizationBase.load(A.ptr + (i-1)*sizeof(T)))
+
+
+@inline function Base.getindex(A::LazyMap{F,S,T,1,Tuple{1},L}, i::Int) where {F,S,T,N,X,L}
+    @boundscheck i <= L || ThrowBoundsError("Index $i > full length $L.")
+    A.f(VectorizationBase.load(pointer(A) + sizeof(T) * (i - 1)))
 end
-
-
+@inline function Base.getindex(A::LazyMap{F,S,T,N,X,L}, i::Int) where {F,S,T,N,X,L}
+    @boundscheck i <= L || ThrowBoundsError("Index $i > full length $(full_length(A)).")
+    A.f(VectorizationBase.load(pointer(A) + sizeof(T) * (i - 1)))
+end
+@generated function Base.getindex(A::LazyMap{F,S,T,N,X,L}, i::Vararg{<:Integer,N}) where {F,S,T,N,X,L}
+    R = (S.parameters[1])::Int
+    ex = sub2ind_expr(X.parameters)
+    quote
+        $(Expr(:meta, :inline))
+        @boundscheck begin
+            Base.Cartesian.@nif $(N+1) d->(d == 1 ? i[d] > $R : i[d] > size(A,d)) d->ThrowBoundsError() d -> nothing
+        end
+        A.f(VectorizationBase.load(pointer(A) + $(sizeof(T)) * $ex ))
+    end
+end
+@generated function Base.getindex(A::LazyMap{F,S,T,N,X,L}, i::CartesianIndex{N}) where {F,S,T,N,X,L}
+    R = S.parameters[1])::Int
+    ex = sub2ind_expr(X.parameters)
+    quote
+        $(Expr(:meta, :inline))
+        @boundscheck begin
+            Base.Cartesian.@nif $(N+1) d->(d == 1 ? i[d] > $R : i[d] > size(A, d)) d->ThrowBoundsError() d -> nothing
+        end
+        A.f(VectorizationBase.load(pointer(A) + $(sizeof(T)) * $ex ))
+    end
+end
