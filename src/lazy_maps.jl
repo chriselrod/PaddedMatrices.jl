@@ -26,8 +26,14 @@ end
 @inline function SIMDPirates.vload(::Type{Vec{W,T}}, m::VectorizableMap{F,T}) where {W,F,T}
     m.f(vload(Vec{W,T}, m.ptr))
 end
-@inline function SIMDPirates.vload(::Type{Vec{W,T}}, m::VectorizableMap{F,T}, mask) where {W,F,T}
+@inline function SIMDPirates.vload(::Type{Vec{W,T}}, m::VectorizableMap{F,T}, mask::Union{<:Unsigned,Vec{W,Bool}}) where {W,F,T}
     m.f(vload(Vec{W,T}, m.ptr, mask))
+end
+@inline function SIMDPirates.vload(::Type{Vec{W,T}}, m::VectorizableMap{F,T}, i::Int) where {W,F,T}
+    m.f(vload(Vec{W,T}, m.ptr, i))
+end
+@inline function SIMDPirates.vload(::Type{Vec{W,T}}, m::VectorizableMap{F,T}, i::Int, mask::Union{<:Unsigned,Vec{W,Bool}}) where {W,F,T}
+    m.f(vload(Vec{W,T}, m.ptr, i, mask))
 end
 
 

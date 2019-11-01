@@ -149,38 +149,37 @@ end
 
 struct vStaticPaddedArray{SPA}
     spa::SPA
-    offset::Int
 end
 @inline VectorizationBase.vectorizable(A::vStaticPaddedArray) = A
-@inline VectorizationBase.vectorizable(A::AbstractConstantFixedSizeArray) = vStaticPaddedArray(A,0)
-@inline VectorizationBase.vectorizable(A::LinearAlgebra.Diagonal{T,<:AbstractConstantFixedSizeArray}) where {T} = vStaticPaddedArray(A.diag,0)
-@inline VectorizationBase.vectorizable(A::LinearAlgebra.Adjoint{T,<:AbstractConstantFixedSizeArray}) where {T} = vStaticPaddedArray(A.parent,0)
-@inline Base.:+(A::vStaticPaddedArray, i) = vStaticPaddedArray(A.spa, A.offset + i)
-@inline Base.:+(i, A::vStaticPaddedArray) = vStaticPaddedArray(A.spa, A.offset + i)
-@inline Base.:-(A::vStaticPaddedArray, i) = vStaticPaddedArray(A.spa, A.offset - i)
+@inline VectorizationBase.vectorizable(A::AbstractConstantFixedSizeArray) = vStaticPaddedArray(A)
+@inline VectorizationBase.vectorizable(A::LinearAlgebra.Diagonal{T,<:AbstractConstantFixedSizeArray}) where {T} = vStaticPaddedArray(A.diag)
+@inline VectorizationBase.vectorizable(A::LinearAlgebra.Adjoint{T,<:AbstractConstantFixedSizeArray}) where {T} = vStaticPaddedArray(A.parent)
+# @inline Base.:+(A::vStaticPaddedArray, i) = vStaticPaddedArray(A.spa, A.offset + i)
+# @inline Base.:+(i, A::vStaticPaddedArray) = vStaticPaddedArray(A.spa, A.offset + i)
+# @inline Base.:-(A::vStaticPaddedArray, i) = vStaticPaddedArray(A.spa, A.offset - i)
 
-@generated function SIMDPirates.vload(::Type{Vec{N,T}}, A::vStaticPaddedArray, i::Int) where {N,T}
+@generated function SIMDPirates.vload(::Type{Vec{W,T}}, A::vStaticPaddedArray, i::Int) where {W,T}
     quote
         $(Expr(:meta, :inline))
-        @inbounds $(Expr(:tuple, [:(Core.VecElement{$T}(A.spa.data[i + $n + A.offset])) for n ∈ 0:N-1]...))
+        @inbounds $(Expr(:tuple, [:(Core.VecElement{$T}(A.spa.data[i + $w])) for w ∈ 1:W]...))
     end
 end
-@generated function SIMDPirates.vload(::Type{SVec{N,T}}, A::vStaticPaddedArray, i::Int) where {N,T}
+@generated function SIMDPirates.vload(::Type{SVec{W,T}}, A::vStaticPaddedArray, i::Int) where {W,T}
     quote
         $(Expr(:meta, :inline))
-        @inbounds SVec($(Expr(:tuple, [:(Core.VecElement{$T}(A.spa.data[i + $n + A.offset])) for n ∈ 0:N-1]...)))
+        @inbounds SVec($(Expr(:tuple, [:(Core.VecElement{$T}(A.spa.data[i + $w])) for w ∈ 1:W]...)))
     end
 end
-@generated function SIMDPirates.vload(::Type{Vec{N,T}}, A::vStaticPaddedArray) where {N,T}
+@generated function SIMDPirates.vload(::Type{Vec{W,T}}, A::vStaticPaddedArray) where {W,T}
     quote
         $(Expr(:meta, :inline))
-        @inbounds $(Expr(:tuple, [:(Core.VecElement{$T}(A.spa.data[$n + A.offset])) for n ∈ 1:N]...))
+        @inbounds $(Expr(:tuple, [:(Core.VecElement{$T}(A.spa.data[$w])) for w ∈ 1:W]...))
     end
 end
-@generated function SIMDPirates.vload(::Type{SVec{N,T}}, A::vStaticPaddedArray) where {N,T}
+@generated function SIMDPirates.vload(::Type{SVec{W,T}}, A::vStaticPaddedArray) where {W,T}
     quote
         $(Expr(:meta, :inline))
-        @inbounds SVec($(Expr(:tuple, [:(Core.VecElement{$T}(A.spa.data[$n + A.offset])) for n ∈ 1:N]...)))
+        @inbounds SVec($(Expr(:tuple, [:(Core.VecElement{$T}(A.spa.data[$w])) for w ∈ 1:W]...)))
     end
 end
 ### It is assumed that there is sufficient padding for the load to be unmasked.
@@ -194,10 +193,10 @@ end
     vifelse(mask, v, vbroadcast(V, zero(T)))
 end
 
-@inline Base.unsafe_load(A::vStaticPaddedArray) = @inbounds A.spa.data[A.offset + 1]
-@inline Base.unsafe_load(A::vStaticPaddedArray, i::Int) = @inbounds A.spa.data[A.offset + i]
-@inline VectorizationBase.load(A::vStaticPaddedArray) = @inbounds A.spa.data[A.offset + 1]
-@inline Base.getindex(A::vStaticPaddedArray, i::Int) = @inbounds A.spa.data[A.offset + i]
+@inline Base.unsafe_load(A::vStaticPaddedArray) = first(A.spa.data)
+@inline Base.unsafe_load(A::vStaticPaddedArray, i::Int) = @inbounds A.spa.data[i]
+@inline VectorizationBase.load(A::vStaticPaddedArray) = first(A.spa.data)
+@inline Base.getindex(A::vStaticPaddedArray, i::Int) = @inbounds A.spa.data[i]
 
 
 
