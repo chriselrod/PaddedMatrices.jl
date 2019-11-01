@@ -51,7 +51,7 @@ end
     end
 end
 @generated function Base.getindex(A::LazyMap{F,S,T,N,X,L}, i::CartesianIndex{N}) where {F,S,T,N,X,L}
-    R = S.parameters[1])::Int
+    R = (S.parameters[1])::Int
     ex = sub2ind_expr(X.parameters)
     quote
         $(Expr(:meta, :inline))

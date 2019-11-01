@@ -1471,6 +1471,7 @@ function mul_nt_quote(
         push!(q.args, column_remainder_xt_quote(M, cols, N, stride_D, stride_A, stride_X, negative))
     end
     push!(q.args, :D)
+
     q
 end
 
@@ -1514,256 +1515,113 @@ end
 # Adjoints determine dispatch.
 # Inlining the wrapper avoids allocating the "Adjoint" type when the arrays are heap allocated
 # without requiring that we have to actually inline the entire matrix multiplication.
-@generated function A_mul_Xt!(
-    D::AbstractMutableFixedSizeMatrix{M,K,T,PD},
-    A::AbstractMutableFixedSizeMatrix{M,N,T,PA},
-    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
-# ) where {M,K,N,T,PD,PA,PX}
-) where {M,N,K,T,PD,PA,PX}
-    quote
-        $(mul_nt_quote(M,K,N,T,true,PA,PX,PD,negative=false,force_inline=false))
-    end
-end
-@generated function A_nmul_Xt!(
-    D::AbstractMutableFixedSizeMatrix{M,K,T,PD},
-    A::AbstractMutableFixedSizeMatrix{M,N,T,PA},
-    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
-) where {M,K,N,T,PD,PA,PX}
-# ) where {M,N,K,T,PD,PA,PX}
-    quote
-        $(mul_nt_quote(M,K,N,T,true,PA,PX,PD,negative=true,force_inline=false))
-    end
-end
-@generated function A_mul_Xt!(
-    D::AbstractMutableFixedSizeMatrix{M,K,T,PD},
-    A::AbstractMutableFixedSizeMatrix{M,N,T,PA},
-    X::StridedMatrix{T}
-# ) where {M,K,N,T,PD,PA,PX}
-) where {M,N,K,T,PD,PA}
-    quote
-        PX = stride(X,2)
-        $(mul_nt_quote(M,K,N,T,true,PA,:PX,PD,negative=false,force_inline=false))
-    end
-end
-@generated function A_nmul_Xt!(
-    D::AbstractMutableFixedSizeMatrix{M,K,T,PD},
-    A::AbstractMutableFixedSizeMatrix{M,N,T,PA},
-    X::StridedMatrix{T}
-) where {M,K,N,T,PD,PA}
-# ) where {M,N,K,T,PD,PA,PX}
-    quote
-        PX = stride(X,2)
-        $(mul_nt_quote(M,K,N,T,true,PA,:PX,PD,negative=true,force_inline=false))
-    end
-end
-@generated function A_mul_Xt!(
-    D::AbstractMutableFixedSizeMatrix{M,K,T,PD},
-    A::StridedMatrix{T},
-    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
-# ) where {M,K,N,T,PD,PX}
-) where {M,N,K,T,PD,PX}
-    quote
-        PA = stride(A,2)
-        $(mul_nt_quote(M,K,N,T,true,:PA,PX,PD,negative=false,force_inline=false))
-    end
-end
-@generated function A_nmul_Xt!(
-    D::AbstractMutableFixedSizeMatrix{M,K,T,PD},
-    A::StridedMatrix{T},
-    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
-) where {M,K,N,T,PD,PX}
-# ) where {M,N,K,T,PD,PX}
-    quote
-        PA = stride(A,2)
-        $(mul_nt_quote(M,K,N,T,true,:PA,PX,PD,negative=true,force_inline=false))
-    end
-end
-@generated function A_mul_Xt!(
-    D::StridedMatrix{T},
-    A::AbstractMutableFixedSizeMatrix{M,N,T,PA},
-    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
-# ) where {M,K,N,T,PD,PA,PX}
-) where {M,N,K,T,PA,PX}
-    quote
-        PD = stride(D,2)
-        $(mul_nt_quote(M,K,N,T,true,PA,PX,:PD,negative=false,force_inline=false))
-    end
-end
-@generated function A_nmul_Xt!(
-    D::StridedMatrix{T},
-    A::AbstractMutableFixedSizeMatrix{M,N,T,PA},
-    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
-) where {M,K,N,T,PA,PX}
-# ) where {M,N,K,T,PD,PA,PX}
-    quote
-        PD = stride(D,2)
-        $(mul_nt_quote(M,K,N,T,true,PA,PX,:PD,negative=true,force_inline=false))
-    end
-end
-@generated function A_mul_Xt!(
-    D::AbstractMutableFixedSizeMatrix{M,K,T,PD},
-    A::AbstractMutableFixedSizeMatrix{M,N,T,PA},
-    X::AbstractMutableFixedSizeVector{K,T,PX}
-) where {M,K,N,T,PD,PA,PX}
-# ) where {M,K,N,T,PX,PA,PD}
-    quote
-        $(mul_nt_quote(M,K,N,T,true,PA,0,PD,negative=false,force_inline=false))
-    end
-end
-@generated function A_nmul_Xt!(
-    D::AbstractMutableFixedSizeMatrix{M,K,T,PD},
-    A::AbstractMutableFixedSizeMatrix{M,N,T,PA},
-    X::AbstractMutableFixedSizeVector{K,T,PX}
-) where {M,K,N,T,PD,PA,PX}
-# ) where {M,N,K,T,PD,PA,PX}
-    quote
-        $(mul_nt_quote(M,K,N,T,true,PA,0,PD,negative=true,force_inline=false))
-    end
-end
-
-@generated function A_mul_Xt!(
-    D::AbstractMatrix{T},
-    A::AbstractMatrix{T},
-    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
-# ) where {N,K,T,PX}
-) where {N,K,PX,T}
-    quote
-        M = size(D,1)
-        PD = stride(D,2)
-        PA = stride(A,2)
-        $(mul_nt_quote(:M,K,N,T,true,:PA,PX,:PD,negative=false,force_inline=false))
-    end
-end
-@generated function A_nmul_Xt!(
-    D::AbstractMatrix{T},
-    A::AbstractMatrix{T},
-    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
-) where {N,K,T,PX}
-# ) where {N,K,PX,T}
-    quote
-        M = size(D,1)
-        PD = stride(D,2)
-        PA = stride(A,2)
-        $(mul_nt_quote(:M,K,N,T,true,:PA,PX,:PD,negative=true,force_inline=false))
-    end
-end
-@generated function A_mul_Xt!(
-    D::AbstractMatrix{T},
-    A::AbstractMatrix{T},
-    X::AbstractMutableFixedSizeVector{K,T,PX}
-) where {K,T,PX}
-    quote
-        M, N = size(A)
-        PD = stride(D,2)
-        PA = stride(A,2)
-        $(mul_nt_quote(:M,K,:N,T,true,:PA,0,:PD,negative=false,force_inline=false))
-    end
-end
-@generated function A_nmul_Xt!(
-    D::AbstractMatrix{T},
-    A::AbstractMatrix{T},
-    X::AbstractMutableFixedSizeVector{K,T,PX}
-) where {K,T,PX}
-    quote
-        M, N = size(A)
-        PD = stride(D,2)
-        PA = stride(A,2)
-        $(mul_nt_quote(:M,K,:N,T,true,:PA,0,:PD,negative=true,force_inline=false))
+# quotenode_if_missing(symset, sym) = sym ∈ symset ? sym : QuoteNode(sym)
+for init ∈ (true,false)
+    for negative ∈ (true,false)
+        namecore = Symbol(negative ? :nmul : :mul, init ? :add : Symbol())
+        basefunc = Symbol(:A_,namecore,:Xt!)
+        if init && !negative
+            wrapfunc = :(LinearAlgebra.mul!)
+        else
+            wrapfunc = Symbol(namecore, :!)
+        end
+        known_params = Set{Symbol}()
+        for Xismat ∈ (true,false)
+            for Xissized ∈ (true,false)
+                Xtype = if Xissized
+                    if Xismat
+                        Xp = union(known_params, Set([:N,:K,:PX]))
+                        :(AbstractFixedSizeMatrix{N,K,T,PX})
+                    else
+                        Xp = union(known_params, Set([:N,:PX]))
+                        :(AbstractFixedSizeVector{N,T,PX})
+                    end
+                else
+                    Xp = known_params#copy(known_params)
+                    Xismat ? :(StridedMatrix{T}) : :(StridedVector{T})
+                end
+                for Dissized ∈ (true,false)
+                    if Dissized
+                        Dtype = :(AbstractMutableFixedSizeMatrix{M,K,T,PD})
+                        Dp = union(Xp, Set([:M,:K,:PD]))
+                    else
+                        Dtype = :(StridedMatrix{T})
+                        Dp = Xp#copy(Xp)
+                    end
+                    for Aissized ∈ (true,false)
+                        if !Xissized && !Dissized && !Aissized
+                            continue
+                        end
+                        if Aissized
+                            Atype = :(AbstractFixedSizeMatrix{M,N,T,PA})
+                            Ap = union(Dp, Set([:M,:N,:PA]))
+                        else
+                            Atype = :(StridedMatrix{T})
+                            Ap = Dp
+                        end
+                        body = quote end
+                        if :PA ∈ Ap
+                            PAS = :PA
+                        else
+                            PAS = QuoteNode(:PA)
+                            push!(body.args, :(PA = stride(A,2)))
+                        end
+                        if Xismat
+                            if :PX ∈ Ap
+                                PXS = :PX
+                            else
+                                PXS = QuoteNode(:PX)
+                                push!(body.args, :(PX = stride(X,2)))
+                            end
+                        else
+                            PXS = 0
+                        end
+                        if :PD ∈ Ap
+                            PDS = :PD
+                        else
+                            PDS = QuoteNode(:PD)
+                            push!(body.args, :(PD = stride(D,2)))
+                        end
+                        if :M ∉ Ap && :N ∉ Ap
+                            push!(body.args, :((M,N) = size(A)))
+                        elseif :M ∉ Ap
+                            push!(body.args, :(M = size(A,1)))
+                        elseif :N ∉ Ap
+                            push!(body.args, :(N = size(A,2)))
+                        end
+                        MS = :M ∈ Ap ? :M : QuoteNode(:M)
+                        NS = :N ∈ Ap ? :N : QuoteNode(:N)
+                        args = [:(D::$Dtype), :(A::$Atype), :(X::$Xtype)]
+                        wheretypes = [Ap...]
+                        push!(wheretypes, :T)
+                        if :K ∉ Ap
+                            push!(args, :(::Val{K}))
+                            push!(wheretypes, :K)
+                        end
+                        push!(body.args, :(mul_nt_quote($MS,K,$NS,T,$init,$PAS,$PXS,$PDS,negative=$negative,force_inline=false)))
+                        @eval @generated function $basefunc($(args...)) where {$(wheretypes...)}
+                            $body
+                        end
+                        args[3] = :(X′::LinearAlgebra.Adjoint{T,<: $Xtype})
+                        @eval @inline function $wrapfunc($(args...)) where {$(wheretypes...)}
+                            $basefunc(D, A, X′.parent)
+                        end
+                    end
+                end
+            end
+        end
+        if negative
+            @eval @inline function $wrapfunc( # Fall back
+                D::AbstractMatrix{T},
+                A::AbstractMatrix{T},
+                X′::LinearAlgebra.Adjoint{T,<:AbstractMatrix{T}}
+            ) where {T <: BLAS.BlasFloat}
+                BLAS.gemm!('N','T',$(negative ? :(-one(T)) : :(one(T))),A,X′.parent,$(init ? :(zero(T)) : :(one(T))),D)
+            end 
+        end
     end
 end
 
-
-@generated function A_mul_Xt!(
-    D::AbstractMatrix{T},
-    A::AbstractMatrix{T},
-    X::AbstractMatrix{T},
-    ::Val{K}
-) where {K,T}
-    quote
-        M,N = size(A)
-        PD = stride(D,2)
-        PA = stride(A,2)
-        PX = stride(X,2)
-        $(mul_nt_quote(:M,K,:N,T,true,:PA,:PX,:PD,force_inline=false))
-    end
-end
-@generated function A_nmul_Xt!(
-    D::AbstractMatrix{T},
-    A::AbstractMatrix{T},
-    X::AbstractMatrix{T},
-    ::Val{K}
-) where {K,T}
-    quote
-        M,N = size(A)
-        PD = stride(D,2)
-        PA = stride(A,2)
-        PX = stride(X,2)
-        $(mul_nt_quote(:M,K,:N,T,true,:PA,:PX,:PD,negative=true,force_inline=false))
-    end
-end
-@generated function A_mul_Xt!(
-    D::AbstractMatrix{T},
-    A::AbstractMatrix{T},
-    X::AbstractVector{T},
-    ::Val{K}
-) where {K,T}
-    quote
-        M, N = size(A)
-        PD = stride(D,2)
-        PA = stride(A,2)
-        $(mul_nt_quote(:M,K,:N,T,true,:PA,0,:PD,force_inline=false))
-    end
-end
-@generated function A_nmul_Xt!(
-    D::AbstractMatrix{T},
-    A::AbstractMatrix{T},
-    X::AbstractVector{T},
-    ::Val{K}
-) where {K,T}
-    quote
-        M, N = size(A)
-        PD = stride(D,2)
-        PA = stride(A,2)
-        $(mul_nt_quote(:M,K,:N,T,true,:PA,0,:PD,negative=true,force_inline=false))
-    end
-end
-
-
-@inline function LinearAlgebra.mul!(
-    D::StridedMatrix{T},
-    A::StridedMatrix{T},
-    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeMatrix{N,K,T,PX}}
-) where {N,K,T<:Union{Float32,Float64},PX}
-    A_mul_Xt!(D, A, X′.parent)
-end
-@inline function LinearAlgebra.mul!(
-    D::StridedMatrix{T},
-    A::StridedMatrix{T},
-    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeVector{N,T,PX}}
-) where {N,T<:Union{Float32,Float64},PX}
-    A_mul_Xt!(D, A, X′.parent)
-end
-@inline function nmul!(
-    D::AbstractMatrix{T},
-    A::AbstractMatrix{T},
-    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeMatrix{N,K,T,PX}}
-) where {N,K,T<:BLAS.BlasFloat,PX}
-    A_nmul_Xt!(D, A, X′.parent)
-end
-@inline function nmul!(
-    D::AbstractMatrix{T},
-    A::AbstractMatrix{T},
-    X′::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeVector{N,T,PX}}
-) where {N,T<:BLAS.BlasFloat,PX}
-    A_nmul_Xt!(D, A, X′.parent)
-end
-@inline function nmul!(
-    D::AbstractMatrix{T},
-    A::AbstractMatrix{T},
-    X′::LinearAlgebra.Adjoint{T,<:AbstractMatrix{T}}
-) where {T <: BLAS.BlasFloat}
-    BLAS.gemm!('N','T',-one(T),A,X′.parent,zero(T),D)
-end
 
 
 function mul_tn_quote(
@@ -1905,94 +1763,6 @@ function mul_tn_quote(
     q
 end
 
-@generated function At_mul_X!(
-    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
-    A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
-    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
-) where {M,K,N,T,PA,PX,PD}
-# ) where {M,K,N,T,PD,PA,PX}
-    return mul_tn_quote(N,K,1,T,true,PX,PA,PD,force_inline=false,Asym = :X,Xsym=:A)
-end
-@generated function At_nmul_X!(
-    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
-    A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
-    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
-# ) where {M,K,N,T,PA,PX,PD}
-) where {M,K,N,T,PD,PA,PX}
-    return mul_tn_quote(M,K,N,T,true,PA,PX,PD,negative = true,force_inline=false)
-end
-@generated function At_mul_X!(
-    D::StridedMatrix{T},
-    A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
-    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
-) where {M,K,N,T,PA,PX}
-# ) where {M,K,N,T,PA,PX}
-    q = mul_tn_quote(N,K,1,T,true,PX,PA,:PD,force_inline=false,Asym = :X,Xsym=:A)
-    quote
-        PD = stride(D,2)
-        $q
-    end
-end
-@generated function At_nmul_X!(
-    D::StridedMatrix{T},
-    A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
-    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
-# ) where {M,K,N,T,PA,PX}
-) where {M,K,N,T,PA,PX}
-    q = mul_tn_quote(M,K,N,T,true,PA,PX,:PD,negative = true,force_inline=false)
-    quote
-        PD = stride(D,2)
-        $q
-    end
-end
-@generated function At_mul_X!(
-    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
-    A::StridedMatrix{T},
-    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
-) where {M,K,N,T,PX,PD}
-# ) where {M,K,N,T,PD,PX}
-    q = mul_tn_quote(N,K,1,T,true,PX,:PA,PD,force_inline=false,Asym = :X,Xsym=:A)
-    quote
-        PA = stride(A,2)
-        $q
-    end
-end
-@generated function At_nmul_X!(
-    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
-    A::StridedMatrix{T},
-    X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
-# ) where {M,K,N,T,PX,PD}
-) where {M,K,N,T,PD,PX}
-    q = mul_tn_quote(M,K,N,T,true,:PA,PX,PD,negative = true,force_inline=false)
-    quote
-        PA = stride(A,2)
-        $q
-    end
-end
-@generated function At_mul_X!(
-    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
-    A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
-    X::StridedMatrix{T}
-) where {M,K,N,T,PA,PD}
-# ) where {M,K,N,T,PD,PA}
-    q = mul_tn_quote(N,K,1,T,true,:PX,PA,PD,force_inline=false,Asym = :X,Xsym=:A)
-    quote
-        PX = stride(X,2)
-        $q
-    end
-end
-@generated function At_nmul_X!(
-    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
-    A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
-    X::StridedMatrix{T}
-# ) where {M,K,N,T,PA,PD}
-) where {M,K,N,T,PD,PA}
-    q = mul_tn_quote(M,K,N,T,true,PA,:PX,PD,negative = true,force_inline=false)
-    quote
-        PX = stride(X,2)
-        $q
-    end
-end
 
 function K_unknown_At_mul_X_quote(A, X, M, N, T, PD, negative, Dsym, Asym, Xsym)
     if A <: AbstractMutableFixedSizeMatrix
@@ -2021,36 +1791,67 @@ function K_unknown_At_mul_X_quote(A, X, M, N, T, PD, negative, Dsym, Asym, Xsym)
     end
 end
 
-@generated function At_nmul_X!(
-    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
-    A::AbstractMatrix{T},
-    X::AbstractMatrix{T}
-# ) where {M,N,PD,T}
-) where {M,N,T,PD}
-    K_unknown_At_mul_X_quote(A, X, M, N, T, PD, true, :D, :A, :X)
+for init ∈ (true,false)
+    basename = init ? :mul : :muladd
+    for negative ∈ (true,false)
+        core = negative ? Symbol(:n,basename) : basename
+        if !negative && init
+            wrapfunc = :(LinearAlgebra.mul!)
+        else
+            wrapfunc = Symbol(core, :!)
+        end
+        basefunc = Symbol(:At_,core,:_X!)
+        @eval @generated function $basefunc(
+            D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
+            A::AbstractMatrix{T},
+            X::AbstractMatrix{T}
+        ) where {M,N,T,PD}
+            K_unknown_At_mul_X_quote(A, X, M, N, T, PD, $negative, :D, :A, :X)
+        end
+        @eval @generated function $basefunc(
+            D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
+            A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
+            X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
+        ) where {M,K,N,T,PD,PA,PX}
+            mul_tn_quote(M,K,N,T,$init,PA,PX,PD,negative = $negative,force_inline = false)
+        end
+        @eval @generated function $basefunc(
+            D::StridedMatrix{T},
+            A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
+            X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
+        ) where {M,K,N,T,PA,PX}
+            q = mul_tn_quote(M,K,N,T,$init,PA,PX,:PD,negative = $negative,force_inline=false)
+            pushfirst!(q.args, :(PD = stride(D,2)))
+            q
+        end
+        @eval @generated function $basefunc(
+            D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
+            A::StridedMatrix{T},
+            X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
+        ) where {M,K,N,T,PD,PX}
+            q = mul_tn_quote(M,K,N,T,$init,:PA,PX,PD,negative = $negative,force_inline=false)
+            pushfirst!(q.args, :(PA = stride(A,2)))
+            q
+        end
+        @eval @generated function $basefunc(
+            D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
+            A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
+            X::StridedMatrix{T}
+        ) where {M,K,N,T,PD,PA}
+            q = mul_tn_quote(M,K,N,T,$init,PA,:PX,PD,negative = $negative,force_inline=false)
+            pushfirst!(q.args, :(PX = stride(X,2)))
+            q
+        end
+        @eval @inline function $wrapfunc(
+            D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
+            A′::LinearAlgebra.Adjoint{T,<:StridedMatrix{T}},
+            X::StridedMatrix{T}
+        ) where {M,N,T <: Union{Float32,Float64},PD}
+            $basefunc(D, A′.parent, X)
+        end
+    end
 end
-@generated function At_mul_X!(
-    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
-    A::AbstractMatrix{T},
-    X::AbstractMatrix{T}
-) where {M,N,T,PD}
-# ) where {M,N,PD,T}
-    K_unknown_At_mul_X_quote(A, X, M, N, T, PD, false, :D, :A, :X)
-end
-@inline function LinearAlgebra.mul!(
-    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
-    A′::LinearAlgebra.Adjoint{T,<:StridedMatrix{T}},
-    X::StridedMatrix{T}
-) where {M,N,T <: Union{Float32,Float64},PD}
-    At_mul_X!(D, A′.parent, X)
-end
-@inline function nmul!(
-    D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
-    A′::LinearAlgebra.Adjoint{T,<:AbstractMatrix{T}},
-    X::AbstractMatrix{T}
-) where {M,N,T <: BLAS.BlasFloat,PD}
-    At_nmul_X!(D, A′.parent, X)
-end
+
 @inline function nmul!(
     D::AbstractMatrix{T},
     A′::LinearAlgebra.Adjoint{T,<:AbstractMatrix{T}},
