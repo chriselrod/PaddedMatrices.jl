@@ -202,6 +202,13 @@ end
         PtrArray{$S,$T,$N,$X,$L,$V}(ptr)
     end
 end
+@generated function PtrArray{S,T}(::UndefInitializer) where {S,T}
+    N, X, L = calc_NPL(S.parameters, T, true, false)
+    quote
+        $(Expr(:meta,:inline))
+        PtrArray{$S,$T,$N,$X,$L,false}(SIMDPirates.alloca(Val{$L}(), $T))
+    end
+end
 @generated function PtrArray{S,T}(ptr::Ptr{T}, ::Val{V} = Val{false}()) where {S,T,V}
     N, X, L = calc_NPL(S.parameters, T, true, false)
     quote
@@ -223,42 +230,50 @@ end
         PtrArray{$S,$T,$N,$X,$L,$V}(ptr)
     end
 end
-@generated function PtrArray{S}(sp::StackPointer, ::Val{V} = Val{false}()) where {S,V}
+@generated function PtrArray{S}(sp::StackPointer) where {S}
     N,X,L = calc_NPL(S.parameters,Float64,true,false)
     quote
         $(Expr(:meta,:inline))
-        sp + $(VectorizationBase.align(8L)), PtrArray{$S,Float64,$N,$X,$L,$V}(pointer(sp, Float64))
+        sp + $(VectorizationBase.align(8L)), PtrArray{$S,Float64,$N,$X,$L,false}(pointer(sp, Float64))
     end
 end
-@generated function PtrArray{S,T}(sp::StackPointer, ::Val{V} = Val{false}()) where {S,T,V}
+@generated function PtrArray{S,T}(sp::StackPointer) where {S,T}
     N,X,L = calc_NPL(S.parameters,T,true,false)
     quote
         $(Expr(:meta,:inline))
-        sp + $(VectorizationBase.align(sizeof(T)*L)), PtrArray{$S,$T,$N,$X,$L,$V}(pointer(sp, $T))
+        sp + $(VectorizationBase.align(sizeof(T)*L)), PtrArray{$S,$T,$N,$X,$L,false}(pointer(sp, $T))
     end
 end
-@generated function PtrArray{S,T,N}(sp::StackPointer, ::Val{V} = Val{false}()) where {S,T,N,V}
+@generated function PtrArray{S,T,N}(sp::StackPointer) where {S,T,N}
     N2, X, L = calc_NPL(S.parameters, T)
     @assert N == N2 "length(S) == $(length(S.parameters)) != N == $N"
     quote
         $(Expr(:meta,:inline))
-        sp + $(VectorizationBase.align(sizeof(T)*L)), PtrArray{$S,$T,$N,$X,$L,$V}(pointer(sp, $T))
+        sp + $(VectorizationBase.align(sizeof(T)*L)), PtrArray{$S,$T,$N,$X,$L,false}(pointer(sp, $T))
     end
 end
-@generated function PtrArray{S,T,N,X}(sp::StackPointer, ::Val{V} = Val{false}()) where {S,T,N,X,V}
+@generated function PtrArray{S,T,N,X}(sp::StackPointer) where {S,T,N,X}
     L = simple_vec_prod(X.parameters) * last(S.parameters)::Int
     quote
         $(Expr(:meta,:inline))
         ptr = Base.unsafe_convert(Ptr{$T}, sp.ptr)
-        sp + $(VectorizationBase.align(sizeof(T)*L)), PtrArray{$S,$T,$N,$X,$L,$V}(pointer(sp, $T))
+        sp + $(VectorizationBase.align(sizeof(T)*L)), PtrArray{$S,$T,$N,$X,$L,false}(pointer(sp, $T))
 #        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
 end
-@generated function PtrArray{S,T,N,X,L}(sp::StackPointer, ::Val{V} = Val{false}()) where {S,T,N,X,V,L}
+@generated function PtrArray{S,T,N,X,L}(sp::StackPointer) where {S,T,N,X,L}
     quote
         $(Expr(:meta,:inline))
         ptr = Base.unsafe_convert(Ptr{$T}, sp.ptr)
-        sp + $(VectorizationBase.align(sizeof(T)*L)), PtrArray{$S,$T,$N,$X,$L,$V}(pointer(sp, $T))
+        sp + $(VectorizationBase.align(sizeof(T)*L)), PtrArray{$S,$T,$N,$X,$L,false}(pointer(sp, $T))
+#        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
+    end
+end
+@generated function PtrArray{S,T,N,X,L,V}(sp::StackPointer) where {S,T,N,X,L}
+    quote
+        $(Expr(:meta,:inline))
+        ptr = Base.unsafe_convert(Ptr{$T}, sp.ptr)
+        sp + $(VectorizationBase.align(sizeof(T)*L)), PtrArray{$S,$T,$N,$X,$L,false}(pointer(sp, $T))
 #        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
 end
@@ -286,7 +301,13 @@ end
         a + $(VectorizationBase.align(L*sizeof(T))), PtrArray{Tuple{$P},$T,1,Tuple{1},$L}(pointer(a,$T))
     end
 end
-
+@generated function PtrVector{P,T}(a::StackPointer) where {P,T}
+    L = calc_padding(P, T)
+    quote
+        $(Expr(:meta,:inline))
+        PtrArray{Tuple{$P},$T,1,Tuple{1},$L}(SIMDPirates.alloca(Val{$L}(),$T))
+    end
+end
 @generated function PtrMatrix{M,N,T}(a::Ptr{T}) where {M,N,T}
     L = calc_padding(M, T)
     quote
@@ -301,11 +322,15 @@ end
         a + $(VectorizationBase.align(L*N*sizeof(T))), PtrArray{Tuple{$M,$N},$T,2,Tuple{1,$L},$(L*N)}(pointer(a,$T))
     end
 end
-
-function Base.similar(sp::StackPointer, A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
-    PtrArray{S,T,N,X,L}(sp)
+@generated function PtrMatrix{M,N,T}(::UndefInitializer) where {M,N,T}
+    L = calc_padding(M, T)
+    quote
+        $(Expr(:meta,:inline))
+        PtrArray{Tuple{$M,$N},$T,2,Tuple{1,$L},$(L*N)}(SIMDPirates.alloca(Val{$(L*N)}(),$T))
+    end
 end
 
+@inline Base.similar(sp::StackPointer, ::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = PtrArray{S,T,N,X,L,false}(sp)
 @inline Base.pointer(A::PtrArray) = A.ptr
 @inline Base.pointer(A::AbstractMutableFixedSizeArray{S,T}) where {S,T} = Base.unsafe_convert(Ptr{T}, pointer_from_objref(A))
 @inline Base.pointer(A::AbstractMutableFixedSizeArray{S,NTuple{W,Core.VecElement{T}}}) where {S,T,W} = Base.unsafe_convert(Ptr{T}, pointer_from_objref(A))
@@ -317,7 +342,7 @@ end
 @inline VectorizationBase.vectorizable(A::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeArray}) where {T} = VectorizationBase.Pointer(pointer(A.parent))
 
 
-@inline Base.similar(sp::StackPointer, A::AbstractMutableFixedSizeArray{S,T,N,R}) where {S,T,N,R} = PtrArray{S,T,N,R}(sp, Val{false}())
+# @inline Base.similar(sp::StackPointer, A::AbstractMutableFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = PtrArray{S,T,N,X,L,false}(sp)
 @inline function Base.copy(sp::StackPointer, A::AbstractMutableFixedSizeArray{S,T,N,X}) where {S,T,N,X}
     sp, B = PtrArray{S,T,N,X}(sp, Val{false}())
     sp, copyto!(B, A)
