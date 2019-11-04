@@ -137,6 +137,7 @@ end
 end
 @generated function Base.copyto!(B::AbstractMutableFixedSizeArray{S,T,N,P,L}, A::AbstractFixedSizeArray{S,T,N,P,L}) where {S,T,N,P,L}
     quote
+        $(Expr(:meta,:inline))
         @vvectorize $T for l ∈ 1:$L
             B[l] = A[l]
         end
@@ -343,8 +344,8 @@ end
 
 
 # @inline Base.similar(sp::StackPointer, A::AbstractMutableFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = PtrArray{S,T,N,X,L,false}(sp)
-@inline function Base.copy(sp::StackPointer, A::AbstractMutableFixedSizeArray{S,T,N,X}) where {S,T,N,X}
-    sp, B = PtrArray{S,T,N,X}(sp, Val{false}())
+@inline function Base.copy(sp::StackPointer, A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+    sp, B = PtrArray{S,T,N,X,L,false}(sp)
     sp, copyto!(B, A)
 end
 

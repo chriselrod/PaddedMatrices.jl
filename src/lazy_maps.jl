@@ -67,3 +67,9 @@ end
         A.f(VectorizationBase.load(pointer(A) + $(sizeof(T)) * $ex ))
     end
 end
+
+@inline Base.Broadcast.materialize(sp::StackPointer, A) = (sp, A)
+@inline Base.Broadcast.materialize(sp::StackPointer, A::LazyMap) = copy(sp, A)
+
+
+

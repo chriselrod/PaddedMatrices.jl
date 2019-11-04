@@ -508,7 +508,11 @@ Similarly, to use a runtime mask, it must be named `__mask__`, and the expressio
     q
 end
 
-@noinline function kernel_tn_quote(kernel::DynamicKernel,init,inline = false, Asym = :pA, Xsym = :pX, Dsym = :pD, d_isa_ptr = true)
+@noinline function kernel_tn_quote(
+    kernel::DynamicKernel, init::Bool,inline::Bool = false,
+    Asym::Symbol = :pA, Xsym::Symbol = :pX, Dsym::Symbol = :pD,
+    d_isa_ptr::Bool = true, contract::Bool = true
+)
     @unpack R, C, N, stride_D, stride_A, stride_X, T, negative = kernel
     if N isa Symbol
         W, Wshift = VectorizationBase.pick_vector_width_shift(T)
@@ -535,38 +539,46 @@ end
             $loop_body
         end
     end
+    if d_isa_ptr
+        dptr = Dsym
+    else
+        dptr = gensym(Dsym)
+    end
+    init_q = if contract || init
+        quote $([Expr(:(=),Symbol(:vD_,r,:_,c), :(SIMDPirates.vbroadcast($V,zero($T)))) for r ∈ 0:R-1, c ∈ 0:C-1]...) end
+    else # we are not contracting and not initializing, meaning we should load
+        quote $([Expr(:(=),Symbol(:vD_,r,:_,c), :(SIMDPirates.vload($V, $dptr + $size_T*($r*$W + $c*$stride_D)))) for r ∈ 0:R-1, c ∈ 0:C-1]...) end
+    end
+    dptr = gensym(:dptr)
     q = quote
-        $([Expr(:(=),Symbol(:vD_,r,:_,c), :(SIMDPirates.vbroadcast($V,zero($T)))) for r ∈ 0:R-1, c ∈ 0:C-1]...)
+        $init_q
         $(macroexpand(LoopVectorization, loop_quote))
         # $loop_quote
     end
+    if !d_isa_ptr
+        pushfirst!(q.args, :($dptr = pointer($Dsym)))
+    end
     assign_quote = quote end
-    if d_isa_ptr
+    if contract
         if init
             for c ∈ 0:C-1, r ∈ 0:R-1
-                push!(assign_quote.args, :(VectorizationBase.store!($Dsym + $size_T*($r+$stride_D*$c), SIMDPirates.vsum($(Symbol(:vD_,r,:_,c))))))
+                push!(assign_quote.args, :(VectorizationBase.store!($dptr + $size_T*($r+$stride_D*$c), SIMDPirates.vsum($(Symbol(:vD_,r,:_,c))))))
             end
         else
             for c ∈ 0:C-1, r ∈ 0:R-1
-                dptr = gensym(:dptr)
-                push!(assign_quote.args, Expr(:(=), dptr, :($Dsym + $size_T*($r+$stride_D*$c))))
-                push!(assign_quote.args, :(VectorizationBase.store!($dptr, VectorizationBase.load($dptr) + SIMDPirates.vsum($(Symbol(:vD_,r,:_,c))))))
+                push!(assign_quote.args, :(VectorizationBase.store!($dptr + $size_T*($r+$stride_D*$c), VectorizationBase.load($dptr) + SIMDPirates.vsum($(Symbol(:vD_,r,:_,c))))))
             end
         end
-        push!(q.args, assign_quote)
     else
-        assignment = init ? :(=) : :(+=)
         for c ∈ 0:C-1, r ∈ 0:R-1
-            push!(assign_quote.args, Expr(assignment, :($Dsym[$r,$c]), :(SIMDPirates.vsum($(Symbol(:vD_,r,:_,c))))))
+            push!(assign_quote.args, :(VectorizationBase.vstore!($dptr + $size_T*($r*$W+$stride_D*$c), $(Symbol(:vD_,r,:_,c)))))
         end
-        push!(q.args, :(@inbounds $assign_quote))
     end
+    push!(q.args, assign_quote)
     # push!(q.args, Dsym)
     inline && pushfirst!(q.args, Expr(:meta,:inline))
     q
 end
-
-
 
 @generated function kernel!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}, ::Val{negative} = Val{false}()
