@@ -39,7 +39,7 @@ export @Constant, @Mutable,
 @noinline ThrowBoundsError(str) = throw(BoundsError(str))
 
 # Like MacroTools.prettify, but it doesn't alias gensyms. This is because doing so before combining expressions could cause problems.
-simplify_expr(ex; lines = false, macro_module::Union{Nothing,Module} = nothing) =
+simplify_expr(ex::Expr; lines = false, macro_module::Union{Nothing,Module} = nothing)::Expr =
   ex |> (macro_module isa Module ? x -> macroexpand(macro_module,x) : identity) |> (lines ? identity : MacroTools.striplines) |> MacroTools.flatten |> MacroTools.unresolve |> MacroTools.resyntax
 
 struct Static{N} end

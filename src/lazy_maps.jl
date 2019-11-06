@@ -30,10 +30,10 @@ end
     m.f(vload(Vec{W,T}, m.ptr, mask))
 end
 @inline function SIMDPirates.vload(::Type{Vec{W,T}}, m::VectorizableMap{F,T}, i::Int) where {W,F,T}
-    m.f(vload(Vec{W,T}, m.ptr, i))
+    m.f(vload(Vec{W,T}, m.ptr, i * sizeof(T)))
 end
 @inline function SIMDPirates.vload(::Type{Vec{W,T}}, m::VectorizableMap{F,T}, i::Int, mask::Union{<:Unsigned,Vec{W,Bool}}) where {W,F,T}
-    m.f(vload(Vec{W,T}, m.ptr, i, mask))
+    m.f(vload(Vec{W,T}, m.ptr, i * sizeof(T), mask))
 end
 
 

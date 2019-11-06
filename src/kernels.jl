@@ -50,7 +50,7 @@ end
         loop_min = 1
         initialize = quote
             $([:(
-                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(W*(mr-1)))
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA, $(W*(mr-1)))
             ) for mr ∈ 1:m_rep]...)
             $([Expr(:block, [ :(@inbounds $(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmul(
                 $(Symbol(:Acol_,mr)), $B[ $(1 + (p-1)*R2) ])
@@ -60,14 +60,14 @@ end
         loop_min = 0
         R3 = gemm
         initialize = quote
-            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout + $(W*mr + (p-1)*R3))) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
+            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout, $(W*mr + (p-1)*R3))) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
         end
     end
     quote
         $initialize
         @inbounds for n ∈ $loop_min:$loop_max
             $([:(
-                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(W*(mr-1)) + n*$R1)
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA, $(W*(mr-1)) + n*$R1)
             ) for mr ∈ 1:m_rep]...)
             $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd(
                 $(Symbol(:Acol_,mr)), $B[n + $(1 + (p-1)*R2)],
@@ -83,7 +83,7 @@ end
         loop_min = 1
         initialize = quote
             $([:(
-                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(W*(mr-1)))
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA, $(W*(mr-1)))
             ) for mr ∈ 1:m_rep]...)
             $([Expr(:block, [ :(@inbounds $(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmul(
                 $(Symbol(:Acol_,mr)), $B[ 1 + ($(p-1)+$poffset)*$R2 ])
@@ -93,14 +93,14 @@ end
         loop_min = 0
         R3 = gemm
         initialize = quote
-            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout + $(W*mr) + ($(p-1)+$poffset)*$R3)) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
+            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout, $(W*mr) + ($(p-1)+$poffset)*$R3)) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
         end
     end
     quote
         $initialize
         @inbounds for n ∈ $loop_min:$loop_max
             $([:(
-                $(Symbol(:Acol_,mr)) = vload($V, $vA + $(W*(mr-1)) + n*$R1)
+                $(Symbol(:Acol_,mr)) = vload($V, $vA, $(W*(mr-1)) + n*$R1)
             ) for mr ∈ 1:m_rep]...)
             $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd(
                 $(Symbol(:Acol_,mr)), $B[n + 1 + ($(p-1)+$poffset)*$R2],
@@ -127,7 +127,7 @@ ie, A is not transposed, and B is transposed.
         loop_min = 1
         initialize = quote
             $([:(
-                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(W*(mr-1)))
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA, $(W*(mr-1)))
             ) for mr ∈ 1:m_rep]...)
             $([Expr(:block, [ :(@inbounds $(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmul(
                 $(Symbol(:Acol_,mr)), $B[ $p ])
@@ -137,14 +137,14 @@ ie, A is not transposed, and B is transposed.
         loop_min = 0
         R3 = gemm
         initialize = quote
-            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout + $(W*mr + (p-1)*R3))) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
+            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout, $(W*mr + (p-1)*R3))) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
         end
     end
     quote
         $initialize
         @inbounds for n ∈ $loop_min:$loop_max
             $([:(
-                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(W*(mr-1)) + n*$R1)
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA, $(W*(mr-1)) + n*$R1)
             ) for mr ∈ 1:m_rep]...)
             $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd(
                 $(Symbol(:Acol_,mr)), $B[n*$R2 + $p],
@@ -160,7 +160,7 @@ end
         loop_min = 1
         initialize = quote
             $([:(
-                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(W*(mr-1)) )
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA, $(W*(mr-1)) )
             ) for mr ∈ 1:m_rep]...)
             $([Expr(:block, [ :(@inbounds $(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmul(
                 $(Symbol(:Acol_,mr)), $B[ $p + $poffset ])
@@ -170,14 +170,14 @@ end
         loop_min = 0
         R3 = gemm
         initialize = quote
-            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout + $(W*mr) + ($(p-1)+$poffset)*$R3)) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
+            $([Expr(:block, [ :($(Symbol(:C_, mr+1, :_, p)) = vload($V, vout, $(W*mr) + ($(p-1)+$poffset)*$R3)) for mr ∈ 0:m_rep-1]...) for p ∈ Prange]...)
         end
     end
     quote
         $initialize
         @inbounds for n ∈ $loop_min:$loop_max
             $([:(
-                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA + $(W*(mr-1)) + n*$R1)
+                $(Symbol(:Acol_,mr)) = SIMDPirates.vload($V, $vA, $(W*(mr-1)) + n*$R1)
             ) for mr ∈ 1:m_rep]...)
             $([Expr(:block, [:($(Symbol(:C_, mr, :_, p)) = SIMDPirates.vmuladd(
                 $(Symbol(:Acol_,mr)), $B[n*$R2 + $p+$poffset],
