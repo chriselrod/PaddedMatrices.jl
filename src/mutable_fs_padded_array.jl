@@ -270,11 +270,11 @@ end
 #        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
 end
-@generated function PtrArray{S,T,N,X,L,V}(sp::StackPointer) where {S,T,N,X,L}
+@generated function PtrArray{S,T,N,X,L,V}(sp::StackPointer) where {S,T,N,X,L,V}
     quote
         $(Expr(:meta,:inline))
         ptr = Base.unsafe_convert(Ptr{$T}, sp.ptr)
-        sp + $(VectorizationBase.align(sizeof(T)*L)), PtrArray{$S,$T,$N,$X,$L,false}(pointer(sp, $T))
+        sp + $(VectorizationBase.align(sizeof(T)*L)), PtrArray{$S,$T,$N,$X,$L,$V}(pointer(sp, $T))
 #        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
 end
@@ -292,42 +292,42 @@ const PtrMatrix{M,N,T,P,L,V} = PtrArray{Tuple{M,N},T,2,Tuple{1,P},L,V}
     L = calc_padding(P, T)
     quote
         $(Expr(:meta,:inline))
-        PtrArray{Tuple{$P},$T,1,Tuple{1},$L}(a)
+        PtrArray{Tuple{$P},$T,1,Tuple{1},$L,false}(a)
     end
 end
 @generated function PtrVector{P,T}(a::StackPointer) where {P,T}
     L = calc_padding(P, T)
     quote
         $(Expr(:meta,:inline))
-        a + $(VectorizationBase.align(L*sizeof(T))), PtrArray{Tuple{$P},$T,1,Tuple{1},$L}(pointer(a,$T))
+        a + $(VectorizationBase.align(L*sizeof(T))), PtrArray{Tuple{$P},$T,1,Tuple{1},$L,false}(pointer(a,$T))
     end
 end
-@generated function PtrVector{P,T}(a::StackPointer) where {P,T}
+@generated function PtrVector{P,T}(::UndefInitializer) where {P,T,V}
     L = calc_padding(P, T)
     quote
         $(Expr(:meta,:inline))
-        PtrArray{Tuple{$P},$T,1,Tuple{1},$L}(SIMDPirates.alloca(Val{$L}(),$T))
+        PtrArray{Tuple{$P},$T,1,Tuple{1},$L,false}(SIMDPirates.alloca(Val{$L}(),$T))
     end
 end
 @generated function PtrMatrix{M,N,T}(a::Ptr{T}) where {M,N,T}
     L = calc_padding(M, T)
     quote
         $(Expr(:meta,:inline))
-        PtrArray{Tuple{$M,$N},$T,2,Tuple{1,$L},$(L*N)}(a)
+        PtrArray{Tuple{$M,$N},$T,2,Tuple{1,$L},$(L*N),false}(a)
     end
 end
 @generated function PtrMatrix{M,N,T}(a::StackPointer) where {M,N,T}
     L = calc_padding(M, T)
     quote
         $(Expr(:meta,:inline))
-        a + $(VectorizationBase.align(L*N*sizeof(T))), PtrArray{Tuple{$M,$N},$T,2,Tuple{1,$L},$(L*N)}(pointer(a,$T))
+        a + $(VectorizationBase.align(L*N*sizeof(T))), PtrArray{Tuple{$M,$N},$T,2,Tuple{1,$L},$(L*N),false}(pointer(a,$T))
     end
 end
 @generated function PtrMatrix{M,N,T}(::UndefInitializer) where {M,N,T}
     L = calc_padding(M, T)
     quote
         $(Expr(:meta,:inline))
-        PtrArray{Tuple{$M,$N},$T,2,Tuple{1,$L},$(L*N)}(SIMDPirates.alloca(Val{$(L*N)}(),$T))
+        PtrArray{Tuple{$M,$N},$T,2,Tuple{1,$L},$(L*N),false}(SIMDPirates.alloca(Val{$(L*N)}(),$T))
     end
 end
 

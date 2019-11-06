@@ -76,12 +76,12 @@ end
     generalized_getindex_quote(S.parameters, X.parameters, T, inds, true)
 end
 @generated function RESERVED_INCREMENT_SEED_RESERVED!(
-    c::AbstractMutableFixedSizeArray{SP,T,NP,XP},
+    c::AbstractMutableFixedSizeArray{SP,T,NP,XP,LP},
     b::ViewAdjoint{SP,SV,XP,XV},
-    a::AbstractMutableFixedSizeArray{SV,T,NV,XA}
-) where {SP,SV,XP,XA,XV,T,NP,NV}
+    a::AbstractMutableFixedSizeArray{SV,T,NV,XA,LV}
+) where {SP,SV,XP,XA,XV,T,NP,NV,LP,LV}
     if (XA.parameters[1])::Int > 1
-        LV = last(SV.parameters)::Int * last(XV.parameters)::Int
+        # LV = last(SV.parameters)::Int * last(XV.parameters)::Int
         SVT = tuple(SV.parameters...)
         q = quote
             d = PtrArray{$SV,$T,$NV,$XV,$LV,true}(pointer(c) + b.offset)
@@ -140,7 +140,7 @@ end
         end
     end
     if c <: UninitializedArray
-        LP = last(SP.parameters)::Int * last(XP.parameters)::Int
+        # then we zero-initialize first
         qi = quote
             @inbounds for l in 1:$LP
                 c[l] = zero($T)
