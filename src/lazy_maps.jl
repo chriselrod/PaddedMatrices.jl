@@ -19,7 +19,13 @@ end
 
 for (f, (m, sf)) ∈ LoopVectorization.SLEEFPiratesDict
     @eval @inline function LazyMap(f::typeof($f), A::AbstractMutableFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
-        LazyMap{F,S,T,N,X,L}($m.$sf, pointer(A))
+        LazyMap{typeof($m.$sf),S,T,N,X,L}($m.$sf, pointer(A))
+    end
+    ff = get(Base.FastMath.fast_op, f, :null)
+    if ff !== :null
+        @eval @inline function LazyMap(f::typeof(Base.FastMath.$ff), A::AbstractMutableFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+            LazyMap{typeof($m.$sf),S,T,N,X,L}($m.$sf, pointer(A))
+        end
     end
 end
     

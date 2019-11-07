@@ -41,6 +41,7 @@ export @Constant, @Mutable,
 # Like MacroTools.prettify, but it doesn't alias gensyms. This is because doing so before combining expressions could cause problems.
 simplify_expr(ex::Expr; lines = false, macro_module::Union{Nothing,Module} = nothing)::Expr =
   ex |> (macro_module isa Module ? x -> macroexpand(macro_module,x) : identity) |> (lines ? identity : MacroTools.striplines) |> MacroTools.flatten |> MacroTools.unresolve |> MacroTools.resyntax
+simplify_expr(x) = x
 
 struct Static{N} end
 Base.@pure Static(N) = Static{N}()
@@ -224,6 +225,7 @@ include("utilities.jl")
 include("broadcast.jl")
 include("getindex.jl")
 include("lazy_maps.jl")
+include("gradsupport.jl")
 
 function pointer_array_type(::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
     PtrArray{S,T,N,X,L,false}
@@ -231,31 +233,6 @@ end
 macro temporary_similar(A)
     :(pointer_array_type($A)(SIMDPirates.alloca(val_length($A), eltype($A))))
 end
-@inline function alloc_adjoint(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
-    PtrArray{S,T,N,X,L,false}(SIMDPirates.alloca(Val(L), T))
-end
-# @inline function radj(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
-    # PtrArray{S,T,N,X,L,false}(SIMDPirates.alloca(Val(L),T))
-# end
-@inline function alloc_adjoint(sptr::StackPointer, A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
-    PtrArray{S,T,N,X,L,false}(sptr)
-end
-# @inline function radj(sptr::StackPointer, A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
-    # PtrArray{S,T,N,X,L,false}(sptr)
-# end
-struct UninitializedArray{S,T,N,X,L} <: AbstractMutableFixedSizeArray{S,T,N,X,L}
-    ptr::Ptr{T}
-end
-const UninitializedVector{P,T,L} = UninitializedArray{Tuple{P},T,1,Tuple{1},L}
-const UninitializedMatrix{M,N,T,P,L} = UninitializedArray{Tuple{M,N},T,2,Tuple{1,P},L}
-@inline Base.pointer(A::UninitializedArray) = A.ptr
-@inline function uninitialized(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
-    UninitializedArray{S,T,N,X,L}(pointer(A))
-end
-@inline function initialized(A::UninitializedArray{S,T,N,X,L}) where {S,T,N,X,L}
-    PtrArray{S,T,N,X,L,true}(pointer(A))
-end
-isinitialized(::Type{<:UninitializedArray}) = false
 
 @def_stackpointer_fallback vexp ∂materialize DynamicPtrVector DynamicPtrMatrix DynamicPtrArray 
 function __init__()

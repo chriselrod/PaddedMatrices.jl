@@ -146,7 +146,7 @@ end
     end
 end
 
-@generated function gemm!(
+@generated function muladd!(
     D::AbstractMutableFixedSizeMatrix{M,P,T,DR},
     A::AbstractMutableFixedSizeMatrix{M,N,T,AR},
     X::AbstractMutableFixedSizeMatrix{N,P,T,XR}
@@ -1531,7 +1531,7 @@ for init ∈ (true,false)
                 Xtype = if Xissized
                     if Xismat
                         Xp = union(known_params, Set([:N,:K,:PX]))
-                        :(AbstractFixedSizeMatrix{N,K,T,PX})
+                        :(AbstractFixedSizeMatrix{K,N,T,PX})
                     else
                         Xp = union(known_params, Set([:K,:PX]))
                         :(AbstractFixedSizeVector{K,T,PX})
@@ -1593,17 +1593,17 @@ for init ∈ (true,false)
                         NS = :N ∈ Ap ? :N : QuoteNode(:N)
                         args = [:(D::$Dtype), :(A::$Atype), :(X::$Xtype)]
                         wheretypes = [Ap...]
-                        push!(wheretypes, :T)
+                        # push!(wheretypes, :T)
                         if :K ∉ Ap
                             push!(args, :(::Val{K}))
                             push!(wheretypes, :K)
                         end
                         push!(body.args, :(mul_nt_quote($MS,K,$NS,T,$init,$PAS,$PXS,$PDS,negative=$negative,force_inline=false)))
-                        @eval @generated function $basefunc($(args...)) where {$(wheretypes...)}
+                        @eval @generated function $basefunc($(args...)) where {T <: Union{Float32,Float64}, $(wheretypes...)}
                             $body
                         end
-                        args[3] = :(X′::LinearAlgebra.Adjoint{T,<: $Xtype})
-                        @eval @inline function $wrapfunc($(args...)) where {$(wheretypes...)}
+                        args[3] = :(X′::LinearAlgebra.Adjoint{T, <: $Xtype})
+                        @eval @inline function $wrapfunc($(args...)) where {T <: Union{Float32,Float64}, $(wheretypes...)}
                             $basefunc(D, A, X′.parent)
                         end
                     end

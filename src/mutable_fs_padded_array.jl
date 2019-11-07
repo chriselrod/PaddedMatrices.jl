@@ -332,6 +332,10 @@ end
 end
 
 @inline Base.similar(sp::StackPointer, ::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = PtrArray{S,T,N,X,L,false}(sp)
+@inline function Base.similar(sp::StackPointer, ::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,X,L}}) where {S,T,N,X,L}
+    sp, A = PtrArray{S,T,N,X,L,false}(sp)
+    sp, A'
+end
 @inline Base.pointer(A::PtrArray) = A.ptr
 @inline Base.pointer(A::AbstractMutableFixedSizeArray{S,T}) where {S,T} = Base.unsafe_convert(Ptr{T}, pointer_from_objref(A))
 @inline Base.pointer(A::AbstractMutableFixedSizeArray{S,NTuple{W,Core.VecElement{T}}}) where {S,T,W} = Base.unsafe_convert(Ptr{T}, pointer_from_objref(A))

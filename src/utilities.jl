@@ -258,4 +258,3 @@ end
     end
     Expr(:(=), sp ? :($ptrsym,$outsym) : outsym, matrix_expr)
 end
-
