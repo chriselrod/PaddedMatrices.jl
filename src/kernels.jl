@@ -544,12 +544,12 @@ end
     else
         dptr = gensym(Dsym)
     end
+    # dptr = gensym(:dptr)
     init_q = if contract || init
         quote $([Expr(:(=),Symbol(:vD_,r,:_,c), :(SIMDPirates.vbroadcast($V,zero($T)))) for r ∈ 0:R-1, c ∈ 0:C-1]...) end
     else # we are not contracting and not initializing, meaning we should load
         quote $([Expr(:(=),Symbol(:vD_,r,:_,c), :(SIMDPirates.vload($V, $dptr + $size_T*($r*$W + $c*$stride_D)))) for r ∈ 0:R-1, c ∈ 0:C-1]...) end
     end
-    dptr = gensym(:dptr)
     q = quote
         $init_q
         $(macroexpand(LoopVectorization, loop_quote))

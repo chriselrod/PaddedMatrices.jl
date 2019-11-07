@@ -1533,8 +1533,8 @@ for init ∈ (true,false)
                         Xp = union(known_params, Set([:N,:K,:PX]))
                         :(AbstractFixedSizeMatrix{N,K,T,PX})
                     else
-                        Xp = union(known_params, Set([:N,:PX]))
-                        :(AbstractFixedSizeVector{N,T,PX})
+                        Xp = union(known_params, Set([:K,:PX]))
+                        :(AbstractFixedSizeVector{K,T,PX})
                     end
                 else
                     Xp = known_params#copy(known_params)
