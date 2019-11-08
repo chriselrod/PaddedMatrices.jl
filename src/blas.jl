@@ -1743,6 +1743,7 @@ function mul_tn_quote(
         end
         if row_reps == 1
             push!(inner.args, kql)
+            push!(inner.args, :(pA += $size_T*$stride_A*$rows; pD += $size_T*$rows))
         else
             loop = quote
                 for r ∈ 0:$(row_reps - 1)
