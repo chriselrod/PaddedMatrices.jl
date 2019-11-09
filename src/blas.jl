@@ -1422,7 +1422,10 @@ function mul_nt_quote(
         rows, cols, N, stride_D, stride_A, stride_X, T, X_transposed = true, negative = negative
     )
     add_row_rem_expression!(inner, row_rem, kernel, init = init)
-    push!(inner.args, :(pX += $size_T*$(stride_X isa Int ? max(1,stride_X) : stride_X)*$cols))
+    # if !(col_reps == 1 && K isa Int && col_rem == 0)
+        push!(inner.args, :(pX += $size_T*$cols))
+        # push!(inner.args, :(pX += $size_T*$(stride_X isa Int ? max(1,stride_X) : stride_X)*$cols))
+    # end
     if col_reps == 1
         push!(q.args, inner)
     else
@@ -1440,7 +1443,7 @@ function mul_nt_quote(
             )
             kql = kernel_quote(kernel, init = init, force_inline = false, mask_ops = false, runtime_mask = false)
             inner = quote pA = pointer(A) end
-            if col_reps > 1
+            if col_reps > 0
                 push!(inner.args, :(pD = pointer(D) + $size_T*$stride_D*$(cols*col_reps)))
             end
             if row_reps == 1
