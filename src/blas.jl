@@ -1521,8 +1521,8 @@ end
 # quotenode_if_missing(symset, sym) = sym ∈ symset ? sym : QuoteNode(sym)
 for init ∈ (true,false)
     for negative ∈ (true,false)
-        namecore = Symbol(negative ? :nmul : :mul, init ? :add : Symbol())
-        basefunc = Symbol(:A_,namecore,:Xt!)
+        namecore = Symbol((negative ? :nmul : :mul), (init ? Symbol() : :add))
+        basefunc = Symbol(:A_,namecore,:_Xt!)
         if init && !negative
             wrapfunc = :(LinearAlgebra.mul!)
         else
@@ -1562,12 +1562,12 @@ for init ∈ (true,false)
                             Atype = :(StridedMatrix{T})
                             Ap = Dp
                         end
-                        body = quote end
+                        body = quote q = quote end end
                         if :PA ∈ Ap
                             PAS = :PA
                         else
                             PAS = QuoteNode(:PA)
-                            push!(body.args, :(PA = stride(A,2)))
+                            push!(body.args, :(push!(q.args, Expr(:(=), :PA, Expr(:call, :stride, :A, 2)))))
                         end
                         if Xismat
                             if :PX ∈ Ap
@@ -1583,14 +1583,14 @@ for init ∈ (true,false)
                             PDS = :PD
                         else
                             PDS = QuoteNode(:PD)
-                            push!(body.args, :(PD = stride(D,2)))
+                            push!(body.args, :(push!(q.args, Expr(:(=), :PD, Expr(:call, :stride, :D, 2)))))
                         end
                         if :M ∉ Ap && :N ∉ Ap
-                            push!(body.args, :((M,N) = size(A)))
+                            push!(body.args, :(push!(q.args, Expr(:(=), Expr(:tuple, :M, :N), Expr(:call, :size, :A)))))
                         elseif :M ∉ Ap
-                            push!(body.args, :(M = size(A,1)))
+                            push!(body.args, :(push!(q.args, Expr(:(=), :M, Expr(:call, :size, :A, 1)))))
                         elseif :N ∉ Ap
-                            push!(body.args, :(N = size(A,2)))
+                            push!(body.args, :(push!(q.args, Expr(:(=), :N, Expr(:call, :size, :A, 2)))))
                         end
                         MS = :M ∈ Ap ? :M : QuoteNode(:M)
                         NS = :N ∈ Ap ? :N : QuoteNode(:N)
@@ -1601,7 +1601,8 @@ for init ∈ (true,false)
                             push!(args, :(::Val{K}))
                             push!(wheretypes, :K)
                         end
-                        push!(body.args, :(mul_nt_quote($MS,K,$NS,T,$init,$PAS,$PXS,$PDS,negative=$negative,force_inline=false)))
+                        push!(body.args, :(push!(q.args, mul_nt_quote($MS,K,$NS,T,$init,$PAS,$PXS,$PDS,negative=$negative,force_inline=true))))
+                        push!(body.args, :q)
                         @eval @generated function $basefunc($(args...)) where {T <: Union{Float32,Float64}, $(wheretypes...)}
                             $body
                         end
@@ -1805,6 +1806,7 @@ for init ∈ (true,false)
             wrapfunc = Symbol(core, :!)
         end
         basefunc = Symbol(:At_,core,:_X!)
+        force_inline = true
         @eval @generated function $basefunc(
             D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
             A::AbstractMatrix{T},
@@ -1817,14 +1819,14 @@ for init ∈ (true,false)
             A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
             X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
         ) where {M,K,N,T,PD,PA,PX}
-            mul_tn_quote(M,K,N,T,$init,PA,PX,PD,negative = $negative,force_inline = false)
+            mul_tn_quote(M,K,N,T,$init,PA,PX,PD,negative = $negative,force_inline = $force_inline)
         end
         @eval @generated function $basefunc(
             D::StridedMatrix{T},
             A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
             X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
         ) where {M,K,N,T,PA,PX}
-            q = mul_tn_quote(M,K,N,T,$init,PA,PX,:PD,negative = $negative,force_inline=false)
+            q = mul_tn_quote(M,K,N,T,$init,PA,PX,:PD,negative = $negative,force_inline=$force_inline)
             pushfirst!(q.args, :(PD = stride(D,2)))
             q
         end
@@ -1833,7 +1835,7 @@ for init ∈ (true,false)
             A::StridedMatrix{T},
             X::AbstractMutableFixedSizeMatrix{K,N,T,PX}
         ) where {M,K,N,T,PD,PX}
-            q = mul_tn_quote(M,K,N,T,$init,:PA,PX,PD,negative = $negative,force_inline=false)
+            q = mul_tn_quote(M,K,N,T,$init,:PA,PX,PD,negative = $negative,force_inline=$force_inline)
             pushfirst!(q.args, :(PA = stride(A,2)))
             q
         end
@@ -1842,7 +1844,7 @@ for init ∈ (true,false)
             A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
             X::StridedMatrix{T}
         ) where {M,K,N,T,PD,PA}
-            q = mul_tn_quote(M,K,N,T,$init,PA,:PX,PD,negative = $negative,force_inline=false)
+            q = mul_tn_quote(M,K,N,T,$init,PA,:PX,PD,negative = $negative,force_inline=$force_inline)
             pushfirst!(q.args, :(PX = stride(X,2)))
             q
         end
