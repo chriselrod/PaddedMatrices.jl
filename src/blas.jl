@@ -614,71 +614,39 @@ end
         ConstantFixedSizeArray(mv)
     end
 end
-@generated function SIMDPirates.vmuladd(a::T, x::AbstractFixedSizeArray{S,T,N,X,L}, y::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
+@generated function vmuladd!(
+    d::AbstractMutableFixedSizeArray{S,T,N,X,L},
+    a::Union{T,AbstractFixedSizeArray{S,T,N,X,L}},
+    b::Union{T,AbstractFixedSizeArray{S,T,N,X,L}},
+    c::Union{T,AbstractFixedSizeArray{S,T,N,X,L}}
+) where {S,T,N,X,L}
+    aₗ = a <: AbstractFixedSizeArray ? :(a[l]) : :a
+    bₗ = b <: AbstractFixedSizeArray ? :(b[l]) : :b
+    cₗ = c <: AbstractFixedSizeArray ? :(c[l]) : :c
     quote
-        # $(Expr(:meta,:inline))
-        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
-        @vvectorize $T for i ∈ 1:$L
-            mv[i] = a * x[i] + y[i]
+        # no loop-carried dependencies, so no real advantage to unrolling beyond vectorization?
+        @vvectorize $T for l ∈ 1:$L
+            d[l] = $aₗ * $bₗ + cₗ
         end
-        ConstantFixedSizeArray(mv)
+        d
     end
 end
-@generated function SIMDPirates.vmuladd(
-    a::T,
-    x::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeVector{N,T,L}},
-    y::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeVector{N,T,L}}
-) where {N,T,L}
-    quote
-        $(Expr(:meta,:inline))
-        mv = FixedSizeVector{$N,T,$L,$L}(undef)
-        @vvectorize $T for i ∈ 1:$L
-            mv[i] = a * x[i] + y[i]
-        end
-        ConstantFixedSizeArray(mv)
-    end
+function vmuladd(
+    sp::StackPointer,
+    a::Union{T,AbstractFixedSizeArray{S,T,N,X,L}},
+    b::AbstractFixedSizeArray{S,T,N,X,L}, # not a union
+    c::Union{T,AbstractFixedSizeArray{S,T,N,X,L}}
+) where {S,T<:Number,N,X,L}
+    sp, d = PtrArray{S,T,N,X,L}(sp)
+    sp, vmuladd!(d, a, b, c)
 end
-
-# @generated function SIMDPirates.vmuladd(a::T,
-#                 x::Union{<:AbstractFixedSizeVector{P1,T,L1},LinearAlgebra.Adjoint{T,<:AbstractFixedSizeVector{P1,T,L1}}}, y::Union{<:AbstractFixedSizeVector{P2,T,L2},LinearAlgebra.Adjoint{T,<:AbstractFixedSizeVector{P2,T,L2}}}
-#                 ) where {T,P1,L1,P2,L2}
-#     if x <: LinearAlgebra.Adjoint
-#         @assert y <: LinearAlgebra.Adjoint
-#     else
-#         @assert !( y <: LinearAlgebra.Adjoint )
-#     end
-#     if L1 < L2
-#         return quote
-#             mv = FixedSizeVector{$P2,$T,$L2}(undef)
-#             @fastmath @inbounds @simd ivdep for i ∈ 1:$L1
-#                 mv[i] = a * x[i] + y[i]
-#             end
-#             @inbounds @simd ivdep for i ∈ $(L1+1):$L2
-#                 mv[i] = y[i]
-#             end
-#             $( x <: LinearAlgebra.Adjoint ? :(ConstantFixedSizeArray(mv)') : :(ConstantFixedSizeArray(mv)) )
-#         end
-#     elseif L1 > L2
-#         return quote
-#             mv = FixedSizeVector{$P1,$T,$L1}(undef)
-#             @fastmath @inbounds @simd ivdep for i ∈ 1:$L2
-#                 mv[i] = a * x[i] + y[i]
-#             end
-#             @inbounds @simd ivdep for i ∈ $(L2+1):$L1
-#                 mv[i] = a * x[i]
-#             end
-#             $( x <: LinearAlgebra.Adjoint ? :(ConstantFixedSizeArray(mv)') : :(ConstantFixedSizeArray(mv)) )
-#         end
-#     else
-#         return quote
-#             mv = FixedSizeVector{$P1,$T,$L1}(undef)
-#             @fastmath @inbounds @simd ivdep for i ∈ 1:$L1
-#                 mv[i] = a * x[i] + y[i]
-#             end
-#             $( x <: LinearAlgebra.Adjoint ? :(ConstantFixedSizeArray(mv)') : :(ConstantFixedSizeArray(mv)) )
-#         end
-#     end
-# end
+function vmuladd(
+    a::Union{T,AbstractFixedSizeArray{S,T,N,X,L}},
+    b::AbstractFixedSizeArray{S,T,N,X,L}, # not a union
+    c::Union{T,AbstractFixedSizeArray{S,T,N,X,L}}
+) where {S,T<:Number,N,X,L}
+    vmuladd!(FixedSizeArray{S,T,N,X,L}(undef), a, b, c)
+end
 @generated function SIMDPirates.vfnmadd(a::T, x::AbstractFixedSizeArray{S,T,N,X,L}, y::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
     quote
         # $(Expr(:meta,:inline))
@@ -691,14 +659,14 @@ end
 end
 
 @generated function LinearAlgebra.dot(A::AbstractFixedSizeArray{S,T,N,X,L}, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
-    if N > 1
+    if N > 1 && first(S.parameters)::Int != (X.parameters[2])::Int
         ST = tuple(S.parameters...)
         P = (X.parameters[2])::Int
         return quote
             out = zero(T)
             ind = 0
             @nloops $(N-1) i j -> 1:$ST[j+1] begin
-                @vectorize $T for i_0 ∈ 1:$(ST[1])
+                @vvectorize $T 4 for i_0 ∈ 1:$(ST[1])
                     out += A[ind + i_0] * B[ind + i_0]
                 end
                 ind += $P
@@ -708,7 +676,7 @@ end
     else #if N == 1
         return quote
             out = zero(T)
-            @vectorize $T  for i ∈ 1:$(S.parameters[1])
+            @vvectorize $T 4 for i ∈ 1:$(S.parameters[1])
                 out += A[i] * B[i]
             end
             out
@@ -717,13 +685,13 @@ end
 end
 @generated function dot_self(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
     nrows = first(S.parameters)::Int
-    if N > 1
+    if N > 1 && first(S.parameters)::Int != (X.parameters[2])::Int
         P = (X.parameters[2])::Int
         return quote
             out = zero(T)
             ind = 0
             Base.Cartesian.@nloops $(N-1) i j -> 1:size(A,j+1) begin
-                @vvectorize $T for i_0 ∈ 1:$nrows
+                @vvectorize $T 4 for i_0 ∈ 1:$nrows
                     Aᵢ = A[ind + i_0]
                     out += Aᵢ * Aᵢ
                 end
@@ -734,7 +702,7 @@ end
     else #if N == 1
         return quote
             out = zero(T)
-            @vectorize $T  for i ∈ 1:$nrows
+            @vvectorize $T 4 for i ∈ 1:$nrows
                 out += A[i] * A[i]
             end
             out

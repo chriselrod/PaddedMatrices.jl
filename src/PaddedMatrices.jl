@@ -29,7 +29,7 @@ export @Constant, @Mutable,
     PtrVector, DynamicPtrVector,
     PtrMatrix, DynamicPtrMatrix,
     PtrArray, DynamicPtrArray,
-    LazyMap
+    LazyMap, Static
 
 
     
