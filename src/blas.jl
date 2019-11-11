@@ -1769,7 +1769,7 @@ function mul_tn_quote(
 end
 
 
-function K_unknown_At_mul_X_quote(A, X, M, N, T, PD, negative, Dsym, Asym, Xsym)
+function K_unknown_At_mul_X_quote(A, X, M, N, T, PD, negative, Dsym, Asym, Xsym, init::Bool)
     if A <: AbstractMutableFixedSizeMatrix
         K = A.parameters[1].parameters[1]
         stride_A = A.parameters[4]
@@ -1792,7 +1792,7 @@ function K_unknown_At_mul_X_quote(A, X, M, N, T, PD, negative, Dsym, Asym, Xsym)
     end
     quote
         $def_quote
-        $(mul_tn_quote(M,K,N,T,true,stride_A,stride_X,PD,negative = negative,force_inline=false))
+        $(mul_tn_quote(M,K,N,T,init,stride_A,stride_X,PD,negative = negative,force_inline=false))
     end
 end
 
@@ -1812,7 +1812,7 @@ for init ∈ (true,false)
             A::AbstractMatrix{T},
             X::AbstractMatrix{T}
         ) where {M,N,T,PD}
-            K_unknown_At_mul_X_quote(A, X, M, N, T, PD, $negative, :D, :A, :X)
+            K_unknown_At_mul_X_quote(A, X, M, N, T, PD, $negative, :D, :A, :X, $init)
         end
         @eval @generated function $basefunc(
             D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
@@ -1849,10 +1849,18 @@ for init ∈ (true,false)
             q
         end
         @eval @inline function $wrapfunc(
+        # @eval function $wrapfunc(
             D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
             A′::LinearAlgebra.Adjoint{T,<:StridedMatrix{T}},
             X::StridedMatrix{T}
         ) where {M,N,T <: Union{Float32,Float64},PD}
+            # println(A′)
+            # println(X)
+            # println("Function: ", $(string(wrapfunc)))
+            # println("Wrapping: ", $(string(basefunc)))
+            # println("typeof(D): ", typeof(D))
+            # println("typeof(A): ", typeof(A′.parent))
+            # println("typeof(X): ", typeof(X))
             $basefunc(D, A′.parent, X)
         end
     end

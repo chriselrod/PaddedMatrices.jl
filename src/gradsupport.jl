@@ -26,6 +26,8 @@ end
 @inline function initialized(A::UninitializedArray{S,T,N,X,L}) where {S,T,N,X,L}
     PtrArray{S,T,N,X,L,true}(pointer(A))
 end
+@inline uninitialized(A::LinearAlgebra.Adjoint{T,<:AbstractArray{T}}) where {T} = uninitialized(A.parent)'
+@inline initialized(A::LinearAlgebra.Adjoint{T,<:AbstractArray{T}}) where {T} = initialized(A.parent)'
 isinitialized(::Type{<:UninitializedArray}) = false
 
 

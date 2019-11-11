@@ -566,7 +566,8 @@ end
             end
         else
             for c ∈ 0:C-1, r ∈ 0:R-1
-                push!(assign_quote.args, :(VectorizationBase.store!($dptr + $size_T*($r+$stride_D*$c), VectorizationBase.load($dptr) + SIMDPirates.vsum($(Symbol(:vD_,r,:_,c))))))
+                dptrexpr = :($dptr + $size_T*($r+$stride_D*$c))
+                push!(assign_quote.args, :(VectorizationBase.store!($dptrexpr, VectorizationBase.load($dptrexpr) + SIMDPirates.vsum($(Symbol(:vD_,r,:_,c))))))
             end
         end
     else

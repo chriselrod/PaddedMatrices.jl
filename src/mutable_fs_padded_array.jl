@@ -168,11 +168,15 @@ mutable_similar(A::AbstractArray) = similar(A)
 mutable_similar(A::AbstractFixedSizeArray{S,T,N,R,L}) where {S,T,N,R,L} = FixedSizeArray{S,T,N,R,L}(undef)
 mutable_similar(A::AbstractArray, T) = similar(A, T)
 mutable_similar(A::AbstractFixedSizeArray{S,T1,N,R,L}, ::Type{T2}) where {S,T1,T2,N,R,L} = FixedSizeArray{S,T2,R,L}(undef)
-function Base.fill!(A::AbstractMutableFixedSizeArray{S,T,N,R,L}, v::T) where {S,T,N,R,L}
-    @inbounds for l ∈ 1:L
-        A[l] = v
+@generated function Base.fill!(A::AbstractMutableFixedSizeArray{S,T,N,R,L}, x::T) where {S,T,N,R,L}
+    quote
+        $(Expr(:meta,:inline))
+        v = vbroadcast($(VectorizationBase.pick_vector(L, T)), x)
+        @vvectorize $T for l ∈ 1:L
+            A[l] = v
+        end
+        A
     end
-    A
 end
 
 """

@@ -6,7 +6,7 @@ struct ViewAdjoint{SP,SV,XP,XV}
     offset::Int
 end
 
-function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Bool = false)
+function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Bool = false, scalarview::Bool = false)
     N = length(SV)
     s2 = Int[]
     x2 = Int[]
@@ -55,7 +55,13 @@ function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Boo
         else
             ex = Expr(:call, :+, :(pointer(A)), offset, offset_expr...)
         end
-        length(s2) == 0 && return :( Expr(:meta,:inline); VectorizationBase.load( $ex ) )
+        if length(s2) == 0
+            if scalarview
+                return :( Expr(:meta,:inline); VectorizationBase.Pointer( $ex ) )
+            else
+                return :( Expr(:meta,:inline); VectorizationBase.load( $ex ) )
+            end
+        end
         return quote
             $(Expr(:meta,:inline))
             PtrArray{$S2,$T,$(length(s2)),$X2,$L,true}($ex)
@@ -68,7 +74,11 @@ Perhaps R should be made into a stride-tuple?
 """
 @generated function Base.getindex(A::AbstractMutableFixedSizeArray{S,T,N,X,L}, inds...) where {S,T,N,X,L}
     @assert length(inds) == N
-    generalized_getindex_quote(S.parameters, X.parameters, T, inds, false)
+    generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, false)
+end
+@generated function Base.view(A::AbstractMutableFixedSizeArray{S,T,N,X,L}, inds...) where {S,T,N,X,L}
+    @assert length(inds) == N
+    generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, true)
 end
 
 @generated function ∂getindex(A::AbstractMutableFixedSizeArray{S,T,N,X,L}, inds...) where {S,T,N,X,L}
