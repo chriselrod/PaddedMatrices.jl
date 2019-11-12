@@ -111,8 +111,19 @@ end
 @inline param_type_length(::Type{<:NTuple{N}}) where {N} = N
 @inline type_length(::Number) = 1
 @inline type_length(::Type{<:Number}) = 1
+@inline type_length(x::AbstractArray) = length(x)
 @inline param_type_length(::Number) = 1
 @inline param_type_length(::Type{<:Number}) = 1
+
+@generated function type_length(nt::NT) where {NT <: NamedTuple}
+    P = first(NT.parameters)
+    q = quote s = 0 end
+    for p ∈ P
+        push!(q.args, :(s += type_length(nt.$p)))
+    end
+    q
+end
+
 # @inline is_sized(::AbstractFixedSizeVector) = true
 # @inline is_sized(::Type{<:AbstractFixedSizeVector}) = true
 @inline is_sized(::AbstractFixedSizeArray) = true
