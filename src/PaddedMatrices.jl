@@ -17,6 +17,9 @@ using Parameters: @unpack
 using MacroTools: @capture, prettify, postwalk
 
 export @Constant, @Mutable,
+    AbstractFixedSizeArray,
+    AbstractFixedSizeVector,
+    AbstractFixedSizeMatrix,
     ConstantFixedSizeArray,
     ConstantFixedSizeVector,
     ConstantFixedSizeMatrix,
