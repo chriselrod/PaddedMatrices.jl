@@ -189,8 +189,10 @@ end
 ### Or perhaps checks to see if the compiler can figure out it can drop the masking?
 ### Either way, in a few tests the compiler was smart enough to turn this into a masked load.
 @inline function SIMDPirates.vload(::Type{V}, A::vStaticPaddedArray, mask::Union{Vec{N,Bool},<:Unsigned}) where {T,N,V <: Union{Vec{N,T},SVec{N,T}}}
-    v = vload(V, A)
-    vifelse(mask, v, vbroadcast(V, zero(T)))
+    vifelse(mask, vload(V, A), vbroadcast(V, zero(T)))
+end
+@inline function SIMDPirates.vload(::Type{V}, A::vStaticPaddedArray, i::Int, mask::Union{Vec{N,Bool},<:Unsigned}) where {T,N,V <: Union{Vec{N,T},SVec{N,T}}}
+    vifelse(mask, vload(V, A, i), vbroadcast(V, zero(T)))
 end
 
 @inline Base.unsafe_load(A::vStaticPaddedArray) = first(A.spa.data)

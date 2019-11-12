@@ -87,20 +87,19 @@ end
 # Dense Jacobian
 @inline function RESERVED_INCREMENT_SEED_RESERVED!(
     C::AbstractMutableFixedSizeVector,
-    A::AbstractFixedSizeMatrix,
-    B::AbstractFixedSizeVector
+    A::AbstractMatrix,
+    B::AbstractVector
 )
-    muladd!(X, A, B)
+    muladd!(C, A, B)
     nothing
 end
 @inline function RESERVED_INCREMENT_SEED_RESERVED!(
     C::UninitializedVector,
-    A::AbstractFixedSizeMatrix,
-    B::AbstractFixedSizeVector
+    A::AbstractMatrix,
+    B::AbstractVector
 )
-    mul!(X, A, B)
+    mul!(C, A, B)
     nothing
 end
-
 
 

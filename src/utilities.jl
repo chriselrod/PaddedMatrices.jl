@@ -15,7 +15,7 @@
             $(Expr(:meta, :inline))
             out = $init
             # @vvectorize $T 4 for i ∈ 1:$FL
-            @inbounds @simd for i ∈ 1:$FL
+            @vvectorize $T 4 for i ∈ 1:$FL
                 $(Expr(op, :out, :(A[i])))
             end
             out
@@ -27,7 +27,7 @@
     @assert first(Xv) == 1 "Sum for non-unit stride not yet implemented."
     q = quote
         # @vvectorize for i_1 ∈ 1:$(first(Sv))
-        @inbounds @simd for i_1 ∈ 1:$(first(Sv))
+        @vvectorize for i_1 ∈ 1:$(first(Sv))
             out = $f(A[i_1 + incr_1], out)
         end
     end
@@ -54,6 +54,7 @@ end
 @generated function Base.prod(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
     reduction_expr(S,T,N,X,L,:(*=),:vmul,:vprod,one(T))
 end
+@inline Base.prod(A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T}}) where {S,T} = prod(A.parent)
 
 function Base.cumsum!(A::AbstractMutableFixedSizeVector{M}) where {M}
     @inbounds for m ∈ 2:M

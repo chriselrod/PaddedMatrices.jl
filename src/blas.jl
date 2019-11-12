@@ -145,6 +145,22 @@ end
         D
     end
 end
+@generated function Base.:*(
+    sp::StackPointer,
+    A::AbstractMutableFixedSizeMatrix{M,N,T,ADR},
+    X::AbstractMutableFixedSizeVector{N,T,XR}
+) where {M,N,T,ADR,XR}
+    quote
+        $(Expr(:meta,:inline))
+        sp, D = PtrVector{$M,$T,$ADR}(sp)
+        pD = pointer(D)
+        pA = pointer(A)
+        pX = pointer(X)
+        $(mulquote(ADR,N,1,ADR,XR,T))
+        sp, D
+    end
+end
+
 
 @generated function muladd!(
     D::AbstractMutableFixedSizeMatrix{M,P,T,DR},
@@ -306,8 +322,10 @@ end
         sp + $(VectorizationBase.align(sizeof(T)*L)), mv
     end
 end
-@inline function Base.:+(A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,P,L}},
-                        B::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,P,L}}) where {S,T,N,P,L}
+@inline function Base.:+(
+    A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,P,L}},
+    B::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,P,L}}
+) where {S,T,N,P,L}
     (A' + B')'
 end
 @inline function Base.:+(
@@ -326,6 +344,19 @@ end
             mv[i] = a + B[i]
         end
         ConstantFixedSizeArray(mv)
+    end
+end
+@generated function SIMDPirates.vadd(
+    sp::StackPointer, a::T,
+    B::AbstractFixedSizeArray{S,T,N,X,L}
+) where {S,T<:Number,N,X,L}
+    quote
+        # $(Expr(:meta,:inline))
+        (sp, mv) = PtrArray{$S,$T,$N,$X,$L}(sp)
+        @vvectorize $T for i ∈ 1:$L
+            mv[i] = a + B[i]
+        end
+        sp, mv
     end
 end
 @generated function Base.:+(A::AbstractFixedSizeArray{S,T,N,X,L}, b::T) where {S,T<:Number,N,X,L}
@@ -1817,18 +1848,58 @@ for init ∈ (true,false)
             q
         end
         @eval @inline function $wrapfunc(
-        # @eval function $wrapfunc(
             D::AbstractMutableFixedSizeMatrix{M,N,T,PD},
             A′::LinearAlgebra.Adjoint{T,<:StridedMatrix{T}},
             X::StridedMatrix{T}
         ) where {M,N,T <: Union{Float32,Float64},PD}
-            # println(A′)
-            # println(X)
-            # println("Function: ", $(string(wrapfunc)))
-            # println("Wrapping: ", $(string(basefunc)))
-            # println("typeof(D): ", typeof(D))
-            # println("typeof(A): ", typeof(A′.parent))
-            # println("typeof(X): ", typeof(X))
+            $basefunc(D, A′.parent, X)
+        end
+        @eval @generated function $basefunc(
+            D::AbstractMutableFixedSizeVector{M,T,PD},
+            A::AbstractMatrix{T},
+            X::AbstractVector{T}
+        ) where {M,T,PD}
+            K_unknown_At_mul_X_quote(A, X, M, 1, T, PD, $negative, :D, :A, :X, $init)
+        end
+        @eval @generated function $basefunc(
+            D::AbstractMutableFixedSizeVector{M,T,PD},
+            A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
+            X::AbstractMutableFixedSizeVector{K,T,PX}
+        ) where {M,K,T,PD,PA,PX}
+            mul_tn_quote(M,K,1,T,$init,PA,PX,PD,negative = $negative,force_inline = $force_inline)
+        end
+        @eval @generated function $basefunc(
+            D::StridedVector{T},
+            A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
+            X::AbstractMutableFixedSizeVector{K,T,PX}
+        ) where {M,K,T,PA,PX}
+            q = mul_tn_quote(M,K,1,T,$init,PA,PX,:PD,negative = $negative,force_inline=$force_inline)
+            pushfirst!(q.args, :(PD = stride(D,2)))
+            q
+        end
+        @eval @generated function $basefunc(
+            D::AbstractMutableFixedSizeMatrix{M,T,PD},
+            A::StridedMatrix{T},
+            X::AbstractMutableFixedSizeMatrix{K,T,PX}
+        ) where {M,K,T,PD,PX}
+            q = mul_tn_quote(M,K,1,T,$init,:PA,PX,PD,negative = $negative,force_inline=$force_inline)
+            pushfirst!(q.args, :(PA = stride(A,2)))
+            q
+        end
+        @eval @generated function $basefunc(
+            D::AbstractMutableFixedSizeVector{M,T,PD},
+            A::AbstractMutableFixedSizeMatrix{K,M,T,PA},
+            X::StridedVector{T}
+        ) where {M,K,T,PD,PA}
+            q = mul_tn_quote(M,K,1,T,$init,PA,:PX,PD,negative = $negative,force_inline=$force_inline)
+            pushfirst!(q.args, :(PX = stride(X,2)))
+            q
+        end
+        @eval @inline function $wrapfunc(
+            D::AbstractMutableFixedSizeVector{M,T,PD},
+            A′::LinearAlgebra.Adjoint{T,<:StridedMatrix{T}},
+            X::StridedVector{T}
+        ) where {M,T <: Union{Float32,Float64},PD}
             $basefunc(D, A′.parent, X)
         end
     end
