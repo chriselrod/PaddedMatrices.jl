@@ -1,4 +1,4 @@
-n
+
 
 # function determine_vectorloads(num_rows, ::Type{T} = Float64) where T
 #     W = VectorizationBase.pick_vector_width(num_rows, T)
@@ -259,7 +259,7 @@ end
     Expr(:(=), sp ? :($ptrsym,$outsym) : outsym, matrix_expr)
 end
 
-unique_copyto!(ptr::Ptr{T}, x::T) = VectorizationBase.store!(ptr, x)
+unique_copyto!(ptr::Ptr{T}, x::T) where {T} = VectorizationBase.store!(ptr, x)
 function unique_copyto!(ptr::Ptr{T}, x::Union{AbstractPaddedVector{T},AbstractArray{T}}) where {T}
     @inbounds for i ∈ eachindex(x)
         VectorizationBase.store!(ptr, x[i])
@@ -269,7 +269,7 @@ end
 @generated function unique_copyto!(ptr::Ptr{T}, x::AbstractPaddedArray{T,N}) where {T,N}
     quote
         ptrx = pointer(x)
-        @nloops $N n x begin
+        Base.Cartesian.@nloops $N n x begin
             VectorizationBase.store!(ptr, (Base.Cartesian.@nref $N x n))
             ptr += $(sizeof(T))
         end
@@ -286,7 +286,7 @@ end
                     ptr[i_0] = A[ind + i_0]
                 end
                 ind += $P
-                ptr += $(sizeof(T)*$nrows)
+                ptr += $(sizeof(T))*$nrows
             end
         end
     else #if N == 1
