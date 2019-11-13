@@ -694,7 +694,7 @@ end
         ST = tuple(S.parameters...)
         P = (X.parameters[2])::Int
         return quote
-            out = zero(T)
+            out = zero($T)
             ind = 0
             @nloops $(N-1) i j -> 1:$ST[j+1] begin
                 @vvectorize $T 4 for i_0 ∈ 1:$(ST[1])
@@ -705,10 +705,11 @@ end
             out
         end
     else #if N == 1
+        M = N == 1 ? nrows : L
         return quote
-            out = zero(T)
-            @vvectorize $T 4 for i ∈ 1:$(S.parameters[1])
-                out += A[i] * B[i]
+            out = zero($T)
+            @vvectorize $T 4 for m ∈ 1:$M
+                out += A[m] * B[m]
             end
             out
         end
@@ -719,7 +720,7 @@ end
     if N > 1 && first(S.parameters)::Int != (X.parameters[2])::Int
         P = (X.parameters[2])::Int
         return quote
-            out = zero(T)
+            out = zero($T)
             ind = 0
             Base.Cartesian.@nloops $(N-1) i j -> 1:size(A,j+1) begin
                 @vvectorize $T 4 for i_0 ∈ 1:$nrows
@@ -731,10 +732,12 @@ end
             out
         end
     else #if N == 1
+        M = N == 1 ? nrows : L
         return quote
-            out = zero(T)
-            @vvectorize $T 4 for i ∈ 1:$nrows
-                out += A[i] * A[i]
+            out = zero($T)
+            @vvectorize $T 4 for m ∈ 1:$M
+                Aₘ = A[m]
+                out += Aₘ * Aₘ
             end
             out
         end
