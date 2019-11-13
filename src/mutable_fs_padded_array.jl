@@ -555,7 +555,16 @@ end
     :(reshape(A, $tupexpr))
 end
 
-
+# Julia/LLVM should handle these mutable structs.
+@inline SIMDPirates.lifetime_start!(A::FixedSizeArray) = nothing
+@inline SIMDPirates.lifetime_end!(A::FixedSizeArray) = nothing
+# If they are PtrArrays, or a variant defined in another library, we do want to communicate lifetime info.
+@inline function SIMDPirates.lifetime_start!(A::AbstractMutableFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+    SIMDPirates.lifetime_start!(pointer(A), Val{L}())
+end
+@inline function SIMDPirates.lifetime_end!(A::AbstractMutableFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+    SIMDPirates.lifetime_end!(pointer(A), Val{L}())
+end
 
 
 

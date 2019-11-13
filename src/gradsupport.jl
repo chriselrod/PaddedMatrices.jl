@@ -21,6 +21,7 @@ const UninitializedVector{P,T,L} = UninitializedArray{Tuple{P},T,1,Tuple{1},L}
 const UninitializedMatrix{M,N,T,P,L} = UninitializedArray{Tuple{M,N},T,2,Tuple{1,P},L}
 @inline Base.pointer(A::UninitializedArray) = A.ptr
 @inline function uninitialized(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+    # lifetime_start(A)
     UninitializedArray{S,T,N,X,L}(pointer(A))
 end
 @inline function initialized(A::UninitializedArray{S,T,N,X,L}) where {S,T,N,X,L}

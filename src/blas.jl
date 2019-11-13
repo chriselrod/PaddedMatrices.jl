@@ -705,7 +705,7 @@ end
             out
         end
     else #if N == 1
-        M = N == 1 ? nrows : L
+        M = N == 1 ? first(S.parameters)::Int : L
         return quote
             out = zero($T)
             @vvectorize $T 4 for m ∈ 1:$M
