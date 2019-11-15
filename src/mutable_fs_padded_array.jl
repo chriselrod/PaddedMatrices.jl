@@ -261,7 +261,6 @@ end
     L = simple_vec_prod(X.parameters) * last(S.parameters)::Int
     quote
         $(Expr(:meta,:inline))
-        ptr = Base.unsafe_convert(Ptr{$T}, sp.ptr)
         sp + $(VectorizationBase.align(sizeof(T)*L)), PtrArray{$S,$T,$N,$X,$L,false}(pointer(sp, $T))
 #        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
@@ -269,7 +268,6 @@ end
 @generated function PtrArray{S,T,N,X,L}(sp::StackPointer) where {S,T,N,X,L}
     quote
         $(Expr(:meta,:inline))
-        ptr = Base.unsafe_convert(Ptr{$T}, sp.ptr)
         sp + $(VectorizationBase.align(sizeof(T)*L)), PtrArray{$S,$T,$N,$X,$L,false}(pointer(sp, $T))
 #        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
@@ -277,7 +275,6 @@ end
 @generated function PtrArray{S,T,N,X,L,V}(sp::StackPointer) where {S,T,N,X,L,V}
     quote
         $(Expr(:meta,:inline))
-        ptr = Base.unsafe_convert(Ptr{$T}, sp.ptr)
         sp + $(VectorizationBase.align(sizeof(T)*L)), PtrArray{$S,$T,$N,$X,$L,$V}(pointer(sp, $T))
 #        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
