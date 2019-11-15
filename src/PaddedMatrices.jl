@@ -137,10 +137,19 @@ end
 # @inline type_length(::Type{<:AbstractFixedSizeMatrix{M,N}}) where {M,N} = M*N
 @noinline function simple_vec_prod(sv::Core.SimpleVector)
     p = 1
-    for n in 1:length(sv)
+    for n ∈ 1:length(sv)
         p *= (sv[n])::Int
     end
     p
+end
+@noinline function isdense(S::Core.SimpleVector, X::Core.SimpleVector)
+    N = length(S)
+    # N == 1 && return true # shortcut not valid in general, as non-unit stride is possible
+    p = 1
+    for n ∈ 1:N-1
+        p *= (S[n])::Int
+    end
+    p == (last(X)::Int)
 end
 @generated type_length(::AbstractFixedSizeArray{S}) where {S} = simple_vec_prod(S.parameters)
 @generated type_length(::Type{<:AbstractFixedSizeArray{S}}) where {S} = simple_vec_prod(S.parameters)
