@@ -103,4 +103,33 @@ end
     nothing
 end
 
+@generated function RESERVED_INCREMENT_SEED_RESERVED!(
+    C::AbstractMutableFixedSizeArray{S,T,N,X,L},
+    A::UniformScaling{T},
+    B::AbstractFixedSizeArray{S,T,N,X,L}
+) where {S,T,N,X,L}
+    quote
+        $(Expr(:meta,:inline))
+        a = A.λ
+        @vvectorize $T for l ∈ 1:$L
+            C[l] += a * B[l]
+        end
+        nothing
+    end
+end
+@generated function RESERVED_INCREMENT_SEED_RESERVED!(
+    C::UninitializedArray{S,T,N,X,L},
+    A::UniformScaling{T},
+    B::AbstractFixedSizeArray{S,T,N,X,L}
+) where {S,T,N,X,L}
+    quote
+        $(Expr(:meta,:inline))
+        a = A.λ
+        @vvectorize $T for l ∈ 1:$L
+            C[l] = a * B[l]
+        end
+        nothing
+    end
+end
+
 

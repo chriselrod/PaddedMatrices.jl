@@ -120,7 +120,7 @@ function zero!(A::AbstractMutableFixedSizeArray{S,T,N,P,L}) where {S,T,N,P,L}
     end
 end
 function zero!(A::AbstractMutableFixedSizeArray{S,Vec{W,T},N,P,L}) where {S,W,T,N,P,L}
-    ptrA = reinterpret(Ptr{T}, pointer(A))
+    ptrA = Base.unsafe_convert(Ptr{T}, pointer(A))
     @inbounds for i ∈ 0:L-1
         VectorizationBase.vstore!(ptrA + i*sizeof(T), zero(T))
     end

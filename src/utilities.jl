@@ -65,6 +65,38 @@ end
 Base.cumsum(A::AbstractMutableFixedSizeVector) = cumsum!(copy(A))
 Base.cumsum(A::AbstractConstantFixedSizeVector) = ConstantFixedSizeVector(cumsum!(FixedSizeVector(A)))
 
+# @generated function Base.all(::typeof(isfinite), a::AbstractFixedSizeVector{M,T}) where {M,T}
+#     quote
+#         $(Expr(:meta,:inline))
+#         bv = $(Expr(:tuple, [:(Core.VecElement(true)) for w ∈ 1:W]...))
+#         @vvectorize $T for m ∈ 1:$M
+#             bv = SIMDPirates.vand(bv, SIMDPirates.visfinite(a[m]))
+#         end
+#         SIMDPirates.vall(bv)
+#     end
+# end
+# # @generated function allfinite(a::AbstractFixedSizeVector{M,T}) where {M,T}
+@generated function Base.all(::typeof(isfinite), a::AbstractFixedSizeVector{M,T}) where {M,T}
+    W, Wshift = VectorizationBase.pick_vector_width_shift(M, T)
+    U = VectorizationBase.mask_type(W)
+    reps = M >> Wshift
+    rem = M & (W - 1)
+    quote
+        $(Expr(:meta,:inline))
+        mask = $(typemax(U))
+        va = VectorizationBase.vectorizable(a)
+        i = 0
+        for _ ∈ 1:$reps
+            v = vload(Vec{$W,$T}, va, i)
+            mask &= SIMDPirates.visfinite_mask(v)
+            i += $W
+        end
+        v = vload(Vec{$W,$T}, va, i, $(VectorizationBase.mask(T, rem)))
+        mask &= SIMDPirates.visfinite_mask(v)
+        mask >= $(Base.unsafe_trunc(U, (1 << W) - 1))
+    end
+end
+
 # @generated function Base.maximum(A::AbstractFixedSizeArray{S,T,P,L}) where {S,T,P,L}
 #     W, Wshift = VectorizationBase.pick_vector_width_shift(L, T)
 #     V = Vec{W,T}
