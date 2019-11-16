@@ -178,255 +178,6 @@ end
 end
 
 
-function elementwise_product_quote(N,T,P)
-    quote
-        $(Expr(:meta,:inline)) # do we really want to force inline this?
-        mv = FixedSizeVector{$N,$T,$P}(undef)
-        @vvectorize $T for i ∈ 1:$P
-            mv[i] = A[i] * B[i]
-        end
-    end
-end
-
-@generated function Base.:*(Adiagonal::Diagonal{T,<:AbstractFixedSizeVector{N,T,P}}, B::AbstractFixedSizeVector{N,T,P}) where {N,T,P}
-    quote
-        A = Adiagonal.diag
-        $(elementwise_product_quote(N,T,P))
-        ConstantFixedSizeArray(mv)
-    end
-end
-@generated function Base.:*(
-            Aadjoint::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeVector{N,T,P}},
-            Bdiagonal::Diagonal{T,<:AbstractFixedSizeVector{N,T,P}}
-        ) where {N,T,P}
-    quote
-        A = Aadjoint.parent
-        B = Bdiagonal.diag
-        $(elementwise_product_quote(N,T,P))
-        ConstantFixedSizeArray(mv)'
-    end
-end
-@generated function Base.:*(
-            Adiagonal::Diagonal{T,<:AbstractMutableFixedSizeVector{N,T,P}},
-            B::AbstractMutableFixedSizeVector{N,T,P}) where {N,T,P}
-    quote
-        A = Adiagonal.diag
-        $(elementwise_product_quote(N,T,P))
-        mv
-    end
-end
-@generated function Base.:*(
-    Aadjoint::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeVector{N,T,P1}},
-    Bdiagonal::Diagonal{T,<:AbstractMutableFixedSizeVector{N,T,P2}}
-) where {N,T,P1,P2}
-    P = min(P1,P2)
-    quote
-        A = Aadjoint.parent
-        B = Bdiagonal.diag
-        $(elementwise_product_quote(N,T,P))
-        mv'
-    end
-end
-@generated function Base.:*(
-    sp::StackPointer,
-    Adiagonal::Diagonal{T,<:AbstractMutableFixedSizeVector{N,T,P1}},
-    B::AbstractMutableFixedSizeVector{N,T,P2}
-) where {N,T,P1,P2}
-    P = min(P1,P2)
-    quote
-        sp, mv = PtrVector{$N,$T,$P}(sp)
-        A = Adiagonal.diag
-        @vvectorize $T for p ∈ 1:$P
-            mv[p] = A[p] * B[p]
-        end
-        sp, mv
-    end
-end
-@generated function Base.:*(
-    sp::StackPointer,
-    Aadjoint::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeVector{N,T,P1}},
-    Bdiagonal::Diagonal{T,<:AbstractMutableFixedSizeVector{N,T,P2}}
-) where {N,T,P1,P2}
-    P = min(P1,P2)
-    quote
-#        $(Expr(:meta,:inline))
-        sp, mv = PtrVector{$N,$T,$P}(sp)
-        A = Aadjoint.parent
-        B = Bdiagonal.diag
-        @vvectorize $T for p ∈ 1:$P
-            mv[p] = A[p] * B[p]
-        end
-        sp, mv'
-    end
-end
-
-
-@generated function Base.:+(
-    A::AbstractFixedSizeArray{S,T,N,X,L},
-    B::AbstractFixedSizeArray{S,T,N,X,L}
-) where {S,T<:Number,N,X,L}
-    quote
-        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
-        @vvectorize $T for i ∈ 1:$L
-            mv[i] = A[i] + B[i]
-        end
-        ConstantFixedSizeArray(mv)
-    end
-end
-@generated function Base.:+(A::AbstractMutableFixedSizeArray{S,T,N,X,L}, B::AbstractMutableFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
-    if isview(A) | isview(B) | (first(X.parameters)::Int > 1)
-        return quote
-            $(Expr(:meta,:inline))
-            mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
-            @inbounds for l ∈ 1:$L
-                mv[l] = A[l] + B[l]
-            end
-            mv
-        end
-    end
-    quote
-        $(Expr(:meta,:inline))
-        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
-        @vvectorize $T for l ∈ 1:$L
-            mv[l] = A[l] + B[l]
-        end
-        mv
-    end
-end
-@generated function Base.:+(
-    sp::StackPointer,
-    A::AbstractFixedSizeArray{S,T,N,X,LA},
-    B::AbstractFixedSizeArray{S,T,N,X,LB}
-) where {S,T<:Number,N,X,LA,LB}
-    L = min(LA,LB)
-    @assert first(X.parameters)::Int == 1
-    quote
-        mv = PtrArray{$S,$T,$N,$X,$L}(pointer(sp,$T))
-        @vvectorize $T for i ∈ 1:$L
-            mv[i] = A[i] + B[i]
-        end
-        sp + $(VectorizationBase.align(sizeof(T)*L)), mv
-    end
-end
-@generated function Base.:+(
-    sp::StackPointer,
-    A::AbstractFixedSizeVector{N,T,LA},
-    B::AbstractFixedSizeVector{N,T,LB}
-) where {N,T<:Number,LA,LB}
-    L = min(LA,LB)
-    quote
-        mv = PtrVector{$N,$T,$L}(pointer(sp,$T))
-        @vvectorize $T for i ∈ 1:$L
-            mv[i] = A[i] + B[i]
-        end
-        sp + $(VectorizationBase.align(sizeof(T)*L)), mv
-    end
-end
-@inline function Base.:+(
-    A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,P,L}},
-    B::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,P,L}}
-) where {S,T,N,P,L}
-    (A' + B')'
-end
-@inline function Base.:+(
-    sp::StackPointer,
-    A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,XA,LA}},
-    B::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,XB,LB}}
-) where {S,T,N,XA,XB,LA,LB}
-    sp2, C = (+(sp, A', B'))
-    sp2, C'
-end
-@generated function Base.:+(a::T, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
-    quote
-        # $(Expr(:meta,:inline))
-        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
-        @vvectorize $T for i ∈ 1:$L
-            mv[i] = a + B[i]
-        end
-        ConstantFixedSizeArray(mv)
-    end
-end
-@generated function SIMDPirates.vadd(
-    sp::StackPointer, a::T,
-    B::AbstractFixedSizeArray{S,T,N,X,L}
-) where {S,T<:Number,N,X,L}
-    quote
-        # $(Expr(:meta,:inline))
-        (sp, mv) = PtrArray{$S,$T,$N,$X,$L}(sp)
-        @vvectorize $T for i ∈ 1:$L
-            mv[i] = a + B[i]
-        end
-        sp, mv
-    end
-end
-@generated function Base.:+(A::AbstractFixedSizeArray{S,T,N,X,L}, b::T) where {S,T<:Number,N,X,L}
-    quote
-        # $(Expr(:meta,:inline))
-        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
-        @vvectorize $T for i ∈ 1:$L
-            mv[i] = A[i] + b
-        end
-        ConstantFixedSizeArray(mv)
-    end
-end
-@generated function Base.:+(a::T, Badj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,X,L}}) where {S,T<:Number,N,X,L}
-    quote
-        $(Expr(:meta,:inline))
-        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
-        @vvectorize $T for i ∈ 1:$L
-            mv[i] = a + B[i]
-        end
-        ConstantFixedSizeArray(mv)'
-    end
-end
-@generated function Base.:+(Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,X,L}}, b::T) where {S,T<:Number,N,X,L}
-    quote
-        $(Expr(:meta,:inline))
-        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
-        @vvectorize $T for i ∈ 1:$L
-            mv[i] = A[i] + b
-        end
-        ConstantFixedSizeArray(mv)'
-    end
-end
-@generated function Base.:-(A::AbstractFixedSizeArray{S,T,N,X,L}, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
-    quote
-        # $(Expr(:meta,:inline))
-        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
-        @vvectorize $T for i ∈ 1:$L
-            mv[i] = A[i] - B[i]
-        end
-        ConstantFixedSizeArray(mv)
-    end
-end
-@generated function diff!(C::AbstractMutableFixedSizeArray{S,T,N,X,L}, A::AbstractFixedSizeArray{S,T,N,X,L}, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
-    quote
-        @vvectorize $T for i ∈ 1:$L
-            C[i] = A[i] - B[i]
-        end
-        C
-    end
-end
-@generated function Base.:-(A::AbstractFixedSizeArray{S,T,N,X,L}, b::T) where {S,T<:Number,N,L,X}
-    quote
-        # $(Expr(:meta,:inline))
-        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
-        @vvectorize $T for i ∈ 1:$L
-            mv[i] = A[i] - b
-        end
-        ConstantFixedSizeArray(mv)
-    end
-end
-@generated function Base.:-(a::T, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
-    quote
-        # $(Expr(:meta,:inline))
-        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
-        @vvectorize $T for i ∈ 1:$L
-            mv[i] = a - B[i]
-        end
-        ConstantFixedSizeArray(mv)
-    end
-end
 
 
 #### This function problematically assumes padding.
@@ -586,12 +337,14 @@ end
 @inline extract_λ(a::UniformScaling) = a.λ
 @generated function Base.:*(A::AbstractFixedSizeArray{S,T,N,X,L}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,X,L}
     quote
+        $(Expr(:meta,:inline))
         mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
         b = extract_λ(bλ)
         @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] * b
         end
-        ConstantFixedSizeArray(mv)
+        mv
+        # ConstantFixedSizeArray(mv)
     end
 end
 @generated function Base.:*(Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,X,L}}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,X,L}
@@ -603,7 +356,8 @@ end
         @vvectorize $T for i ∈ 1:$L
             mv[i] = A[i] * b
         end
-        ConstantFixedSizeArray(mv)'
+        mv'
+        # ConstantFixedSizeArray(mv)'
     end
 end
 @generated function Base.:*(
@@ -638,11 +392,27 @@ end
 end
 @generated function Base.:*(a::T, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
     quote
+        $(Expr(:meta,:inline))
         mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
+        # mv = PtrArray{$S,$T,$N,$X,$L}(SIMDPirates.alloca(Val{$L}(), $T))
         @vvectorize $T for i ∈ 1:$L
             mv[i] = a * B[i]
         end
+        # mv
         ConstantFixedSizeArray(mv)
+    end
+end
+@generated function Base.:*(sp::StackPointer, a::T, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
+    quote
+        $(Expr(:meta,:inline))
+        # mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
+        # mv = PtrArray{$S,$T,$N,$X,$L}(SIMDPirates.alloca(Val{$L}(), $T))
+        sp, mv = PtrArray{$S,$T,$N,$X,$L}(sp)
+        @vvectorize $T for i ∈ 1:$L
+            mv[i] = a * B[i]
+        end
+        sp, mv
+        # ConstantFixedSizeArray(mv)
     end
 end
 @generated function vmuladd!(
@@ -690,7 +460,17 @@ end
 end
 
 @generated function LinearAlgebra.dot(A::AbstractFixedSizeArray{S,T,N,X,L}, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
-    if N > 1 && first(S.parameters)::Int != (X.parameters[2])::Int
+    if isdense(S.parameters, X.parameters)
+        M = N == 1 ? first(S.parameters)::Int : L
+        return quote
+            $(Expr(:meta,:inline))
+            out = zero($T)
+            @vvectorize $T 4 for m ∈ 1:$M
+                out += A[m] * B[m]
+            end
+            out
+        end
+    else
         ST = tuple(S.parameters...)
         P = (X.parameters[2])::Int
         return quote
@@ -704,20 +484,21 @@ end
             end
             out
         end
-    else #if N == 1
-        M = N == 1 ? first(S.parameters)::Int : L
-        return quote
-            out = zero($T)
-            @vvectorize $T 4 for m ∈ 1:$M
-                out += A[m] * B[m]
-            end
-            out
-        end
     end
 end
 @generated function dot_self(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
     nrows = first(S.parameters)::Int
-    if N > 1 && first(S.parameters)::Int != (X.parameters[2])::Int
+    if isdense(S.parameters, X.parameters)
+        M = N == 1 ? nrows : L
+        return quote
+            out = zero($T)
+            @vvectorize $T 4 for m ∈ 1:$M
+                Aₘ = A[m]
+                out += Aₘ * Aₘ
+            end
+            out
+        end
+    else
         P = (X.parameters[2])::Int
         return quote
             out = zero($T)
@@ -728,16 +509,6 @@ end
                     out += Aᵢ * Aᵢ
                 end
                 ind += $P
-            end
-            out
-        end
-    else #if N == 1
-        M = N == 1 ? nrows : L
-        return quote
-            out = zero($T)
-            @vvectorize $T 4 for m ∈ 1:$M
-                Aₘ = A[m]
-                out += Aₘ * Aₘ
             end
             out
         end
