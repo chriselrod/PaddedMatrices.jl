@@ -424,7 +424,7 @@ pD, pA, and pX must be defined as Ptr{T}.
 Similarly, to use a runtime mask, it must be named `__mask__`, and the expression to define it must be placed somewhere.
 
 """
-@noinline function kernel_quote(kernel::DynamicKernel; init::Bool = true, force_inline::Bool = true, mask_ops::Bool = true, runtime_mask::Bool = false)
+function kernel_quote(kernel::DynamicKernel; init::Bool = true, force_inline::Bool = true, mask_ops::Bool = true, runtime_mask::Bool = false)
     @unpack R, C, N, T, stride_D, stride_A, stride_X, X_transposed, negative = kernel
     size_T = sizeof(T)
     W, Wshift = VectorizationBase.pick_vector_width_shift(R, T)

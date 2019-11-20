@@ -537,7 +537,10 @@ function mulquote(
         $(mulquote(M,N,P,AR,XR,T,init,nothing,DR))
     end
 end
-function mulquote(M,N,P,AR,XR,T,init=:initkernel!,prefetchAX=nothing,DR=AR)
+function mulquote(
+    M::Int,N::Int,P::Int,AR::Int,XR::Int,::Type{T},
+    init::Symbol=:initkernel!,prefetchAX=nothing,DR::Int=AR
+) where {T}
     (L1S, L2S, L3S), num = blocking_structure(M, N, P, T)
     if num == 0 || (M*N*P < 64^3)#104^3)
         return cache_mulquote(M,N,P,AR,XR,L1S,T,init,DR)
