@@ -8,7 +8,7 @@ using VectorizationBase, SIMDPirates,
     LoopVectorization, LinearAlgebra,
     Random, MacroTools, StackPointers
 
-
+import SIMDPirates: vmuladd
 import ReverseDiffExpressionsBase:
     RESERVED_INCREMENT_SEED_RESERVED!, ∂getindex,
     alloc_adjoint, uninitialized, initialized, isinitialized
@@ -32,14 +32,15 @@ export @Constant, @Mutable,
     PtrVector, DynamicPtrVector,
     PtrMatrix, DynamicPtrMatrix,
     PtrArray, DynamicPtrArray,
-    LazyMap, Static, muladd!, mul!
+    LazyMap, Static, StaticOneTo, muladd!, mul!
 
 
     
 
 
-@noinline ThrowBoundsError() = throw(BoundsError())
-@noinline ThrowBoundsError(str) = throw(BoundsError(str))
+@noinline ThrowBoundsError() = throw("Bounds Error")
+@noinline ThrowBoundsError(str) = throw(str)
+@noinline ThrowBoundsError(A, i) = throw(BoundsError(A, i))
 
 # Like MacroTools.prettify, but it doesn't alias gensyms. This is because doing so before combining expressions could cause problems.
 simplify_expr(ex::Expr; lines = false, macro_module::Union{Nothing,Module} = nothing)::Expr =
@@ -48,6 +49,7 @@ simplify_expr(x) = x
 
 struct Static{N} end
 Base.@pure Static(N) = Static{N}()
+@generated StaticOneTo(::Val{K}) where {K} = Static{1:K}()
 static_type(::Static{N}) where {N} = N
 static_type(::Type{Static{N}}) where {N} = N
 (::Base.Colon)(i::Int64,::Static{N}) where {N} = i:N

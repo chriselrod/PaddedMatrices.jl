@@ -19,11 +19,12 @@ function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Boo
             push!(x2, xvn)
         elseif inds[n] <: Integer
             push!(offset_expr, :($(sizeof(T)) * $xvn * (inds[$n] - 1)))
-        else
-            @assert inds[n] <: Static
+        elseif inds[n] <: Static
             push!(s2, staticrangelength(inds[n]))
             push!(x2, xvn)
             offset += sizeof(T) * (first(static_type(inds[n])) - 1) * xvn
+        else
+            return :(Base.unsafe_view(A, inds...)) # bypass Base.view definition here
         end
     end
     S2 = Tuple{s2...}

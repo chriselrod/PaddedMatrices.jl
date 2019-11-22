@@ -398,7 +398,7 @@ end
     quote
         $(Expr(:meta, :inline))
         @boundscheck begin
-            Base.Cartesian.@nif $(N+1) d->( d == 1 ? i[d] > $R : i[d] > size(A,d)) d -> ThrowBoundsError("Dimension $d out of bounds") d -> nothing
+            Base.Cartesian.@nif $(N+1) d->( d == 1 ? i[d] > $R : i[d] > size(A,d)) d -> ThrowBoundsError(A, i) d -> nothing
         end
         SIMDPirates.vstore!(pointer(A) + sizeof(NTuple{W,Core.VecElement{T}}) * $ex, v)
         v

@@ -11,22 +11,22 @@ function elementwise_op_quote(m, f, op, eq, sp, alloc::Bool, aisscalar::Bool, bi
     args = Expr[]
     if aisscalar
         push!(args, :(A::T))
-        Aref = QuoteNode(:A)
+        Aref = :A
     else
         push!(args, :(A::AbstractFixedSizeArray{S,T,N,X,L}))
-        Aref = QuoteNode(:(A[l]))
+        Aref = :(Expr(:ref, :A, :l))
     end
     if bisscalar
         push!(args, :(B::T))
-        Bref = QuoteNode(:B)
+        Bref = :B
     else
         push!(args, :(B::AbstractFixedSizeArray{S,T,N,X,L}))
-        Bref = QuoteNode(:(B[l]))
+        Bref = :(Expr(:ref, :B, :l))
     end
     if sp && alloc
-        allocq = :(pushfirst!(q.args, :((sp,C) = PtrArray{S,T,N,X,L}(sp))))
+        allocq = :(pushfirst!(q.args, Expr(:(=), Expr(:tuple,:sp,:C), Expr(:call, Expr(:curly, :PtrArray,:S,:T,:N,:X,:L),:sp))))
     elseif alloc
-        allocq = :(pushfirst!(q.args, :(C = FixedSizeArray{S,T,N,X,L}(undef))))
+        allocq = :(pushfirst!(q.args, Expr(:(=), :C, Expr(:call, Expr(:curly, :FixedSizeArray, :S, :T,:N, :X, :L), :undef))))
     else
         pushfirst!(args, :(C::AbstractMutableFixedSizeArray{S,T,N,X,L}))
         allocq = nothing
@@ -37,17 +37,24 @@ function elementwise_op_quote(m, f, op, eq, sp, alloc::Bool, aisscalar::Bool, bi
     else
         ret = :(push!(q.args, :C))
     end
-    
+    # q = Expr(:block,
+             # Expr(:macrocall, :@vvectorize, LineNumberNode(@__LINE__, @__FILE__), :T,
+                  # Expr(:for,
+                       # Expr(:(=), :l, Expr(:call, :(:), 1, :L)),
+                       # Expr(:block, Expr(eq, :(C[l]), Expr(:call, op, Aref, Bref)))
+                       # )
+                  # )
+             # )
     quote
         @generated function $m.$f($(args...)) where {S,T,N,X,L}
             q = Expr(:block,
-                     Expr(:macrocall, LineNumberNode(@__LINE__, @__FILE__), T,
-                          Expr(:for,
-                               Expr(:(=), :l, :(1:L)),
-                               Expr(:block, Expr($eq, :(C[l]), Expr(:call, $op, $Aref, $Bref)))
-                               )
-                          )
-                     )
+             Expr(:macrocall, Symbol("@vvectorize"), LineNumberNode(@__LINE__, @__FILE__), T,
+                  Expr(:for,
+                       Expr(:(=), :l, Expr(:call, :(:), 1, L)),
+                       Expr(:block, Expr($(QuoteNode(eq)), Expr(:ref, :C, :l), Expr(:call, $(QuoteNode(op)), $Aref, $Bref)))
+                       )
+                  )
+             )
             $allocq
             4VectorizationBase.pick_vector_width(T) < L || pushfirst!(q.args, Expr(:meta,:inline))
             $ret
@@ -87,7 +94,7 @@ end
 
 @inline Base.:*(A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeVector{N,T,P}}, B::Diagonal{T,<:AbstractFixedSizeVector{N,T,P}}) where {N,T,P} = (A.parent * B.diag)'
 @inline function Base.:*(sp::StackPointer, A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeVector{N,T,P}}, B::Diagonal{T,<:AbstractFixedSizeVector{N,T,P}}) where {N,T,P}
-    sp, c = sp * A.parent * B.diag
+    (sp, c) = sp * A.parent * B.diag
     sp, c'
 end
 
@@ -131,7 +138,7 @@ end
     A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,XA,LA}},
     B::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,XB,LB}}
 ) where {S,T,N,XA,XB,LA,LB}
-    sp2, C = (+(sp, A', B'))
+    (sp2, C) = (+(sp, A', B'))
     sp2, C'
 end
 # @generated function Base.:+(a::T, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
