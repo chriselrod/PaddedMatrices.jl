@@ -6,19 +6,22 @@
 
 # end
 
-
-function elementwise_op_quote(m, f, op, eq, sp, alloc::Bool, aisscalar::Bool, bisscalar::Bool)
+# function elementwise_op_quote(S, T, N, X, L, f, op, eq, sp, alloc::Bool, aisscalar::Bool, bisscalar::Bool)
+    # Aref = aisscalar ? QuoteNode(:A) : :(Expr(:ref, :A, :l))
+    # Bref = bisscalar ? QuoteNode(:B) : :(Expr(:ref, :B, :l))
+# end
+function elementwise_op_func_quote(m, f, op, eq, sp, alloc::Bool, aisscalar::Bool, bisscalar::Bool)
     args = Expr[]
     if aisscalar
         push!(args, :(A::T))
-        Aref = :A
+        Aref = QuoteNode(:A)
     else
         push!(args, :(A::AbstractFixedSizeArray{S,T,N,X,L}))
         Aref = :(Expr(:ref, :A, :l))
     end
     if bisscalar
         push!(args, :(B::T))
-        Bref = :B
+        Bref = QuoteNode(:B)
     else
         push!(args, :(B::AbstractFixedSizeArray{S,T,N,X,L}))
         Bref = :(Expr(:ref, :B, :l))
@@ -37,16 +40,9 @@ function elementwise_op_quote(m, f, op, eq, sp, alloc::Bool, aisscalar::Bool, bi
     else
         ret = :(push!(q.args, :C))
     end
-    # q = Expr(:block,
-             # Expr(:macrocall, :@vvectorize, LineNumberNode(@__LINE__, @__FILE__), :T,
-                  # Expr(:for,
-                       # Expr(:(=), :l, Expr(:call, :(:), 1, :L)),
-                       # Expr(:block, Expr(eq, :(C[l]), Expr(:call, op, Aref, Bref)))
-                       # )
-                  # )
-             # )
     quote
         @generated function $m.$f($(args...)) where {S,T,N,X,L}
+            # elementwise_op_quote(S.parameters, T, N, X.parameters, L, $(QuoteNode(op)), $(QuoteNode(eq)), $sp, $alloc, $aisscalar, $bisscalar)
             q = Expr(:block,
              Expr(:macrocall, Symbol("@vvectorize"), LineNumberNode(@__LINE__, @__FILE__), T,
                   Expr(:for,
@@ -83,7 +79,7 @@ for sptr ∈ (true,false)
         for aisscalar ∈ (true,false)
             for bisscalar ∈ (true,false)
                 aisscalar && bisscalar && continue
-                eval(elementwise_op_quote(m, f, op, eq, sptr, alloc, aisscalar, bisscalar))
+                eval(elementwise_op_func_quote(m, f, op, eq, sptr, alloc, aisscalar, bisscalar))
             end
         end
     end
