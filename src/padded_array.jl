@@ -18,7 +18,7 @@ const DynamicPaddedVector{T} = DynamicPaddedArray{T,1}
 const DynamicPaddedMatrix{T} = DynamicPaddedArray{T,2}
 const DynamicPtrVector{T} = DynamicPtrArray{T,1}
 const DynamicPtrMatrix{T} = DynamicPtrArray{T,2}
-
+isdense(::Type{<:AbstractDynamicPaddedArray}) = false
 @inline LoopVectorization.stride_row(A::DynamicPaddedArray) = size(A.data,1)
 @inline LoopVectorization.stride_row(A::DynamicPtrArray) = A.stride
 

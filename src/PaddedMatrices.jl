@@ -12,6 +12,7 @@ import SIMDPirates: vmuladd
 import ReverseDiffExpressionsBase:
     RESERVED_INCREMENT_SEED_RESERVED!, ∂getindex,
     alloc_adjoint, uninitialized, initialized, isinitialized
+import LoopVectorization: isdense
 
 using Parameters: @unpack
 using MacroTools: @capture, prettify, postwalk
@@ -153,6 +154,10 @@ end
     end
     p == (last(X)::Int)
 end
+@generated function isdense(::Type{<:AbstractFixedSizeArray{S,T,N,X}}) where {S,T,N,X}
+    isdense(S.parameters, X.parameters)
+end
+
 @generated type_length(::AbstractFixedSizeArray{S}) where {S} = simple_vec_prod(S.parameters)
 @generated type_length(::Type{<:AbstractFixedSizeArray{S}}) where {S} = simple_vec_prod(S.parameters)
 @generated param_type_length(::AbstractFixedSizeArray{S}) where {S} = simple_vec_prod(S.parameters)
