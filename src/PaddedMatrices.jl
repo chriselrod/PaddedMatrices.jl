@@ -6,7 +6,8 @@ module PaddedMatrices
 using VectorizationBase, SIMDPirates,
     SLEEFPirates, VectorizedRNG,
     LoopVectorization, LinearAlgebra,
-    Random, MacroTools, StackPointers
+    Random, MacroTools, StackPointers,
+    SpecialFunctions # Perhaps there is a better way to support erf?
 
 import SIMDPirates: vmuladd
 import ReverseDiffExpressionsBase:
