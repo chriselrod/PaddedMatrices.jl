@@ -9,5 +9,5 @@ const ZeroInitializedMatrix{M,N,T,P,L} = ZeroInitializedArray{Tuple{M,N},T,2,Tup
 @inline VectorizationBase.vectorizable(A::ZeroInitializedArray) = VectorizationBase.ZeroInitializedPointer(A.ptr)
 @inline ZeroInitializedArray(A::AbstractMutableFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = ZeroInitializedArray{S,T,N,X,L}(pointer(A))
 @inline VectorizationBase.zeroinitialized(A::AbstractMutableFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = ZeroInitializedArray{S,T,N,X,L}(pointer(A))
-
+@inline Base.getindex(A::ZeroInitializedArray{S,T}, i...) where {S,T} = zero(T)
 
