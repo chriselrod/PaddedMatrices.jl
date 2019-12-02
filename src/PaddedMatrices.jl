@@ -274,5 +274,8 @@ function __init__()
     # @require ForwardDiff="f6369f11-7733-5829-9624-2563aa707210" @eval using PaddedMatricesForwardDiff
 end
 
+include("precompile.jl")
+_precompile_()
+
 
 end # module
