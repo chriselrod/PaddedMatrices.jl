@@ -268,14 +268,18 @@ macro temporary_similar(A)
 end
 
 @def_stackpointer_fallback vexp ∂materialize DynamicPtrVector DynamicPtrMatrix DynamicPtrArray 
+
+include("precompile.jl")
+_precompile_()
+
 function __init__()
     @add_stackpointer_method vexp ∂materialize DynamicPtrVector DynamicPtrMatrix DynamicPtrArray 
     set_zero_subnormals(true)
     # @require ForwardDiff="f6369f11-7733-5829-9624-2563aa707210" @eval using PaddedMatricesForwardDiff
+    _precompile_()
 end
 
-include("precompile.jl")
-_precompile_()
+
 
 
 end # module
