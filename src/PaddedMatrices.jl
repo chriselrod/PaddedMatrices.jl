@@ -16,7 +16,7 @@ import ReverseDiffExpressionsBase:
 import LoopVectorization: isdense
 
 using Parameters: @unpack
-using MacroTools: @capture, prettify, postwalk
+using MacroTools: prettify, postwalk
 
 export @Constant, @Mutable,
     AbstractFixedSizeArray,
@@ -191,34 +191,46 @@ end
 @generated function sub2ind(::AbstractFixedSizeArray{S,T,N,X}, i) where {S,T,N,X}
     sub2ind_expr(X.parameters)
 end
-
+function sum_inds(args)
+    p = 0
+    ex = Expr(:call, :+)
+    for a ∈ args
+        if a isa Integer
+            p += a
+        else
+            push!(ex.args, a)
+        end
+    end
+    length(ex.args) == 1 && return p
+    push!(ex.args, p)
+    ex
+end
+function mul_inds(args)
+    p = 1
+    ex = Expr(:call, :*)
+    for a ∈ args
+        if a isa Integer
+            p *= a
+        else
+            push!(ex.args, a)
+        end
+    end
+    length(ex.args) == 1 && return p
+    push!(ex.args, p)
+    ex
+end
 function evaluate_integers(expr)
     p::Int = 0
     MacroTools.postwalk(expr) do x
-        if @capture(x, +(args__))
-            p = 0
-            args2 = Any[]
-            for a ∈ args
-                if a isa Integer
-                    p += a
-                else
-                    push!(args2, a)
-                end
-            end
-            return length(args2) == 0 ? p : :(+($p, $(args2...)))
-        elseif @capture(x, *(args__))
-            p = 1
-            args2 = Any[]
-            for a ∈ args
-                if a isa Integer
-                    p *= a
-                else
-                    push!(args2, a)
-                end
-            end
-            return length(args2) == 0 ? p : :(*($p, $(args2...)))
+        (x isa Expr && x.head === :call) || return x
+        ex::Expr = x
+        f = first(ex.args)
+        if f === :+
+            sum_inds(@view(ex.args[2:end]))
+        elseif f === :*
+            mul_inds(@view(ex.args[2:end]))
         else
-            return x
+            return ex
         end
     end
 end
