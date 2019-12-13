@@ -564,4 +564,21 @@ end
 end
 
 
+@inline function vectorizable(A::AbstractMutableFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+    PtrArray{S,T,N,X,L,false}(pointer(A))
+    # stride1 = first(X.parameters)::Int
+    # if isone(stride1)
+    #     quote
+    #         $(Expr(:meta,:inline))
+    #         Pointer{$T}(pointer(A))
+    #     end
+    # else
+    #     quote
+    #         $(Expr(:meta,:inline))
+    #         StaticStridedPointer{$T,$stride1}(pointer(A))
+    #     end
+    # end
+end
+# @generated function vload(A::PtrArray{S,T,N,X,L}, 
+
 
