@@ -1,5 +1,5 @@
 name = "PaddedMatrices"
-uuid = "1f4db776-fdbc-11e8-06f3-e1707b8b4170"
+uuid = "aaaacae8-1622-11e9-2a5c-532679323890"
 authors = ["Chris Elrod <elrodc@gmail.com>"]
 version = "0.1.0"
 
@@ -16,9 +16,3 @@ SpecialFunctions = "276daf66-3868-5448-9aa4-cd146d93841b"
 StackPointers = "062a3e2c-34b1-4659-9cae-7af421e0d832"
 VectorizationBase = "3d5dd08c-fd9d-11e8-17fa-ed2836048c2f"
 VectorizedRNG = "33b4df10-0173-11e9-2a0c-851a7edac40e"
-
-[extras]
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
-
-[targets]
-test = ["Test"]

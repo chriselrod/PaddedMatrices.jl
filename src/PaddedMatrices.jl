@@ -6,7 +6,7 @@ module PaddedMatrices
 using VectorizationBase, SIMDPirates,
     SLEEFPirates, VectorizedRNG,
     LoopVectorization, LinearAlgebra,
-    Random, MacroTools, StackPointers,
+    Random, StackPointers, MacroTools,
     SpecialFunctions # Perhaps there is a better way to support erf?
 
 import SIMDPirates: vmuladd
@@ -16,7 +16,6 @@ import ReverseDiffExpressionsBase:
 import LoopVectorization: isdense
 
 using Parameters: @unpack
-using MacroTools: prettify, postwalk
 
 export @Constant, @Mutable,
     AbstractFixedSizeArray,
@@ -218,21 +217,6 @@ function mul_inds(args)
     length(ex.args) == 1 && return p
     push!(ex.args, p)
     ex
-end
-function evaluate_integers(expr)
-    p::Int = 0
-    MacroTools.postwalk(expr) do x
-        (x isa Expr && x.head === :call) || return x
-        ex::Expr = x
-        f = first(ex.args)
-        if f === :+
-            sum_inds(@view(ex.args[2:end]))
-        elseif f === :*
-            mul_inds(@view(ex.args[2:end]))
-        else
-            return ex
-        end
-    end
 end
 
 ## WHAT IS THIS FOR?

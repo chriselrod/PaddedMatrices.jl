@@ -16,32 +16,30 @@ struct DKernel{Mₖ,Pₖ} <: AbstractSizedKernel{Mₖ,Pₖ}
 end
 Base.@pure DKernel(Mₖ,Pₖ,N,stride_D,stride_A,stride_X) = Kernel{Mₖ,Pₖ}(N,stride_D,stride_A,stride_X)
 
-struct DynamicKernel <: AbstractKernel
+struct DynamicKernel{T} <: AbstractKernel
     R::Int
     C::Int
     N::Union{Symbol,Int}
     stride_D::Union{Symbol,Int}
     stride_A::Union{Symbol,Int}
     stride_X::Union{Symbol,Int}
-    T::DataType
     X_transposed::Bool
     negative::Bool
 end
 
-@noinline function reps_and_rem(kernel::DynamicKernel)
-    @unpack R, T = kernel
+@noinline function reps_and_rem(kernel::DynamicKernel{T}) where {T}
+    @unpack R = kernel
     W, Wshift = VectorizationBase.pick_vector_width_shift(R, T)
     Riter = R >>> Wshift
     Rrem = R & (W-1)
     Riter, Rrem
 end
 
-@noinline function DynamicKernel(
+@noinline function DynamicKernel{T}(
     R::Int, C::Int, N::Union{Symbol,Int},
-    stride_D::Union{Symbol,Int}, stride_A::Union{Symbol,Int}, stride_X::Union{Symbol,Int},
-    T::DataType; X_transposed::Bool = false, negative::Bool = false
-)
-    DynamicKernel(R, C, N, stride_D, stride_A, stride_X, T, X_transposed, negative)
+    stride_D::Union{Symbol,Int}, stride_A::Union{Symbol,Int}, stride_X::Union{Symbol,Int}, X_transposed::Bool = false
+) where {T}
+    DynamicKernel{T}(R, C, N, stride_D, stride_A, stride_X, X_transposed, false)
 end
 @noinline function mul_block(V, W, R1, R2, m_rep, N, P, poffset::Int = 0, vA = :vA, B = :B, gemm = nothing)
     Prange = (1 + poffset):(P + poffset)
@@ -284,9 +282,9 @@ end
 end
 
 @noinline function mulinit(
-    kernel::DynamicKernel, mask_expr::Union{Symbol,Unsigned} = 0x00, force_inline::Bool = false, mask_ops::Bool = true
-)
-    @unpack T, R, C, stride_X, X_transposed, negative = kernel
+    kernel::DynamicKernel{T}, mask_expr::Union{Symbol,Unsigned} = 0x00, force_inline::Bool = false, mask_ops::Bool = true
+) where {T}
+    @unpack R, C, stride_X, X_transposed, negative = kernel
     W = VectorizationBase.pick_vector_width(R, T)
     V = Vec{W,T}
     size_T = sizeof(T)::Int
@@ -326,9 +324,9 @@ end
     q
 end
 @noinline function gemminit(
-    kernel::DynamicKernel, mask_expr::Union{Symbol,Unsigned} = 0x00, force_inline::Bool = false, mask_ops::Bool = true
-)
-    @unpack T, R, C, stride_D, stride_X = kernel
+    kernel::DynamicKernel{T}, mask_expr::Union{Symbol,Unsigned} = 0x00, force_inline::Bool = false, mask_ops::Bool = true
+) where {T}
+    @unpack R, C, stride_D, stride_X = kernel
     W = VectorizationBase.pick_vector_width(R, T)
     V = Vec{W,T}
     size_T = sizeof(T)
@@ -424,8 +422,8 @@ pD, pA, and pX must be defined as Ptr{T}.
 Similarly, to use a runtime mask, it must be named `__mask__`, and the expression to define it must be placed somewhere.
 
 """
-function kernel_quote(kernel::DynamicKernel; init::Bool = true, force_inline::Bool = true, mask_ops::Bool = true, runtime_mask::Bool = false)
-    @unpack R, C, N, T, stride_D, stride_A, stride_X, X_transposed, negative = kernel
+function kernel_quote(kernel::DynamicKernel{T}; init::Bool = true, force_inline::Bool = true, mask_ops::Bool = true, runtime_mask::Bool = false) where {T}
+    @unpack R, C, N, stride_D, stride_A, stride_X, X_transposed, negative = kernel
     size_T = sizeof(T)
     W, Wshift = VectorizationBase.pick_vector_width_shift(R, T)
     Wm1 = W - 1
@@ -509,11 +507,11 @@ function kernel_quote(kernel::DynamicKernel; init::Bool = true, force_inline::Bo
 end
 
 @noinline function kernel_tn_quote(
-    kernel::DynamicKernel, init::Bool,inline::Bool = false,
+    kernel::DynamicKernel{T}, init::Bool,inline::Bool = false,
     Asym::Symbol = :pA, Xsym::Symbol = :pX, Dsym::Symbol = :pD,
     d_isa_ptr::Bool = true, contract::Bool = true
-)
-    @unpack R, C, N, stride_D, stride_A, stride_X, T, negative = kernel
+) where {T}
+    @unpack R, C, N, stride_D, stride_A, stride_X, negative = kernel
     if N isa Symbol
         W, Wshift = VectorizationBase.pick_vector_width_shift(T)
     else#if N isa Int
@@ -584,8 +582,8 @@ end
 @generated function kernel!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}, ::Val{negative} = Val{false}()
 ) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T,negative}
-    kernel = DynamicKernel(
-        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = false, negative = negative
+    kernel = DynamicKernel{T}(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, false, negative
     )
     kernel_quote(kernel, init = false, force_inline = false, mask_ops = true, runtime_mask = false)
 end
@@ -593,16 +591,16 @@ end
 @generated function initkernel!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}, ::Val{negative} = Val{false}()
 ) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T,negative}
-    kernel = DynamicKernel(
-        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = false, negative = negative
+    kernel = DynamicKernel{T}(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, false, negative
     )
     kernel_quote(kernel, init = true, force_inline = false, mask_ops = true, runtime_mask = false)
 end
 @generated function kernel_nt!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}, ::Val{negative} = Val{false}()
 ) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T,negative}
-    kernel = DynamicKernel(
-        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = true, negative = negative
+    kernel = DynamicKernel{T}(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, true, negative
     )
     kernel_quote(kernel, init = false, force_inline = false, mask_ops = true, runtime_mask = false)
 end
@@ -610,8 +608,8 @@ end
 @generated function initkernel_nt!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}, ::Val{negative} = Val{false}()
 ) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T,negative}
-    kernel = DynamicKernel(
-        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = true, negative = negative
+    kernel = DynamicKernel{T}(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, true, negative
     )
     kernel_quote(kernel, init = true, force_inline = false, mask_ops = true, runtime_mask = false)
 end
@@ -619,8 +617,8 @@ end
 @generated function initkernel_tn!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}, ::Val{negative} = Val{false}()
 ) where {T,Mₖ,Pₖ,stride_A,stride_X,stride_D,N,negative}
-    kernel = DynamicKernel(
-        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, negative = negative
+    kernel = DynamicKernel{T}(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, false, negative
     )
     kernel_tn_quote(kernel, true, false)
 end
@@ -628,8 +626,8 @@ end
 @generated function kernel!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, kernel::DKernel{Mₖ,Pₖ}, ::Val{negative} = Val{false}()
 ) where {Mₖ,Pₖ,T,negative}
-    kernel = DynamicKernel(
-        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = false, negative = negative
+    kernel = DynamicKernel{T}(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, false, negative
     )
     kq = kernel_quote(kernel, init = false, force_inline = false, mask_ops = true, runtime_mask = false)
     quote
@@ -641,8 +639,8 @@ end
 @generated function initkernel!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, kernel::DKernel{Mₖ,Pₖ}, ::Val{negative} = Val{false}()
 ) where {Mₖ,Pₖ,T,negative}
-    kernelq = DynamicKernel(
-        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, T, X_transposed = false, negative = negative
+    kernelq = DynamicKernel{T}(
+        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, false, negative
     )
     kq = kernel_quote(kernelq, init = true, force_inline = false, mask_ops = true, runtime_mask = false)
     quote
@@ -653,8 +651,8 @@ end
 @generated function kernel_nt!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, kernel::DKernel{Mₖ,Pₖ}, ::Val{negative} = Val{false}()
 ) where {Mₖ,Pₖ,T,negative}
-    kernelq = DynamicKernel(
-        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, T, X_transposed = true, negative = negative
+    kernelq = DynamicKernel{T}(
+        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, true, negative
     )
     kq = kernel_quote(kernelq, init = false, force_inline = false, mask_ops = true, runtime_mask = false)
     quote
@@ -666,8 +664,8 @@ end
 @generated function initkernel_nt!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, kernel::DKernel{Mₖ,Pₖ}, ::Val{negative} = Val{false}()
 ) where {Mₖ,Pₖ,T,negative}
-    kernelq = DynamicKernel(
-        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, T, X_transposed = true, negative = negative
+    kernelq = DynamicKernel{T}(
+        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, true, negative
     )
     kq = kernel_quote(kernelq, init = true, force_inline = false, mask_ops = true, runtime_mask = false)
     quote
@@ -678,8 +676,8 @@ end
 @generated function kernel!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, kernel::DKernel{Mₖ,Pₖ}, __mask__::Unsigned, ::Val{negative} = Val{false}()
 ) where {Mₖ,Pₖ,T,negative}
-    kernelq = DynamicKernel(
-        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = false, negative = negative
+    kernelq = DynamicKernel{T}(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, false, negative
     )
     kq = kernel_quote(kernelq, init = false, force_inline = false, mask_ops = true, runtime_mask = true)
     quote
@@ -691,8 +689,8 @@ end
 @generated function initkernel!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, kernel::DKernel{Mₖ,Pₖ}, __mask__::Unsigned, ::Val{negative} = Val{false}()
 ) where {Mₖ,Pₖ,T,negative}
-    kernelq = DynamicKernel(
-        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, T, X_transposed = false, negative = negative
+    kernelq = DynamicKernel{T}(
+        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, false, negative
     )
     kq = kernel_quote(kernelq, init = true, force_inline = false, mask_ops = true, runtime_mask = true)
     quote
@@ -703,8 +701,8 @@ end
 @generated function kernel_nt!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, kernel::DKernel{Mₖ,Pₖ}, __mask__::Unsigned, ::Val{negative} = Val{false}()
 ) where {Mₖ,Pₖ,T,negative}
-    kernelq = DynamicKernel(
-        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, T, X_transposed = true, negative = negative
+    kernelq = DynamicKernel{T}(
+        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, true, negative
     )
     kq = kernel_quote(kernelq, init = false, force_inline = false, mask_ops = true, runtime_mask = true)
     quote
@@ -716,8 +714,8 @@ end
 @generated function initkernel_nt!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, kernel::DKernel{Mₖ,Pₖ}, __mask__::Unsigned, ::Val{negative} = Val{false}()
 ) where {Mₖ,Pₖ,T,negative}
-    kernelq = DynamicKernel(
-        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, T, X_transposed = true, negative = negative
+    kernelq = DynamicKernel{T}(
+        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, true, negative
     )
     kq = kernel_quote(kernelq, init = true, force_inline = false, mask_ops = true, runtime_mask = true)
     quote
@@ -728,8 +726,8 @@ end
 @generated function initkernel_tn!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, kernel::DKernel{Mₖ,Pₖ}, ::Val{negative} = Val{false}()
 ) where {T,Mₖ,Pₖ,negative}
-    kernel = DynamicKernel(
-        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, T, negative = negative
+    kernel = DynamicKernel{T}(
+        Mₖ, Pₖ, :N, :stride_D, :stride_A, :stride_X, false, negative
     )
     quote
         @unpack N,stride_D,stride_A,stride_X = kernel
@@ -742,8 +740,8 @@ end
 @generated function inline_kernel!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}, ::Val{negative} = Val{false}()
 ) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T,negative}
-    kernel = DynamicKernel(
-        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = false, negative = negative
+    kernel = DynamicKernel{T}(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, false, negative
     )
     kernel_quote(kernel, init = false, force_inline = true, mask_ops = true, runtime_mask = false)
 end
@@ -751,16 +749,16 @@ end
 @generated function inline_initkernel!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}, ::Val{negative} = Val{false}()
 ) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T,negative}
-    kernel = DynamicKernel(
-        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = false, negative = negative
+    kernel = DynamicKernel{T}(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, false, negative
     )
     kernel_quote(kernel, init = true, force_inline = true, mask_ops = true, runtime_mask = false)
 end
 @generated function inline_kernel_nt!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}, ::Val{negative} = Val{false}()
 ) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T,negative}
-    kernel = DynamicKernel(
-        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = true, negative = negative
+    kernel = DynamicKernel{T}(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, true, negative
     )
     kernel_quote(kernel, init = false, force_inline = true, mask_ops = true, runtime_mask = false)
 end
@@ -768,8 +766,8 @@ end
 @generated function inline_initkernel_nt!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}, ::Val{negative} = Val{false}()
 ) where {Mₖ,Pₖ,stride_A,stride_X,stride_D,N,T,negative}
-    kernel = DynamicKernel(
-        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, X_transposed = true, negative = negative
+    kernel = DynamicKernel{T}(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, true, negative
     )
     kernel_quote(kernel, init = true, force_inline = true, mask_ops = true, runtime_mask = false)
 end
@@ -777,8 +775,8 @@ end
 @generated function inline_initkernel_tn!(
     pD::Ptr{T}, pA::Ptr{T}, pX::Ptr{T}, ::Kernel{Mₖ,Pₖ,stride_A,stride_X,stride_D,N}, ::Val{negative} = Val{false}()
 ) where {T,Mₖ,Pₖ,stride_A,stride_X,stride_D,N,negative}
-    kernel = DynamicKernel(
-        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, T, negative = negative
+    kernel = DynamicKernel{T}(
+        Mₖ, Pₖ, N, stride_D, stride_A, stride_X, false, negative
     )
     kernel_tn_quote(kernel, true, true)
 end
