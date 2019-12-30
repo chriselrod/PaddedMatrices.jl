@@ -111,11 +111,11 @@ end
 @generated function Random.rand!(rng::VectorizedRNG.AbstractPCG{P}, A::AbstractMutableFixedSizeArray{S,T,N,X,L}) where {P,S,T<:Union{Float32,Float64},N,X,L}
     rand_mutable_fixed_size_expr(L, T, P, :rand)
 end
-Random.rand!(A::AbstractMutableFixedSizeArray) = rand!(VectorizedRNG.GLOBAL_vPCG, A)
+Random.rand!(A::AbstractMutableFixedSizeArray) = rand!(local_pcg(), A)
 @generated function Random.rand!(rng::VectorizedRNG.AbstractPCG{P}, A::AbstractMutableFixedSizeArray{S,T,N,X,L}, l::T, u::T) where {P,S,T<:Union{Float32,Float64},N,X,L}
     rand_mutable_fixed_size_expr(L, T, P, :rand, -1, -1, :l, :u)
 end
-Random.rand!(A::AbstractMutableFixedSizeArray{S,T}, l::T, u::T) where {S,T} = rand!(VectorizedRNG.GLOBAL_vPCG, A, l, u)
+Random.rand!(A::AbstractMutableFixedSizeArray{S,T}, l::T, u::T) where {S,T} = rand!(local_pcg(), A, l, u)
 @generated function Random.rand(rng::VectorizedRNG.AbstractPCG{P}, ::Type{ <: ConstantFixedSizeArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
     N,R,L = calc_NPL(S.parameters, T)
     quote
@@ -125,7 +125,7 @@ Random.rand!(A::AbstractMutableFixedSizeArray{S,T}, l::T, u::T) where {S,T} = ra
     end
 end
 function Random.rand(::Type{ <: ConstantFixedSizeArray{S,T}}) where {S,T<:Union{Float32,Float64}}
-    rand(VectorizedRNG.GLOBAL_vPCG, ConstantFixedSizeArray{S,T})
+    rand(local_pcg(), ConstantFixedSizeArray{S,T})
 end
 
 # @generated function Random.randn!(rng::VectorizedRNG.AbstractPCG{P}, A::AbstractMutableFixedSizeArray{S,T,N,R,L}) where {S,P,T<:Union{Float32,Float64},N,R,L}
@@ -150,19 +150,19 @@ end
     rand_mutable_fixed_size_expr(L, T, P, :randn, B === T ? 0 : 1)
 end
 # Specific to avoid ambiguities
-Random.randn!(A::AbstractMutableFixedSizeArray) = randn!(VectorizedRNG.GLOBAL_vPCG, A)
+Random.randn!(A::AbstractMutableFixedSizeArray) = randn!(local_pcg(), A)
 function Random.randn!(
     A::AbstractMutableFixedSizeArray{S,T,N,X,L},
     B::Union{T,<:AbstractMutableFixedSizeArray{S,T,N,X,L}}
 ) where {S,T,N,X,L}
-    randn!(VectorizedRNG.GLOBAL_vPCG, A, B)
+    randn!(local_pcg(), A, B)
 end
 function Random.randn!(
     A::AbstractMutableFixedSizeArray{S,T,N,X,L},
     B::Union{T,<:AbstractMutableFixedSizeArray{S,T,N,X,L}},
     C::Union{T,<:AbstractMutableFixedSizeArray{S,T,N,X,L}}
 ) where {S,T,N,X,L}
-    randn!(VectorizedRNG.GLOBAL_vPCG, A, B, C)
+    randn!(local_pcg(), A, B, C)
 end
 
 @generated function Random.randn(rng::VectorizedRNG.AbstractPCG{P}, ::Type{<:ConstantFixedSizeArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
@@ -174,7 +174,7 @@ end
     end
 end
 function Random.randn(::Type{<:ConstantFixedSizeArray{S,T}}) where {S,T<:Union{Float32,Float64}}
-    randn(VectorizedRNG.GLOBAL_vPCG, ConstantFixedSizeArray{S,T})
+    randn(local_pcg(), ConstantFixedSizeArray{S,T})
 end
 @generated function Random.randn(rng::VectorizedRNG.AbstractPCG, ::Static{S}) where {S}
     if isa(S, Integer)
@@ -196,7 +196,7 @@ end
     end
     quote
         $(Expr(:meta,:inline))
-        randn(VectorizedRNG.GLOBAL_vPCG, FixedSizeArray{$ST,Float64})
+        randn(local_pcg(), FixedSizeArray{$ST,Float64})
     end
 end
 
@@ -219,19 +219,19 @@ end
 ) where {P,S,T<:Union{Float32,Float64},N,X,L}
     rand_mutable_fixed_size_expr(L, T, P, :randexp, B === T ? 0 : 1)
 end
-Random.randexp!(A::AbstractMutableFixedSizeArray) = randexp!(VectorizedRNG.GLOBAL_vPCG, A, args...)
+Random.randexp!(A::AbstractMutableFixedSizeArray) = randexp!(local_pcg(), A, args...)
 function Random.randexp!(
     A::AbstractMutableFixedSizeArray{S,T,N,X,L},
     B::Union{T,<:AbstractMutableFixedSizeArray{S,T,N,X,L}},
     C::Union{T,<:AbstractMutableFixedSizeArray{S,T,N,X,L}}
 ) where {P,S,T<:Union{Float32,Float64},N,X,L}
-    randexp!(VectorizedRNG.GLOBAL_vPCG, A, B, C)
+    randexp!(local_pcg(), A, B, C)
 end
 function Random.randexp!(
     A::AbstractMutableFixedSizeArray{S,T,N,X,L},
     B::Union{T,<:AbstractMutableFixedSizeArray{S,T,N,X,L}}
 ) where {P,S,T<:Union{Float32,Float64},N,X,L}
-    randexp!(VectorizedRNG.GLOBAL_vPCG, A, B)
+    randexp!(local_pcg(), A, B)
 end
 
 
@@ -244,7 +244,7 @@ end
     end
 end
 function Random.randexp(::Type{<:ConstantFixedSizeArray{S,T}}) where {S,T<:Union{Float32,Float64}}
-    randexp(VectorizedRNG.GLOBAL_vPCG, ConstantFixedSizeArray{S,T})
+    randexp(local_pcg(), ConstantFixedSizeArray{S,T})
 end
 
 function Random.rand(::Type{<: FixedSizeArray{S,T}}) where {S,T}
