@@ -335,17 +335,13 @@ end
 
 @inline extract_λ(a) = a
 @inline extract_λ(a::UniformScaling) = a.λ
-@generated function Base.:*(A::AbstractFixedSizeArray{S,T,N,X,L}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,X,L}
-    quote
-        $(Expr(:meta,:inline))
-        mv = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
-        b = extract_λ(bλ)
-        @vvectorize $T for i ∈ 1:$L
-            mv[i] = A[i] * b
-        end
-        mv
-        # ConstantFixedSizeArray(mv)
+@inline function Base.:*(A::AbstractFixedSizeArray{S,T,N,X,L}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,X,L}
+    mv = FixedSizeArray{S,T,N,X,L}(undef)
+    b = extract_λ(bλ)
+    @avx for i ∈ 1:L
+        mv[i] = A[i] * b
     end
+    mv
 end
 @generated function Base.:*(Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,X,L}}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,X,L}
     quote

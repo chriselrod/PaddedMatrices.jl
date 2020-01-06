@@ -1,3 +1,4 @@
+using VectorizedRNG: local_pcg
 @noinline function rand_iter_expr(V, mulwith_B::Int, addto_C::Int, rand_extract_expr, iter_offset::Int, rrepiter::Int = 0)
     if addto_C == -1 && mulwith_B == -1
         rem_expr = rand_extract_expr
@@ -307,8 +308,12 @@ function rand_expr(expr, R, args...)
     N = length(expr.args)
     n = 2
     randtypes = Set((:Float32,:Float64,:Int,:Int32,:Int64,:UInt,:UInt32,:UInt64))
-    if expr.args[2] ∈ randtypes
-        T = expr.args[2]
+    arg2 = expr.args[2]
+    if arg2 ∈ randtypes
+        T = arg2
+        n += 1
+    elseif arg2 isa Expr && arg2.head === :($)
+        T = esc(first(arg2.args))
         n += 1
     else
         T = Float64

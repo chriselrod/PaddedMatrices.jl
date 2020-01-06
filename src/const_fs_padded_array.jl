@@ -42,6 +42,7 @@ end
 # @inline ConstantFixedSizeVector(A::AbstractFixedSizeVector{S,T,L}) where {S,T,L} = ConstantFixedSizeArray{S,T,1,Tuple{1},L}(A.data)
 # @inline ConstantFixedSizeMatrix(A::AbstractFixedSizeMatrix{M,N,T,P,L}) where {M,N,T,P,L} = ConstantFixedSizeArray{Tuple{M,N},T,2,P,L}(A.data)
 @inline ConstantFixedSizeArray(A::AbstractFixedSizeArray{S,T,N,P,L}) where {S,T,N,P,L} = ConstantFixedSizeArray{S,T,N,P,L}(A.data)
+@inline ConstantFixedSizeMatrix(A::AbstractFixedSizeArray{S,T,2,P,L}) where {S,T,P,L} = ConstantFixedSizeArray{S,T,2,P,L}(A.data)
 
 @generated function ConstantFixedSizeMatrix{M,N}(data::Matrix{T}) where {M,N,T}
     X = calc_padding(M, T)

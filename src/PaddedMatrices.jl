@@ -33,7 +33,7 @@ export @Constant, @Mutable,
     PtrVector, DynamicPtrVector,
     PtrMatrix, DynamicPtrMatrix,
     PtrArray, DynamicPtrArray,
-    LazyMap, Static, StaticOneTo, muladd!, mul!
+    LazyMap, Static, StaticOneTo, muladd!, mul!, ∗
 
 
     
@@ -82,14 +82,6 @@ maybe_static_size(A::AbstractArray) = size(A)
 LinearAlgebra.checksquare(::AbstractFixedSizeMatrix{M,M}) where {M} = M
 LinearAlgebra.checksquare(::AbstractFixedSizeMatrix) = DimensionMismatch("Matrix is not square.")
                                 
-@inline LoopVectorization.stride_row(::LinearAlgebra.Adjoint{T,V}) where {T,V <: AbstractVector{T}} = 1
-@generated function LoopVectorization.stride_row(::AbstractFixedSizeArray{S,T,N,P}) where {S,T,N,P}
-    quote
-        $(Expr(:meta, :inline))
-        $((P.parameters[2])::Int)
-    end
-end
-
 Base.IndexStyle(::Type{<:AbstractPaddedArray}) = IndexCartesian()
 Base.IndexStyle(::Type{<:AbstractPaddedVector}) = IndexLinear()
 @generated function Base.IndexStyle(::Type{<:AbstractFixedSizeArray{S,T,N,P}}) where {S,T,N,P}

@@ -19,8 +19,6 @@ const DynamicPaddedMatrix{T} = DynamicPaddedArray{T,2}
 const DynamicPtrVector{T} = DynamicPtrArray{T,1}
 const DynamicPtrMatrix{T} = DynamicPtrArray{T,2}
 isdense(::Type{<:AbstractDynamicPaddedArray}) = false
-@inline LoopVectorization.stride_row(A::DynamicPaddedArray) = size(A.data,1)
-@inline LoopVectorization.stride_row(A::DynamicPtrArray) = A.stride
 
 full_length(A::DynamicPaddedArray) = length(A.data)
 function full_length(Asize::NTuple{N,Int}, L::Int = Asize[1]) where {N}

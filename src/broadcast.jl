@@ -1,749 +1,190 @@
 
-function ∂materialize end
-
-# First, we add templates for matrix multiplication
-abstract type AbstractProdct{T,N} end
-abstract type AbstractSizedProduct{M,P,K,T,N} <: AbstractProdct{T,N} end
-
-# @noinline function reduce_size(@nospecialize(S), N::Int)
-#     s = ones(Int, N)
-#     SV = S.parameters
-#     j = SV[1]::Union{Int,DataType}
-#     if j isa Int
-#         for i ∈ eachindex(SV)
-#             s[i] = (SV[i])::Int
-#         end
-#     elseif j isa DataType
-#         for i ∈ eachindex(SV)
-#             s2 = reduce_size(SV[i]::DataType, N)
-#             for n ∈ 1:N
-#                 sₙ = s[n]
-#                 s2ₙ = s2[n]
-#                 if sₙ == 1
-#                     s[n] = s2[n]
-#                 elseif (s2ₙ == sₙ) || s2ₙ == 1 # neither are 1
-#                     nothing
-#                 else
-#                     throw("sₙ == $sₙ != s2ₙ == $s2ₙ")
-#                 end
-#             end
-#         end
-#     end
-#     s
-# end
-
-@noinline function reduce_size(SV)
-    reduce_size!(Int[1], SV)
-end
-@noinline function pick_size(s1::Int, s2::Int)
-    if s1 == 1
-        s3 = s2
-    elseif (s1 == s2) || (s2 == 1)
-        s3 = s1
-    else
-        throw("s1 == $s1 != s2 == $s2; they should be equal, or == 1")
-    end
-    s3
-end
-
-@noinline function reduce_size!(s::Vector{Int}, SV)#::Core.SimpleVector)
-    # SV = S.parameters
-    length(SV) == 0 && return s
-    j = SV[1]::Union{Int,DataType}
-    if j isa Int
-        N1 = length(SV)
-        N2 = length(s)
-        for n ∈ 1:min(N1,N2)
-            s[n] = pick_size(s[n], (SV[n])::Int)
-        end
-        for n ∈ min(N1,N2)+1:N1
-            push!(s, (SV[n])::Int)
-        end
-    elseif j isa DataType
-        for i ∈ eachindex(SV)
-            s2 = reduce_size!(s, (SV[i]).parameters)
-        end
-    end
-    s
-end
-
-@inline Base.ndims(::Type{<:AbstractProdct{T,N}}) where {T,N} = N
-@inline Base.broadcastable(A::AbstractProdct) = A
-function Base.show(io::IO, p::AbstractProdct)
-    # We don't define a getindex method.
-    println("Product of A, of size $(size(p.A)):\n", p.A, "\nand B, of size $(size(p.B)):\n", p.B)
-end
-
-struct SizedMatrixMatrixProduct{T,M,P,K,TA <: AbstractFixedSizeMatrix{M,P,T}, TB <: AbstractFixedSizeMatrix{P,K,T}} <: AbstractSizedProduct{M,P,K,T,2}
-    A::TA
-    B::TB
-end
-@inline function LinearAlgebra.:×(A::TA, B::TB) where {M,P,K,T,TA <: AbstractFixedSizeMatrix{M,P,T}, TB <: AbstractFixedSizeMatrix{P,K,T}}
-    SizedMatrixMatrixProduct{T,M,P,K,TA,TB}(A,B)
-end
-
-@inline Base.size(::SizedMatrixMatrixProduct{T,M,P,K}) where {T,M,P,K} = (M,K)
-@inline Base.axes(::SizedMatrixMatrixProduct{T,M,P,K}) where {T,M,P,K} = (Base.OneTo(M),Base.OneTo(K))
-
-struct SizedVectorMatrixProduct{T,P,K,TA <: AbstractFixedSizeVector{P,T}, TB <: AbstractFixedSizeMatrix{P,K,T}} <: AbstractSizedProduct{1,P,K,T,2}
-    A::TA
-    B::TB
-end
-function LinearAlgebra.:×(A::TA, B::TB) where {P,K,T,TA <: AbstractFixedSizeVector{P,T}, TB <: AbstractFixedSizeMatrix{P,K,T}}
-    SizedVectorMatrixProduct{T,P,K,TA,TB}(A,B)
-end
-@inline Base.size(::SizedVectorMatrixProduct{T,P,K}) where {T,P,K} = (1,K)
-@inline Base.axes(::SizedVectorMatrixProduct{T,P,K}) where {T,P,K} = (Base.OneTo(1),Base.OneTo(K))
-
-
-struct SizedMatrixVectorProduct{T,M,P,TA <: AbstractFixedSizeMatrix{M,P,T}, TB <: AbstractFixedSizeVector{P,T}} <: AbstractSizedProduct{M,P,1,T,1}
-    A::TA
-    B::TB
-end
-function LinearAlgebra.:×(A::TA, B::TB) where {M,P,T,TA <: AbstractFixedSizeMatrix{M,P,T}, TB <: AbstractFixedSizeVector{P,T}}
-    SizedMatrixVectorProduct{T,M,P,TA,TB}(A,B)
-end
-@inline Base.size(::SizedMatrixVectorProduct{T,M}) where {T,M} = (M,)
-@inline Base.axes(::SizedMatrixVectorProduct{T,M}) where {T,M} = (Base.OneTo(M),Base.OneTo(1))
-
-
-struct MatrixMatrixProduct{T,TA <: AbstractPaddedMatrix{T}, TB <: AbstractPaddedMatrix{T}} <: AbstractProdct{T,2}
-    A::TA
-    B::TB
-end
-function LinearAlgebra.:×(A::TA, B::TB) where {T,TA <: AbstractPaddedMatrix{T}, TB <: AbstractPaddedMatrix{T}}
-    MatrixMatrixProduct{T,TA,TB}(A,B)
-end
-@inline Base.size(A::MatrixMatrixProduct) = (size(A.A,1),size(A.B,2))
-@inline Base.axes(A::MatrixMatrixProduct) = (Base.OneTo(size(A.A,1)),Base.OneTo(size(A.B,2)))
-
-struct VectorMatrixProduct{T,TA <: AbstractPaddedVector{T}, TB <: AbstractPaddedMatrix{T}} <: AbstractProdct{T,2}
-    A::TA
-    B::TB
-end
-function LinearAlgebra.:×(A::TA, B::TB) where {T,TA <: AbstractPaddedVector{T}, TB <: AbstractPaddedMatrix{T}}
-    VectorMatrixProduct{T,TA,TB}(A,B)
-end
-@inline Base.size(A::VectorMatrixProduct) = (1,size(A.B,2))
-@inline Base.axes(A::VectorMatrixProduct) = (Base.OneTo(1),Base.OneTo(size(A.B,2)))
-
-struct MatrixVectorProduct{T,TA <: AbstractPaddedMatrix{T}, TB <: AbstractPaddedVector{T}} <: AbstractProdct{T,1}
-    A::TA
-    B::TB
-end
-function LinearAlgebra.:×(A::TA, B::TB) where {T,TA <: AbstractPaddedMatrix{T}, TB <: AbstractPaddedVector{T}}
-    MatrixVectorProduct{T,TA,TB}(A,B)
-end
-@inline Base.size(A::MatrixVectorProduct) = (size(A.A,1),)
-@inline Base.axes(A::MatrixVectorProduct) = (Base.OneTo(size(A.A,1)),)
-
-@generated function load_kernel(
-                MMP::Union{<:SizedMatrixMatrixProduct{T},<:MatrixMatrixProduct{T}},
-                i, j, ::Val{MP}, ::Val{mp}
-            ) where {T,MP,mp}
-    M, P = MP
-    mk, pk = mp
-    out = FixedSizeMatrix{mk,pk,T}(undef)
-    # Should write new, simpler kernel function
-    # that can take N as a symbol, and accepts arbitrary strides.
-    quote
-
-    end
-end
-
-@inline function Base.convert(::Type{A}, MMP::AbstractProdct) where {A <: AbstractArray}
-    MMP.A * MMP.B
-end
-@inline function Base.copyto!(
-                C::Union{<: AbstractDynamicPaddedArray{T},<:AbstractMutableFixedSizeArray{T}},
-                MMP::AbstractProdct{T}
-            ) where {T}
-    mul!(C, MMP.A, MMP.B)
-end
-@inline function Base.:+(C::AbstractPaddedArray, MMP::AbstractProdct)
-    gemm(C, MMP.A, MMP.B)
-end
-@inline function Base.:+(MMP::AbstractProdct, C::AbstractPaddedArray)
-    gemm(C, MMP.A, MMP.B)
-end
-
-struct KernelView{BC <: Base.Broadcast.Broadcasted}
-    bc::BC
-    m::Int
-    k::Int
-end
-@inline function KernelView(bc::BC, m, k, ::Any, ::Any) where {BC <: Base.Broadcast.Broadcasted}
-    KernelView{BC}(bc, m, k)
-end
-@inline function KernelView(bc::SizedMatrixMatrixProduct{T,M,P,K}, m, k, ::Val{Mk}, ::Val{Kk}) where {T,M,P,K,Mk,Kk}
-    
-end
-@inline function Base.getindex(kv::KernelView, i, j)
-    @inbounds kv.bc[kv.m + i, kv.k + j]
-end
-
-# @inline function Base.copyto!(
-#             C::AbstractPaddedArray,
-#             AB::Base.Broadcast.Broadcasted{Base.Broadcast.DefaultArrayStyle{2},Nothing,typeof(+),Tuple{Array{Float64,2},Foo{Array{Float64,2},Array{Float64,2}}}}
-#         )
-
-# end
-
-# @enum ContainerType begin # First has highest priority
-#     PaddedUnsized
-#     FixedSize
-#     ConstantFixedSize
-# end
-@enum AccessPattern begin # Last has highest priority
-    LinearIndexing
-    BatchedColumnMajor # Batched pattern down rows, to reduce reloads of (column) vectors broadcasted with matrices
-    CartesianIndexing # Standard Cartesian Indexing; if there is a row vector, we save on it's reloads.
-    KernelBatches # Same pattern as matrix mul functions
-end
-
-abstract type AbstractPaddedMatrixStyle{S,T,A} <: Broadcast.BroadcastStyle end
-
-struct FixedSizeMatrixDefaultStyle{S,T,R,A} <: AbstractPaddedMatrixStyle{S,T,A} end
-
-function pick_R(R1::Int, R2::Int)
-    R3 = R1 == 1 ? typemax(R1) : R1
-    R4 = R2 == 1 ? typemax(R2) : R2
-#    R = min(R3, R4)
-    # @show R1, R2, R3, R4
-    R = min(R3,R4)
-    if R3 != R4
-        if (R3 == typemax(R1)) || (R4 == typemax(R2))
-            access_pattern = LinearIndexing
-        else
-            access_pattern = CartesianIndexing
-        end
-    else
-        access_pattern = LinearIndexing
-    end
-    # @show R
-    R, access_pattern
-end
-
-@generated function Base.BroadcastStyle(::Type{<:AbstractFixedSizeArray{S,T,N,R,L}}) where {S,T,N,R,L}
-    P = N == 1 ? L : (R.parameters[2])::Int
-    FixedSizeMatrixDefaultStyle{S,T,P,LinearIndexing}()
-end
-Base.BroadcastStyle(::Type{LinearAlgebra.Adjoint{T,V}}) where {S,T,R,V<:AbstractFixedSizeVector{S,T,R}} = FixedSizeMatrixDefaultStyle{Tuple{1,S},T,1,CartesianIndexing}()
-#Base.BroadcastStyle(::Type{LinearAlgebra.Adjoint{T,<:AbstractFixedSizeMatrix{M,N,T,R}}}) where {M,N,T,R} = FixedSizeMatrixDefaultStyle{Tuple{N,M},T,R,LinearIndexing}()
-
-@inline function Base.Broadcast.result_style(s1::FixedSizeMatrixDefaultStyle, s2::FixedSizeMatrixDefaultStyle)
-    # s1, s2 is always the canonical order.
-    Base.Broadcast.BroadcastStyle(s1, s2)
-end
-
-
-
-@generated function Base.Broadcast.combine_styles(
-    s::Vararg{<:Union{AbstractFixedSizeArray{S} where S,
-    <:LinearAlgebra.Adjoint{<:Any,<:AbstractFixedSizeArray{S}} where S,
-    <:Base.Broadcast.Broadcasted{<:AbstractPaddedMatrixStyle},BLAS.BlasFloat,Int32,Int64}, N}
-) where {N}
-    is_padded_array = Vector{Bool}(undef, N)
- #   is_adj_padded_array = Vector{Bool}(undef, N)
+struct FixedSizeStyle{S,N} <: Base.Broadcast.AbstractArrayStyle{N} end
+Base.BroadcastStyle(::Type{A}) where {S,T,N,A<:AbstractFixedSizeArray{S,T,N}} = FixedSizeStyle{S,N}()
+function reverse_simplevec(S, N = length(S))
+    Srev = Expr(:curly, :Tuple)
     for n ∈ 1:N
-        if s[n] <: AbstractFixedSizeArray
-            is_padded_array[n] = true
-        elseif s[n] <: LinearAlgebra.Adjoint{<:Any,<:AbstractFixedSizeArray}
-            is_padded_array[n] = true
-        elseif s[n] <: Base.Broadcast.Broadcasted{<:AbstractPaddedMatrixStyle}
-            is_padded_array[n] = true
-        else
-            is_padded_array[n] = false
-        end
-#        is_adj_padded_array[n] = s[n] <: LinearAlgebra.Adjoint{<:Any,<:AbstractFixedSizeArray}
+        push!(Srev.args, S.parameters[N + 1 - n])
     end
-    any(is_padded_array) || return Base.Broadcast.DefaultArrayStyle{0}()
-    
-    # Svec = DataType[]
-    A = LinearIndexing
-    Svec = DataType[]
-    # println("About to iterate over:")
-    # @show s
-    # @show typeof(s)
-    # println("Starting iteration:")
-    #    throw("Bad!")
-    if is_padded_array[1]
-        bs = Base.Broadcast.BroadcastStyle(s[1])
-        # @show bs
-        sₙ = typeof(bs).parameters
-        push!(Svec, sₙ[1])
-        # @show sₙ[1]
-        T = sₙ[2]
-        R = sₙ[3]
-        A = sₙ[4]
-    else#if s[1] <: Base.Broadcast.DefaultArrayStyle{0}()
-        push!(Svec, Tuple{})
-        T = s[1]
-        R = typemax(Int)
-        A = LinearIndexing
+    if N == 1
+        N += 1
+        insert!(Srev.args, 2, 1)
     end
-    for n ∈ 2:N
-        # @show n
-        if is_padded_array[n]
-            bs = Base.Broadcast.BroadcastStyle(s[n])
-            # @show bs
-            sₙ = typeof(bs).parameters
-#            sₙ = s[n].parameters
-            # @show sₙ[1]
-            push!(Svec, sₙ[1])
-            # @show sₙ[1]
-            T = promote_type(T, sₙ[2])
-            # X = sₙ[3].parameters
-            # @show R, sₙ[3]
-            R, access_pattern = pick_R(R, (sₙ[3])::Int)#length(X) == 1 ?  : (X[2])::Int)
-            A = max(A, (sₙ[4])::AccessPattern, access_pattern)
-        else
-            push!(Svec, Tuple{})
-            T = promote_type(T, s[2])
-        end
-    end
-    # @show Svec
-    ST = Tuple{Svec...}
-    # @show ST
-    # println("\n")
-    if (A == CartesianIndexing) || (A == KernelBatches)
-        return FixedSizeMatrixDefaultStyle{ST,T,R,A}()
-    end
-    sz = reduce_size(Svec)
-    nonscalarinds = (Svec .=== Tuple{}) .== false
-    if A == LinearIndexing
-        all_equal = true
-        nonscalar = Svec[nonscalarinds]
-        for n ∈ 2:length(nonscalar)
-            all_equal &= (nonscalar[n] === nonscalar[n-1])
-        end
-        all_equal && return FixedSizeMatrixDefaultStyle{ST,T,R,LinearIndexing}()
-    end
-    if length(sz) == 1
-        return FixedSizeMatrixDefaultStyle{ST,T,R,LinearIndexing}()
-    else#if length(sz) > 2
-        return FixedSizeMatrixDefaultStyle{ST,T,R,CartesianIndexing}()
-    end   
+    Srev, N
 end
-#@generated function Base.Broadcast.combine_styles(s::Vararg{FixedSizeMatrixDefaultStyle,N}) where {N}
-#
-#    A = LinearIndexing
-#    Svec = DataType[]
-#    
-#    sₙ = s[1].parameters
-#    push!(Svec, sₙ[1])
-#    T = Sₙ[1]
-#    R = Sₙ[3]
-#    A = Sₙ[4]
-#    for n ∈ 2:N
-#        sₙ = s[n].parameters
-#        push!(Svec, sₙ[1])
-#        T = promote_type(T, sₙ[2])
-#        R, access_pattern = pick_R(R, sₙ[3])
-#        A = max(A, sₙ[4], access_pattern)
-#    end
-#    S = Tuple{Svec...}
-#    if (A == CartesianIndexing) || (A == KernelBatches)
-#        return FixedSizeMatrixDefaultStyle{S,T,R,A}()
-#    end
-#    sz = reduce_size(S)
-#    nonscalarinds = (Svec .=== Tuple{}) .== false
-#    if A == LinearIndexing
-#        all_equal = true
-#        nonscalar = Svec[nonscalarinds]
-#        for n ∈ 2:length(nonscalar)
-#            all_equal &= (nonscalar[n] === nonscalar[n-1])
-#        end
-#        all_equal && return FixedSizeMatrixDefaultStyle{S,T,R,LinearIndexing}()
-#    end
-#    if length(sz) == 1
-#        return FixedSizeMatrixDefaultStyle{S,T,R,LinearIndexing}()
-#    else#if length(sz) > 2
-#        return FixedSizeMatrixDefaultStyle{S,T,R,CartesianIndexing}()
-#    end
-#    
-#end
+@generated function Base.BroadcastStyle(::Type{Adjoint{T,A}}) where {S,T,N,A<:AbstractFixedSizeArray{S,T,N}}
+    Srev, Nrev = reverse_simplevec(S, N)
+    Expr(:call, Expr(:curly, :FixedSizeStyle, Srev, Nrev))
+end
+@generated function Base.BroadcastStyle(::Type{Transpose{T,A}}) where {S,T,N,A<:AbstractFixedSizeArray{S,T,N}}
+    Srev, Nrev = reverse_simplevec(S, N)
+    Expr(:call, Expr(:curly, :FixedSizeStyle, Srev, Nrev))
+end
 
-@generated function Base.Broadcast.BroadcastStyle(
-            style1::FixedSizeMatrixDefaultStyle{S1,T1,R1,A1},
-            style2::FixedSizeMatrixDefaultStyle{S2,T2,R2,A2}
-        ) where {S1,S2,T1,T2,R1,R2,A1,A2}
+const FixedSizeProduct = Union{
+    LoopVectorization.Product{<:AbstractFixedSizeArray},
+    LoopVectorization.Product{<:Any,<:AbstractFixedSizeArray},
+    LoopVectorization.Product{Adjoint{<:Any,<:AbstractFixedSizeArray}},
+    LoopVectorization.Product{Transpose{<:Any,<:AbstractFixedSizeArray}},
+    LoopVectorization.Product{<:Any,Adjoint{<:Any,<:AbstractFixedSizeArray}},
+    LoopVectorization.Product{<:Any,Transpose{<:Any,<:AbstractFixedSizeArray}}
+}
 
-    T = promote_type(T1, T2)
-    R, access_pattern = pick_R(R1, R2)
-    if (A1 == KernelBatches) || (A2 == KernelBatches)
-        return FixedSizeMatrixDefaultStyle{Tuple{S1,S2},T,R,KernelBatches}()
-    elseif (A1 == CartesianIndexing) || (A2 == CartesianIndexing) || (access_pattern == CartesianIndexing)
-        return FixedSizeMatrixDefaultStyle{Tuple{S1,S2},T,R,CartesianIndexing}()
+Base.BroadcastStyle(::Type{P}) where {M,K,A<:AbstractFixedSizeMatrix{M,K},B<:AbstractFixedSizeVector{K},P<:LoopVectorization.Product{A,B}} = FixedSizeStyle{Tuple{M},1}()
+Base.BroadcastStyle(::Type{P}) where {K,N,T,A<:AbstractFixedSizeVector{K,T},B<:AbstractFixedSizeMatrix{K,N},P<:LoopVectorization.Product{Adjoint{T,A},B}} = FixedSizeStyle{Tuple{1,N},2}()
+Base.BroadcastStyle(::Type{P}) where {K,N,T,A<:AbstractFixedSizeVector{K,T},B<:AbstractFixedSizeMatrix{K,N},P<:LoopVectorization.Product{Transpose{T,A},B}} = FixedSizeStyle{Tuple{1,N},2}()
+
+Base.BroadcastStyle(::Type{P}) where {M,K,N,A<:AbstractFixedSizeMatrix{M,K},B<:AbstractFixedSizeMatrix{K,N},P<:LoopVectorization.Product{A,B}} = FixedSizeStyle{Tuple{M,N},2}()
+
+Base.BroadcastStyle(::Type{P}) where {M,K,N,TA,A<:AbstractFixedSizeMatrix{K,M,TA},B<:AbstractFixedSizeMatrix{K,N},P<:LoopVectorization.Product{Adjoint{TA,A},B}} = FixedSizeStyle{Tuple{M,N},2}()
+Base.BroadcastStyle(::Type{P}) where {M,K,N,TA,A<:AbstractFixedSizeMatrix{K,M,TA},B<:AbstractFixedSizeMatrix{K,N},P<:LoopVectorization.Product{Transpose{TA,A},B}} = FixedSizeStyle{Tuple{M,N},2}()
+
+Base.BroadcastStyle(::Type{P}) where {M,K,N,A<:AbstractFixedSizeMatrix{M,K},TB,B<:AbstractFixedSizeMatrix{N,K,TB},P<:LoopVectorization.Product{A,Adjoint{TB,B}}} = FixedSizeStyle{Tuple{M,N},2}()
+Base.BroadcastStyle(::Type{P}) where {M,K,N,A<:AbstractFixedSizeMatrix{M,K},TB,B<:AbstractFixedSizeMatrix{N,K,TB},P<:LoopVectorization.Product{A,Transpose{TB,B}}} = FixedSizeStyle{Tuple{M,N},2}()
+
+Base.BroadcastStyle(::Type{P}) where {M,K,N,TA,A<:AbstractFixedSizeMatrix{K,M,TA},TB,B<:AbstractFixedSizeMatrix{N,K,TB},P<:LoopVectorization.Product{Adjoint{TA,A},Adjoint{TB,B}}} = FixedSizeStyle{Tuple{M,N},2}()
+Base.BroadcastStyle(::Type{P}) where {M,K,N,TA,A<:AbstractFixedSizeMatrix{K,M,TA},TB,B<:AbstractFixedSizeMatrix{N,K,TB},P<:LoopVectorization.Product{Adjoint{TA,A},Transpose{TB,B}}} = FixedSizeStyle{Tuple{M,N},2}()
+Base.BroadcastStyle(::Type{P}) where {M,K,N,TA,A<:AbstractFixedSizeMatrix{K,M,TA},TB,B<:AbstractFixedSizeMatrix{N,K,TB},P<:LoopVectorization.Product{Transpose{TA,A},Adjoint{TB,B}}} = FixedSizeStyle{Tuple{M,N},2}()
+Base.BroadcastStyle(::Type{P}) where {M,K,N,TA,A<:AbstractFixedSizeMatrix{K,M,TA},TB,B<:AbstractFixedSizeMatrix{N,K,TB},P<:LoopVectorization.Product{Transpose{TA,A},Transpose{TB,B}}} = FixedSizeStyle{Tuple{M,N},2}()
+
+@generated Base.BroadcastStyle(a::FixedSizeStyle{S,N1}, b::Base.Broadcast.DefaultArrayStyle{N2}) where {S,N1,N2} = N2 > N1 ? Base.Broadcast.Unknown() : :a
+Base.BroadcastStyle(a::FixedSizeStyle{S,N}, b::FixedSizeStyle{S,N}) where {S,N} = a
+@generated function Base.BroadcastStyle(a::FixedSizeStyle{S1,N1}, b::FixedSizeStyle{S2,N2}) where {S1,S2,N1,N2}
+    S = Expr(:curly, :Tuple)
+    N2 > N1 && return Base.Broadcast.Unknown()
+    foundfirstdiff = false
+    for n ∈ 1:min(N1,N2)
+        s1 = (S1.parameters[n])::Int
+        s2 = (S2.parameters[n])::Int
+        if s1 == s2
+            push!(S.args, s1)
+        elseif s2 == 1
+            foundfirstdiff = true
+            push!(S.args, s1)
+        elseif s1 == 1
+            foundfirstdiff || return Base.Broadcast.Unknown()
+            foundfirstdiff = true
+            push!(S.args, s2)
+        else
+            throw("Mismatched sizes: $S1, $S2.")
+        end
     end
-    sa1 = reduce_size(S1.parameters)
-    sa2 = reduce_size(S2.parameters)
-    l1 = length(sa1)
-    l2 = length(sa2)
-    if (((A1 == BatchedColumnMajor) || (A2 == BatchedColumnMajor)) && (max(l1,l2)>2))
-        return FixedSizeMatrixDefaultStyle{Tuple{S1,S2},T,R,CartesianIndexing}()
+    if N2 > N1
+        for n ∈ N1+1:N2
+            push!(S.args, S2.parameters[n])
+        end
+    elseif N1 > N2
+        for n ∈ N2+1:N1
+            push!(S.args, S1.parameters[n])
+        end
     end
-    equal_lengths = l1 == l2
-    if equal_lengths
-        equal_dims = sa1 .== sa2
-    elseif l1 < l2
-        equal_dims = sa1 .== @view(sa2[1:l1])
+    Expr(:call, Expr(:curly, :FixedSizeStyle, S, max(N1,N2)))
+end
+
+Base.similar(::Base.Broadcast.Broadcasted{FixedSizeStyle{S,N}}, ::Type{T}) where {S,T,N} = FixedSizeArray{S,T,N}(undef)
+Base.similar(sp::StackPointer, ::Base.Broadcast.Broadcasted{FixedSizeStyle{S,N}}, ::Type{T}) where {S,T,N} = PtrArray{S,T,N}(sp)
+
+function add_single_element_array!(ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol, elementbytes)
+    LoopVectorization.pushpreamble!(ls, Expr(:(=), Symbol("##", destname), Expr(:call, :first, bcname)))
+    LoopVectorization.add_constant!(ls, destname, elementbytes)
+end
+function add_fs_array!(ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol, loopsyms::Vector{Symbol}, indexes, S, elementbytes)
+    ref = Union{Symbol,Int}[]
+    for (i,n) ∈ enumerate(indexes)
+        s = (S.parameters[i])::Int
+        # s == 1 ? push!(ref, 1) : push!(ref, loopsyms[n])
+        s == 1 || push!(ref, loopsyms[n])
+    end
+    if length(ref) > 0
+        LoopVectorization.add_load!(ls, destname, LoopVectorization.ArrayReference(bcname, ref, Ref{Bool}(false)), elementbytes)
     else
-        equal_dims = @view(sa1[1:l2]) .== sa2
-    end
-    if all(equal_dims) && equal_lengths
-        return FixedSizeMatrixDefaultStyle{Tuple{S1,S2},T,R,max(A1,A2)}()
-    elseif (max(length(sa1), length(sa2)) == 2) && equal_dims[1]
-        return FixedSizeMatrixDefaultStyle{Tuple{S1,S2},T,R,BatchedColumnMajor}()
-    else
-        return FixedSizeMatrixDefaultStyle{Tuple{S1,S2},T,R,CartesianIndexing}()
-    end
-end
-function Base.Broadcast.BroadcastStyle(
-    style1::Base.Broadcast.BroadcastStyle,
-    style2::FixedSizeMatrixDefaultStyle{S,T,R,A}
-) where {S,T,R,A}
-    return style1
-end
-
-
-function Base.Broadcast.result_style(
-    style1::FixedSizeMatrixDefaultStyle{S,T,R,A},
-    style2::Base.Broadcast.DefaultArrayStyle{0}
-) where {S,T,R,A}
-    return FixedSizeMatrixDefaultStyle{Tuple{S,Tuple{}},T,R,A}()
-end
-function Base.Broadcast.result_style(
-    style1::Base.Broadcast.DefaultArrayStyle{0},
-    style2::FixedSizeMatrixDefaultStyle{S,T,R,A}
-) where {S,T,R,A}
-    return FixedSizeMatrixDefaultStyle{Tuple{Tuple{},S},T,R,A}()
-end
-
-
-# @generated function Base.BroadcastStyle(style1::AbstractPaddedMatrixStyle{S1,A1,C1}, style2::AbstractPaddedMatrixStyle{S2,A2,C2}) where {S1,A1,C1,S2,A2,C2}
-#     A3 = max(A1, A2)
-#     C3 = min(C1, C2)
-#     if C3 == PaddedUnsized
-#         S1N = C1 == PaddedUnsized ? S1 : length(S1.parameters)
-#         S2N = C2 == PaddedUnsized ? S2 : length(S2.parameters)
-#         S3 = max(S1N, S2N)
-#     else
-#         S1V = S1.parameters
-#         S2V = S2.parameters
-#         S1N = length(S1V)
-#         S2N = length(S2V)
-#         s3 = Int[]
-#         for i ∈ 1:min(S1N,S2N)
-#             if S1V[i] == S2V[i] || S2V[i] == 1
-#                 push!(s3, S1V[i])
-#             elseif S1V[i] == 1
-#                 push!(s3, S2V[i])
-#             else
-#                 throw("Broadcast dimensions aren't alligned, $(S1V) vs $(S2V).")
-#             end
-#         end
-#         sv_longer = S1N > S2N ? S1V : S2V
-#         for i ∈ min(S1N,S2N)+1:max(S1N,S2N)
-#             push!(s3, sv_longer[i])
-#         end
-#         S3 = Tuple{s3...}
-#     end
-#     :(PaddedMatrixStyle{$S3,$A3,$C3}())
-
-
-# end
-# Base.BroadcastStyle(::Base.Broadcast.DefaultArrayStyle{0}, style::AbstractPaddedMatrixStyle) = style
-
-
-@generated function Base.similar(bc::Base.Broadcast.Broadcasted{FixedSizeMatrixDefaultStyle{S,T,R,A}}) where {S,A,R,T}
-    Salloc = reduce_size(S.parameters)
-    #    N, R, L = calc_NPL(Salloc, T)
-    N = length(Salloc)
-    X = Vector{Int}(undef, N); X[1] = 1
-    L::Int = R
-    for n ∈ 2:N
-        X[n] = L
-        L *= (Salloc[n])::Int
-    end
-    ST = Tuple{Salloc...}
-    :(FixedSizeArray{$ST,$T,$N,$(Tuple{X...}),$L}(undef))
-end
-@generated function Base.similar(bc::Base.Broadcast.Broadcasted{FixedSizeMatrixDefaultStyle{S,T1,R,A}}, mystack::Ptr{T2}) where {S,A,T1,T2,R}
-    Salloc = reduce_size(S.parameters)
-    #    N, R, L = calc_NPL(Salloc, T)
-    N = length(Salloc)
-    X = Vector{Int}(undef, N); X[1] = 1
-    L::Int = R
-    for n ∈ 2:N
-        X[n] = L
-        L *= (Salloc[n])::Int
-    end
-    ST = Tuple{Salloc...}
-    # allocates from mystack, and advances that pointer.
-    if T1 == T2
-        return :(PtrArray{$ST,$T1,$N,$R,$L,true}(mystack), mystack+$(L*sizeof(T)))
-    else
-        return :(PtrArray{$ST,$T1,$N,$R,$L,true}(Base.unsafe_convert(Ptr{$T1},mystack)), mystack+$(L*sizeof(T)))
+        add_single_element_array!(ls, destname, bcname, sizeof(T))
     end
 end
 
-@inline extract(x::Base.RefValue) = x[]
-@inline extract(x::Number) = x
-
-## flattens a broadcast
-function broadcast_index_expression(SB, N)
-    SBV = SB.parameters
-    inds = [gensym(Symbol(:n_,n)) for n ∈ 1:N]
-    q = quote end
-    preq = quote end
-    assign_to = gensym(:assign)
-    if length(SBV) > 0 && SBV[1] isa Int
-        callexpr = quote end
-        
-        incorporate_cartesian_inds!(callexpr, preq, SBV,  inds, gensym(:arg), :(bc.args[1]))
-        push!(q.args, Expr(:call, :setindex!, :out, callexpr, inds...))
-        return inds, q, preq
-    elseif length(SBV) == 0
-        push!(q.args, :($assign_to = @inbounds  PaddedMatrices.extract($bcsym.args[1])))
-        return ind, q, preq
-    end
-    broadcast_index_expression!(q, preq, SBV, inds, :bc, assign_to)
-    push!(q.args, Expr(:call, :setindex!, :out, assign_to, inds...))
-    inds, q, preq 
-end
-function incorporate_cartesian_inds!(callexpr, preq, SBV, inds, argsym, bcargsym)
-            
-    ind = Expr(:call, :getindex, argsym)
-    push!(preq.args, :($argsym = @inbounds $bcargsym))
-    for n ∈ 1:length(SBV)
-        indₙ = (SBV[n])::Int
-        if indₙ == 1
-            push!(ind.args, 1)
+function add_broadcast_adjoint_array!(
+    ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol, loopsyms::Vector{Symbol}, ::Type{A}, elementbytes::Int = 8
+) where {S, T, N, A <: AbstractFixedSizeArray{S,T,N}}
+    if N == 1
+        if first(S.parameters)::Int == 1
+            add_single_element_array!(ls, destname, bcname, sizeof(T))
         else
-            push!(ind.args, inds[n])
+            ref = LoopVectorization.ArrayReference(bcname, Union{Symbol,Int}[loopsyms[2]], Ref{Bool}(false))
+            LoopVectorization.add_load!( ls, destname, ref, sizeof(T))
         end
-    end
-    push!(callexpr.args, ind)
-
-end
-function broadcast_index_expression!(q, preq, SBV, inds, bcsym, assign)
-    callexpr = Expr(:call, Expr(:., bcsym, :(:f)))
-    for l ∈ eachindex(SBV)
-        SBVₗ = ((SBV[l])::DataType).parameters
-        argsym = gensym(:arg)
-        if length(SBVₗ) == 0 # scalar argument
-            push!(preq.args, :($argsym = @inbounds PaddedMatrices.extract($bcsym.args[$l])))
-            push!(callexpr.args, argsym)
-            continue
-        end
-        SBVₗ₁ = (SBVₗ[1])::Union{Int,DataType}
-        if SBVₗ₁ isa Int # array argument
-            incorporate_cartesian_inds!(callexpr, preq, SBVₗ, inds, argsym, :($bcsym.args[$l]))
-        elseif SBVₗ₁ isa DataType # Another broadcastable
-            push!(preq.args, :($argsym = @inbounds $bcsym.args[$l]))
-            assign_to = gensym(:assign)
-            broadcast_index_expression!(q, preq, SBVₗ, inds, argsym, assign_to)
-            push!(callexpr.args, assign_to)
-        end
-    end
-    push!(q.args, Expr(:(=), assign, callexpr))
-    nothing
-end
-function broadcast_linearindex_expression(SB, N)
-    ind = gensym(:ind)
-    q = quote end
-    preq = quote end
-    assign_to = gensym(:assign)
-    SBV = SB.parameters
-    # @show length(SBV)
-    if length(SBV) > 0 && SBV[1] isa Int
-        # Then the broadcast contains only a single object
-        callexpr = quote end
-        argsym = gensym(:arg)
-        push!(preq.args, :($argsym = @inbounds bc.args[1]))
-        push!(callexpr.args, Expr(:call, :getindex, argsym, ind))
-        push!(q.args, Expr(:call, :setindex!, :out, callexpr, ind))
-        return ind, q, preq
-    elseif length(SBV) == 0
-        push!(q.args, :($assign_to = @inbounds  PaddedMatrices.extract(bc)))
-        push!(q.args, Expr(:call, :setindex!, :out, assign_to, ind))
-        return ind, q, preq
-    end
-    broadcast_linearindex_expression!(q, preq, SB.parameters, ind, :bc, assign_to)
-    push!(q.args, Expr(:call, :setindex!, :out, assign_to, ind))
-    ind, q, preq
-end
-function broadcast_linearindex_expression!(q, preq, SBV, ind, bcsym, assign)
-    callexpr = Expr(:call, Expr(:., bcsym, :(:f)))
-    for l ∈ eachindex(SBV)
-        SBVₗ = ((SBV[l])::DataType).parameters
-        argsym = gensym(:arg)
-        if length(SBVₗ) == 0 # scalar argument
-            push!(preq.args, :($argsym = @inbounds PaddedMatrices.extract($bcsym.args[$l])))
-            push!(callexpr.args, argsym)
-            continue
-        else
-            push!(preq.args, :($argsym = @inbounds $bcsym.args[$l]))
-        end
-        SBVₗ₁ = (SBVₗ[1])::Union{Int,DataType}
-        if SBVₗ₁ isa Int # array argument
-            push!(callexpr.args, Expr(:call, :getindex, argsym, ind))
-        elseif SBVₗ₁ isa DataType
-            assign_to = gensym(:assign)
-            broadcast_linearindex_expression!(q, preq, SBVₗ, ind, argsym, assign_to)
-            push!(callexpr.args, assign_to)
-        end                           
-    end
-    push!(q.args, Expr(:(=), assign, callexpr))
-    nothing
-end
-
-function materialize_quote(S, A, T, SB, N, P, R)
-    #    @show S, A, T, SB, N, P
-    R, A2 = pick_R(P, R)
-    A = max(A, A2)
-    if A == LinearIndexing
-        ind, loop_body, pre_loop = broadcast_linearindex_expression(SB, N)
-        L = R
-        for n ∈ 2:N
-            L *= S[n]
-        end
-        return quote
-            $(Expr(:meta,:inline))
-            $pre_loop
-            LoopVectorization.@vectorize $T for $ind ∈ 1:$(L)
-                $loop_body
-            end
-        end
-    elseif A == BatchedColumnMajor
-        @assert N == 2
-        # Hvaven't actually implemented this as batched yet.
-        # For now, will default to regular CartesianIndexing fallback.
-        # A proper implementation would be able to estimate how many registers are left over,
-        # and make sure those that shouldn't be reloaded are in fact not.
-        # Ie, which arrays are column vectors vs matrices,
-        # and are special functions like exp getting called, which will consume a lot of registers?
-        inds, loop_body, pre_loop = broadcast_index_expression(SB, N)
-#        M = S[1]
-#        L = S[2]
-#        Md, Mr = divrem(M, 
-        loop = quote
-            LoopVectorization.@vectorize $T for $(inds[1]) ∈ 1:$(S[1])
-                $loop_body
-            end
-        end
-        for n ∈ 2:N
-            loop = quote
-                for $(inds[n]) ∈ 1:$(S[n])
-                    $loop
-                end
-            end
-        end
-        return quote
-            $(Expr(:meta,:inline))
-            $pre_loop
-            $loop
-        end
-    elseif A == CartesianIndexing
-        inds, loop_body, pre_loop = broadcast_index_expression(SB, N)
-        loop = quote
-#            for $(inds[1]) ∈ 1:$(S[1])
-            LoopVectorization.@vectorize $T for $(inds[1]) ∈ 1:$(S[1])
-                $loop_body
-            end
-        end
-        for n ∈ 2:N
-            loop = quote
-                for $(inds[n]) ∈ 1:$(S[n])
-                    $loop
-                end
-            end
-        end
-        return quote
-            $(Expr(:meta,:inline))
-            $pre_loop
-            $loop
-        end
-    elseif A == KernelBatches
-        throw("KernelBatches not yet implemented.")
+    else
+        add_fs_array!(ls, destname, bcname, loopsyms, N:-1:1, S, sizeof(T))
     end
 end
-
-function materialize_quote(bc::Base.Broadcast.Broadcasted{FixedSizeMatrixDefaultStyle{SB,T,R,A}}) where {A,T,SB,R}
-    S = reduce_size(SB.parameters)
-    prettify(materialize_quote(S, A, T, SB, length(S), R, R))
+function LoopVectorization.add_broadcast!(
+    ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol, loopsyms::Vector{Symbol},
+    ::Type{Adjoint{T,A}}, elementbytes::Int = 8
+) where {T, S, A <: AbstractFixedSizeArray{S, T}}
+    add_broadcast_adjoint_array!( ls, destname, bcname, loopsyms, A, sizeof(T) )
+end
+function LoopVectorization.add_broadcast!(
+    ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol, loopsyms::Vector{Symbol},
+    ::Type{Transpose{T,A}}, elementbytes::Int = 8
+) where {T, S, A <: AbstractFixedSizeArray{S, T}}
+    add_broadcast_adjoint_array!( ls, destname, bcname, loopsyms, A, sizeof(T) )
+end
+function LoopVectorization.add_broadcast!(
+    ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol, loopsyms::Vector{Symbol},
+    ::Type{A}, elementbytes::Int = 8
+) where {T, S, N, A <: AbstractFixedSizeArray{S, T, N}}
+    add_fs_array!(ls, destname, bcname, loopsyms, 1:N, S, sizeof(T))
 end
 
 
-# FIXME:
-# D .= A .+ B
-# does not work when A is a matrix and B a 3d array
 @generated function Base.Broadcast.materialize!(
-    out::AbstractMutableFixedSizeArray{S,T,N,P,L}, bc::Base.Broadcast.Broadcasted{FixedSizeMatrixDefaultStyle{SB,T,R,A}}
-) where {S,A,T,SB,N,R,P,L}
-#) where {S,A,T,SB,N,P,R}
-    materialize_quote(S.parameters, A, T, SB, N, N == 1 ? L : P.parameters[2], R)
-end
-
-
-@inline function Base.Broadcast.materialize(
-    sp::StackPointer,
-    bc::Base.Broadcast.Broadcasted{FixedSizeMatrixDefaultStyle{S,T1,R,A}}
-) where {S,A,T1,T2,R}
-    sp, out = similar(sp, bc)
-    Base.broadcast.materialize!(out, bc)
-    sp, out
-end
-@inline function Base.Broadcast.materialize(
-        bc::Base.Broadcast.Broadcasted{FixedSizeMatrixDefaultStyle{S,T,R,A}}
-    ) where {S,T,R,A}
-#    ElType = Base.Broadcast.combine_eltypes(bc.f, bc.args)
-#    out = similar(bc, ElType)
-    out = similar(bc)
-    Base.Broadcast.materialize!(out, bc)
-    out
-end
-
-
-#=
-function batched_column_major_quote(S, A, C, T)
-
-end
-
-function kernel_batch_quote(S, A, C, T)
-    N = length(S)
-    # for now
-    @assert N == 2
-    M, P = S
-    epr, m_k, p_k = pick_kernel_size(T, M, P)
-    mrep, mrem = divrem(M, m_k)
-    prep, prem = divrem(P, p_k)
-    quote
-        for p ∈ 0:prep-1
-            for m ∈ 0:mrep-1
-
-            end
-        end
+    dest::A, bc::BC
+) where {S, T <: Union{Float32,Float64}, N, X, A <: AbstractFixedSizeArray{S,T,N,X}, BC <: Union{Base.Broadcast.Broadcasted,FixedSizeProduct}}
+    # we have an N dimensional loop.
+    # need to construct the LoopSet
+    loopsyms = [gensym(:n) for n ∈ 1:N]
+    ls = LoopVectorization.LoopSet()
+    for (n,itersym) ∈ enumerate(loopsyms)
+        ls.loops[itersym] = LoopVectorization.Loop(itersym, (S.parameters[n])::Int)
     end
+    elementbytes = sizeof(T)
+    LoopVectorization.add_broadcast!(ls, :dest, :bc, loopsyms, BC, elementbytes)
+    LoopVectorization.add_store!(ls, :dest, LoopVectorization.ArrayReference(:dest, loopsyms, Ref{Bool}(false)), elementbytes)
+    resize!(ls.loop_order, LoopVectorization.num_loops(ls)) # num_loops may be greater than N, eg Product
+    q = LoopVectorization.lower(ls)
+    push!(q.args, :dest)
+    pushfirst!(q.args, Expr(:meta,:inline))
+    q
+    # ls
 end
-=#
-#=
-@generated function Base.copyto!(
-                        dest::AbstractMutableFixedSizeArray{S1,T},
-                        bc::Base.Broadcast.Broadcasted{PaddedMatrixStyle{S2,A,C}}
-                    ) where {S1,S2,A,C,T}
-    SV = S1.parameters
-    if A == Agnostic || A == StandardColumnMajor
-        return quote
-            @inbounds @simd for I ∈ CartesianIndices($(Expr(:tuple, SV...)))
-                dest[I] = bc[I]
-            end
-        end
-    elseif A == BatchedColumnMajor
-        return batched_column_major_quote(SV, A, C, T)
-    elseif A == KernelBatches
-        return kernel_bactch_quote(SV, A, C, T)
+@generated function Base.Broadcast.materialize!(
+    dest′::Union{Adjoint{T,A},Transpose{T,A}}, bc::BC
+) where {S, T <: Union{Float32,Float64}, N, X, A <: AbstractFixedSizeArray{S,T,N,X}, BC <: Union{Base.Broadcast.Broadcasted,FixedSizeProduct}}
+    # we have an N dimensional loop.
+    # need to construct the LoopSet
+    loopsyms = [gensym(:n) for n ∈ 1:N]
+    ls = LoopVectorization.LoopSet()
+    pushpreamble!(ls, Expr(:(=), :dest, Expr(:call, :parent, :dest′)))
+    for (n,itersym) ∈ enumerate(loopsyms)
+        ls.loops[itersym] = LoopVectorization.Loop(itersym, (S.parameters[n])::Int)
     end
+    elementbytes = sizeof(T)
+    LoopVectorization.add_broadcast!(ls, :dest, :bc, loopsyms, BC, elementbytes)
+    LoopVectorization.add_store!(ls, :dest, LoopVectorization.ArrayReference(:dest, reverse(loopsyms), Ref{Bool}(false)), elementbytes)
+    resize!(ls.loop_order, num_loops(ls)) # num_loops may be greater than N, eg Product
+    q = LoopVectorization.lower(ls)
+    push!(q.args, :dest′)
+    pushfirst!(q.args, Expr(:meta,:inline))
+    q
+    # ls
 end
-=# 
+@inline function Base.Broadcast.materialize(bc::Base.Broadcast.Broadcasted{S}) where {S <: FixedSizeStyle}
+    ElType = Base.Broadcast.combine_eltypes(bc.f, bc.args)
+    Base.Broadcast.materialize!(similar(bc, ElType), bc)
+end
+
+LoopVectorization.vmaterialize(bc::Base.Broadcast.Broadcasted{<:FixedSizeStyle}) = Base.Broadcast.materialize(bc)
+LoopVectorization.vmaterialize!(dest, bc::Base.Broadcast.Broadcasted{<:FixedSizeStyle}) = Base.Broadcast.materialize!(dest, bc)
+
+LoopVectorization.vmaterialize(bc::FixedSizeProduct) = Base.Broadcast.materialize(bc)
+LoopVectorization.vmaterialize!(dest, bc::FixedSizeProduct) = Base.Broadcast.materialize!(dest, bc)
+
