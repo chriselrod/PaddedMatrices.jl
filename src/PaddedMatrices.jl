@@ -33,7 +33,7 @@ export @Constant, @Mutable,
     PtrVector, DynamicPtrVector,
     PtrMatrix, DynamicPtrMatrix,
     PtrArray, DynamicPtrArray,
-    LazyMap, Static, StaticOneTo, muladd!, mul!, ∗
+    LazyMap, Static, StaticOneTo, muladd!, mul!, *ˡ
 
 
     

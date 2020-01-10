@@ -66,7 +66,7 @@ const SLEEFPiratesDict = Dict{Symbol,Tuple{Symbol,Symbol}}(
     :zero => (:SIMDPirates, :vzero),
     :erf => (:SIMDPirates, :verf)
 )
-for (f, (m, sf)) ∈ LoopVectorization.SLEEFPiratesDict
+for (f, (m, sf)) ∈ SLEEFPiratesDict
     @eval @inline function LazyMap(f::typeof($f), A::AbstractMutableFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
         LazyMap{typeof($m.$sf),S,T,N,X,L}($m.$sf, pointer(A))
     end
