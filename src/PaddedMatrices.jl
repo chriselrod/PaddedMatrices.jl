@@ -9,7 +9,7 @@ using VectorizationBase, SIMDPirates,
     Random, StackPointers, MacroTools,
     SpecialFunctions # Perhaps there is a better way to support erf?
 
-import SIMDPirates: vmuladd
+using VectorizationBase: Static, StaticUnitRange, align
 import ReverseDiffExpressionsBase:
     RESERVED_INCREMENT_SEED_RESERVED!, ∂getindex,
     alloc_adjoint, uninitialized, initialized, isinitialized
@@ -17,7 +17,7 @@ import LoopVectorization: isdense
 
 using Parameters: @unpack
 
-export @Constant, @Mutable,
+export @Mutable, # @Constant,
     AbstractFixedSizeArray,
     AbstractFixedSizeVector,
     AbstractFixedSizeMatrix,
@@ -36,9 +36,6 @@ export @Constant, @Mutable,
     LazyMap, Static, StaticOneTo, muladd!, mul!, *ˡ
 
 
-    
-
-
 @noinline ThrowBoundsError() = throw("Bounds Error")
 @noinline ThrowBoundsError(str) = throw(str)
 @noinline ThrowBoundsError(A, i) = throw(BoundsError(A, i))
@@ -47,18 +44,6 @@ export @Constant, @Mutable,
 simplify_expr(ex::Expr; lines = false, macro_module::Union{Nothing,Module} = nothing)::Expr =
   ex |> (macro_module isa Module ? x -> macroexpand(macro_module,x) : identity) |> (lines ? identity : MacroTools.striplines) |> MacroTools.flatten |> MacroTools.unresolve |> MacroTools.resyntax
 simplify_expr(x) = x
-
-struct Static{N} end
-Base.@pure Static(N) = Static{N}()
-@generated StaticOneTo(::Val{K}) where {K} = Static{1:K}()
-static_type(::Static{N}) where {N} = N
-static_type(::Type{Static{N}}) where {N} = N
-(::Base.Colon)(i::Int64,::Static{N}) where {N} = i:N
-tonumber(::Static{N}) where {N} = N
-@inline function Base.getindex(::Static{N}, i) where {N}
-    @boundscheck i > N && ThrowBoundsError()
-    i
-end
 
 abstract type AbstractPaddedArray{T,N} <: DenseArray{T,N} end # AbstractArray{T,N} end
 abstract type AbstractFixedSizeArray{S<:Tuple,T,N,X<:Tuple,L} <: AbstractPaddedArray{T,N} end
@@ -76,22 +61,32 @@ const AbstractMutableFixedSizeMatrix{M,N,T,P,L} = AbstractMutableFixedSizeArray{
 const AbstractConstantFixedSizeVector{M,T,L} = AbstractConstantFixedSizeArray{Tuple{M},T,1,Tuple{1},L}
 const AbstractConstantFixedSizeMatrix{M,N,T,P,L} = AbstractConstantFixedSizeArray{Tuple{M,N},T,2,Tuple{1,P},L}
 
-maybe_static_size(::AbstractFixedSizeArray{S}) where {S} = Static{S}()
-maybe_static_size(A::AbstractArray) = size(A)
+const AbstractTransposedFixedSizeMatrix{M,N,T} = Union{LinearAlgebra.Transpose{T,<:AbstractFixedSizeArray{Tuple{N,M},T}},LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{Tuple{N,M},T}}}
+const AbstractFixedMatrix{M,N,T} = Union{AbstractTransposedFixedSizeMatrix{M,N,T},AbstractFixedSizeArray{Tuple{N,M},T}}
+
+
+LoopVectorization.maybestaticlength(::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = Static{L}()
+LoopVectorization.maybestaticsize(::AbstractFixedSizeArray{<:Tuple{M,Vararg}}, ::Val{1}) where {M} = Static{M}()
+LoopVectorization.maybestaticsize(::AbstractFixedSizeArray{<:Tuple{M,N,Vararg}}, ::Val{2}) where {M,N} = Static{N}()
+LoopVectorization.maybestaticsize(::AbstractFixedSizeArray{<:Tuple{M,N,K,Vararg}}, ::Val{3}) where {M,N,K} = Static{K}()
+@generated LoopVectorization.maybestaticsize(::AbstractFixedSizeArray{S}, ::Val{I}) where {S,I} = Static{S.parameters[I]}()
 
 LinearAlgebra.checksquare(::AbstractFixedSizeMatrix{M,M}) where {M} = M
 LinearAlgebra.checksquare(::AbstractFixedSizeMatrix) = DimensionMismatch("Matrix is not square.")
                                 
 Base.IndexStyle(::Type{<:AbstractPaddedArray}) = IndexCartesian()
 Base.IndexStyle(::Type{<:AbstractPaddedVector}) = IndexLinear()
-@generated function Base.IndexStyle(::Type{<:AbstractFixedSizeArray{S,T,N,P}}) where {S,T,N,P}
-    # If it is a vector, of if the array doesn't have padding, then it is IndexLinear().
-    N == 1 && return IndexLinear()
-    (S.parameters[1])::Int == (P.parameters[2])::Int && return IndexLinear()
-    IndexCartesian()
+@generated function Base.IndexStyle(::Type{<:AbstractFixedSizeArray{S,T,N,X}}) where {S,T,N,X}
+    x = 1
+    for n ∈ 1:N
+        x == (X.parameters[n])::Int || return IndexCartesian()
+        x *= (S.parameters[n])::Int
+    end
+    IndexLinear()
 end
 
 
+# FIXME: Need to clean up this mess
 @inline val_length(::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = Val{L}()
 @inline full_length(::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = L
 @inline full_length(::Type{<: AbstractFixedSizeArray{S,T,N,X,L}}) where {S,T,N,X,L} = L
@@ -122,14 +117,9 @@ end
     q
 end
 
-# @inline is_sized(::AbstractFixedSizeVector) = true
-# @inline is_sized(::Type{<:AbstractFixedSizeVector}) = true
+
 @inline is_sized(::AbstractFixedSizeArray) = true
 @inline is_sized(::Type{<:AbstractFixedSizeArray}) = true
-# @inline type_length(::AbstractFixedSizeVector{N}) where {N} = N
-# @inline type_length(::Type{<:AbstractFixedSizeVector{N}}) where {N} = N
-# @inline type_length(::AbstractFixedSizeMatrix{M,N}) where {M,N} = M*N
-# @inline type_length(::Type{<:AbstractFixedSizeMatrix{M,N}}) where {M,N} = M*N
 @noinline function simple_vec_prod(sv::Core.SimpleVector)
     p = 1
     for n ∈ 1:length(sv)
@@ -234,11 +224,11 @@ end
 # include("stack_pointer.jl")
 include("padded_array.jl")
 include("mutable_fs_padded_array.jl")
-include("const_fs_padded_array.jl")
-include("kernels.jl")
+# include("const_fs_padded_array.jl")
+# include("kernels.jl")
 include("blas.jl")
-include("elementwise.jl")
-include("array_of_vecs_funcs.jl")
+# include("elementwise.jl")
+# include("array_of_vecs_funcs.jl")
 include("linear_algebra.jl")
 include("rand.jl")
 include("utilities.jl")
@@ -257,14 +247,13 @@ end
 
 @def_stackpointer_fallback vexp ∂materialize DynamicPtrVector DynamicPtrMatrix DynamicPtrArray 
 
-include("precompile.jl")
-_precompile_()
+# include("precompile.jl")
+# _precompile_()
 
 function __init__()
     @add_stackpointer_method vexp ∂materialize DynamicPtrVector DynamicPtrMatrix DynamicPtrArray 
     set_zero_subnormals(true)
     # @require ForwardDiff="f6369f11-7733-5829-9624-2563aa707210" @eval using PaddedMatricesForwardDiff
-    _precompile_()
 end
 
 

@@ -1,6 +1,7 @@
 
 
-staticrangelength(::Type{Static{R}}) where R = 1 + last(R) - first(R)
+staticrangelength(::Type{Static{R}}) where {R} = 1 + last(R) - first(R)
+staticrangelength(::Type{VectorizationBase.StaticUnitRange{L,U}}) where {L,U} = 1 + U - L
 
 struct ViewAdjoint{SP,SV,XP,XV}
     offset::Int
@@ -12,25 +13,39 @@ function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Boo
     x2 = Int[]
     offset::Int = 0
     offset_expr = Expr[]
+    size_expr = Expr(:tuple)
+    size_T = sizeof(T)
     for n ∈ 1:N
         xvn = (XV[n])::Int
-        if inds[n] == Colon
-            push!(s2, (SV[n])::Int)
-            push!(x2, xvn)
-        elseif inds[n] <: Integer
-            push!(offset_expr, :($(sizeof(T)) * $xvn * (inds[$n] - 1)))
-        elseif inds[n] <: Static
-            push!(s2, staticrangelength(inds[n]))
-            push!(x2, xvn)
-            offset += sizeof(T) * (first(static_type(inds[n])) - 1) * xvn
+        if inds[n] <: Integer
+            push!(offset_expr, :($size_T * $xvn * (inds[$n] - 1)))
         else
-            return :(Base.unsafe_view(A, inds...)) # bypass Base.view definition here
+            push!(x2, xvn)
+            if inds[n] == Colon
+                push!(s2, (SV[n])::Int)
+            elseif inds[n] <: Static
+                push!(s2, staticrangelength(inds[n]))
+                offset += sizeof(T) * (first(static_type(inds[n])) - 1) * xvn
+            elseif inds[n] <: VectorizationBase.StaticUnitRange
+                push!(s2, staticrangelength(inds[n]))
+                offset += sizeof(T) * (first(static_type(inds[n])) - 1) * xvn
+            elseif inds[n] <: AbstractRange{<:Integer}
+                push!(s2, -1)
+                push!(offset_expr, :($size_T * $xvn * @inbounds( first(inds[$n]) - 1 )))
+                push!(size_expr.args, Expr(:call, :length, :(@inbounds(inds[$n]))))
+            elseif inds[n] <: Base.OneTo
+                push!(s2, -1)
+                push!(size_expr.args, Expr(:call, :length, :(@inbounds(inds[$n]))))
+            else
+                throw("Indices of type $(inds[n]) not currently supported.")
+            end
         end
     end
     S2 = Tuple{s2...}
     X2 = Tuple{x2...}
     L = prod(x2) * last(s2)
     if partial
+        @assert length(size_expr.args) == 0
         if length(offset_expr) == 0 && offset == 0
             exo = 0
             ex = :(pointer(A))
@@ -63,9 +78,16 @@ function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Boo
                 return :( Expr(:meta,:inline); VectorizationBase.load( $ex ) )
             end
         end
-        return quote
-            $(Expr(:meta,:inline))
-            PtrArray{$S2,$T,$(length(s2)),$X2,$L,true}($ex)
+        if length(size_expr.args) == 0
+            return quote
+                $(Expr(:meta,:inline))
+                PtrArray{$S2,$T,$(length(s2)),$X2,$L,true}($ex)
+            end
+        else
+            return quote
+                $(Expr(:meta,:inline))
+                DSFSPtrArray{$S2,$T,$(length(s2)),$X2,$(length(size_expr))}($ex, $size_expr)
+            end
         end
     end
 end

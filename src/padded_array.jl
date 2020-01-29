@@ -4,20 +4,41 @@ const AbstractDynamicPaddedMatrix{T} = AbstractDynamicPaddedArray{T,2}
 
 struct DynamicPaddedArray{T,N} <: AbstractDynamicPaddedArray{T,N}
     data::Array{T,N}
-#    nvector_loads::Int
-#    stride::Int
     size::NTuple{N,Int}
 end
 struct DynamicPtrArray{T,N} <: AbstractDynamicPaddedArray{T,N}
     ptr::Ptr{T}
     size::NTuple{N,Int}
-    stride::Int
-#    full_length::Int
+    strides::NTuple{N,Int}
 end
+struct DSFSPtrArray{S,T,N,X,K} <: AbstractDynamicPaddedArray{T,N}
+    ptr::Ptr{T}
+    size::NTuple{K,Int}
+end
+
 const DynamicPaddedVector{T} = DynamicPaddedArray{T,1}
 const DynamicPaddedMatrix{T} = DynamicPaddedArray{T,2}
 const DynamicPtrVector{T} = DynamicPtrArray{T,1}
 const DynamicPtrMatrix{T} = DynamicPtrArray{T,2}
+const DSFSPtrVector{L,T,K} = DSFSPtrArray{Tuple{L},T,1,Tuple{1},K}
+const DSFSPtrMatrix{M,N,T,S,K} = DSFSPtrArray{Tuple{M,N},T,2,Tuple{S},K}
+
+@generated function Base.size(A::DSFSPtrArray{S,T,N}) where {S,T,N}
+    s = Expr(:tuple)
+    k = 0
+    for n ∈ 1:N
+        sₙ = (S.parameters[n])::Int
+        if sₙ == -1
+            k += 1
+            push!(s.args, :(@inbounds A.size[$k]))
+        else
+            push!(s.args, sₙ)
+        end
+    end
+    s
+end
+@generated Base.strides(::DSFSPtrArray{S,T,N,X}) where {S,T,N,X} = Expr(:tuple, X.parameters...)
+
 isdense(::Type{<:AbstractDynamicPaddedArray}) = false
 
 full_length(A::DynamicPaddedArray) = length(A.data)

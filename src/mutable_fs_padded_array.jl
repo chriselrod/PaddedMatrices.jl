@@ -74,6 +74,14 @@ end
     :(FixedSizeMatrix{$M,$N,$T,$P,$(P*N)}(undef))
 end
 
+@inline VectorizationBase.stridedpointer(A::AbstractFixedSizeArray{S,T,N,X}) where {S,T,N,X} = VectorizationBase.StaticStridedPointer{T,X}(pointer(A))
+@inline VectorizationBase.stridedpointer(A::Transpose{T,<:AbstractFixedSizeArray{S,T,1,Tuple{M}}) where {S,T,M} = VectorizationBase.StaticStridedPointer{T,Tuple{0,M}}(pointer(A))
+@inline VectorizationBase.stridedpointer(A::Transpose{T,<:AbstractFixedSizeArray{S,T,2,Tuple{M,N}}) where {S,T,M,N} = VectorizationBase.StaticStridedPointer{T,Tuple{N,M}}(pointer(A))
+@generated function VectorizationBase.stridedpointer(A::Transpose{T,AbstractFixedSizeArray{S,T,N,X}}) where {S,T,N,X}
+    VectorizationBase.StaticStridedPointer{T,X}(pointer(A))
+end
+
+
 # @inline FixedSizeVector(A::AbstractConstantFixedSizeVector{M,T,L}) where {M,T,L} = FixedSizeVector{M,T,L}(A.data)
 # @inline FixedSizeMatrix(A::AbstractConstantFixedSizeArray{M,N,T,P,L}) where {M,N,T,P,L} = FixedSizeMatrix{M,N,T,P,L}(A.data)
 @inline FixedSizeArray(A::AbstractConstantFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = FixedSizeArray{S,T,N,X,L}(A.data)
@@ -182,6 +190,7 @@ end
 """
 This is only meant to make recursive algorithms easiesr to implement.
 Wraps a pointer, while passing info on the size of the block and stride.
+V stands for "view"; false means not a view, true means that it is a view of a larger array.
 """
 struct PtrArray{S,T,N,X,L,V} <: AbstractMutableFixedSizeArray{S,T,N,X,L}
     ptr::Ptr{T}

@@ -117,21 +117,18 @@ Random.rand!(A::AbstractMutableFixedSizeArray) = rand!(local_pcg(), A)
     rand_mutable_fixed_size_expr(L, T, P, :rand, -1, -1, :l, :u)
 end
 Random.rand!(A::AbstractMutableFixedSizeArray{S,T}, l::T, u::T) where {S,T} = rand!(local_pcg(), A, l, u)
-@generated function Random.rand(rng::VectorizedRNG.AbstractPCG{P}, ::Type{ <: ConstantFixedSizeArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
-    N,R,L = calc_NPL(S.parameters, T)
-    quote
-        A = FixedSizeArray{$S,$T,$N,$R,$L}(undef)
-        $(rand_mutable_fixed_size_expr(L, T, P, :rand))
-        ConstantFixedSizeArray(A)
-    end
-end
-function Random.rand(::Type{ <: ConstantFixedSizeArray{S,T}}) where {S,T<:Union{Float32,Float64}}
-    rand(local_pcg(), ConstantFixedSizeArray{S,T})
-end
-
-# @generated function Random.randn!(rng::VectorizedRNG.AbstractPCG{P}, A::AbstractMutableFixedSizeArray{S,T,N,R,L}) where {S,P,T<:Union{Float32,Float64},N,R,L}
-#     rand_mutable_fixed_size_expr(L, T, P, :randn)
+# @generated function Random.rand(rng::VectorizedRNG.AbstractPCG{P}, ::Type{ <: ConstantFixedSizeArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
+#     N,R,L = calc_NPL(S.parameters, T)
+#     quote
+#         A = FixedSizeArray{$S,$T,$N,$R,$L}(undef)
+#         $(rand_mutable_fixed_size_expr(L, T, P, :rand))
+#         ConstantFixedSizeArray(A)
+#     end
 # end
+# function Random.rand(::Type{ <: ConstantFixedSizeArray{S,T}}) where {S,T<:Union{Float32,Float64}}
+#     rand(local_pcg(), ConstantFixedSizeArray{S,T})
+# end
+
 @generated function Random.randn!(rng::VectorizedRNG.AbstractPCG{P}, A::AbstractMutableFixedSizeArray{S,T,N,X,L}) where {S,P,T<:Union{Float32,Float64},N,X,L}
     rand_mutable_fixed_size_expr(L, T, P, :randn)
 end
@@ -166,17 +163,17 @@ function Random.randn!(
     randn!(local_pcg(), A, B, C)
 end
 
-@generated function Random.randn(rng::VectorizedRNG.AbstractPCG{P}, ::Type{<:ConstantFixedSizeArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
-    N,X,L = calc_NPL(S.parameters, T)
-    quote
-        A = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
-        $(rand_mutable_fixed_size_expr(L, T, P, :randn))
-        ConstantFixedSizeArray(A)
-    end
-end
-function Random.randn(::Type{<:ConstantFixedSizeArray{S,T}}) where {S,T<:Union{Float32,Float64}}
-    randn(local_pcg(), ConstantFixedSizeArray{S,T})
-end
+# @generated function Random.randn(rng::VectorizedRNG.AbstractPCG{P}, ::Type{<:ConstantFixedSizeArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
+#     N,X,L = calc_NPL(S.parameters, T)
+#     quote
+#         A = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
+#         $(rand_mutable_fixed_size_expr(L, T, P, :randn))
+#         ConstantFixedSizeArray(A)
+#     end
+# end
+# function Random.randn(::Type{<:ConstantFixedSizeArray{S,T}}) where {S,T<:Union{Float32,Float64}}
+#     randn(local_pcg(), ConstantFixedSizeArray{S,T})
+# end
 @generated function Random.randn(rng::VectorizedRNG.AbstractPCG, ::Static{S}) where {S}
     if isa(S, Integer)
         ST = Tuple{S}
@@ -236,17 +233,17 @@ function Random.randexp!(
 end
 
 
-@generated function Random.randexp(rng::VectorizedRNG.AbstractPCG{P}, ::Type{<:ConstantFixedSizeArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
-    N,X,L = calc_NPL(S.parameters, T)
-    quote
-        A = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
-        $(rand_mutable_fixed_size_expr(L, T, P, :randexp))
-        ConstantFixedSizeArray(A)
-    end
-end
-function Random.randexp(::Type{<:ConstantFixedSizeArray{S,T}}) where {S,T<:Union{Float32,Float64}}
-    randexp(local_pcg(), ConstantFixedSizeArray{S,T})
-end
+# @generated function Random.randexp(rng::VectorizedRNG.AbstractPCG{P}, ::Type{<:ConstantFixedSizeArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
+#     N,X,L = calc_NPL(S.parameters, T)
+#     quote
+#         A = FixedSizeArray{$S,$T,$N,$X,$L}(undef)
+#         $(rand_mutable_fixed_size_expr(L, T, P, :randexp))
+#         ConstantFixedSizeArray(A)
+#     end
+# end
+# function Random.randexp(::Type{<:ConstantFixedSizeArray{S,T}}) where {S,T<:Union{Float32,Float64}}
+#     randexp(local_pcg(), ConstantFixedSizeArray{S,T})
+# end
 
 function Random.rand(::Type{<: FixedSizeArray{S,T}}) where {S,T}
     rand!(FixedSizeArray{S,T}(undef))
@@ -331,7 +328,7 @@ end
 macro Mutable(expr, args...)
     rand_expr(expr, :FixedSizeArray, args...)
 end
-macro Constant(expr, args...)
-    rand_expr(expr, :ConstantFixedSizeArray, args...)
-end
+# macro Constant(expr, args...)
+    # rand_expr(expr, :ConstantFixedSizeArray, args...)
+# end
 

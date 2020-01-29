@@ -1,59 +1,20 @@
 
-
-# function determine_vectorloads(num_rows, ::Type{T} = Float64) where T
-#     W = VectorizationBase.pick_vector_width(num_rows, T)
-#     num_vectors = cld(num_rows, W)
-#     num_vectors, num_vectors * W
-# end
-
-@noinline function reduction_expr(S,T,N,X,L,op,f,reduction,init)
-    FL = simple_vec_prod(S.parameters)
-    if N == 1 || L == FL#first(S.parameters)::Int == (X.parameters[2])::Int
-        FL = N == 1 ? first(S.parameters)::Int : FL
-        # W, Wshift = VectorizationBase.pick_vector_width_shift(FL, T)
-        return quote
-            $(Expr(:meta, :inline))
-            out = $init
-            # @vvectorize $T 4 for i ∈ 1:$FL
-            @vvectorize $T 4 for i ∈ 1:$FL
-                $(Expr(op, :out, :(A[i])))
-            end
-            out
-        end
+function Base.sum(A::AbstractFixedSizeArray)
+    s = zero(eltype(A))
+    @avx for i ∈ eachindex(A)
+        s += A[i]
     end
-    W = VectorizationBase.pick_vector_width(T)
-    Xv = X.parameters
-    Sv = S.parameters
-    @assert first(Xv) == 1 "Sum for non-unit stride not yet implemented."
-    q = quote
-        # @vvectorize for i_1 ∈ 1:$(first(Sv))
-        @vvectorize for i_1 ∈ 1:$(first(Sv))
-            out = $f(A[i_1 + incr_1], out)
-        end
-    end
-    for n ∈ 2:N
-        i_n = Symbol(:i_,n)
-        q = quote
-            for $i_n ∈ 0:$(Sv[n] - 1)
-                $(Symbol(:incr_,n-1)) = $(n == N ? :($i_n * $(Xv[N])) : :($(Symbol(:incr_,n)) + $i_n * $(Xv[n])))
-                $q
-            end
-        end
-    end
-    quote
-        out = vbroadcast(Vec{$W,$T}, $init)
-        $q
-        $reduction(out)
-    end
+    s
 end
-
-@generated function Base.sum(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,X,N,L}
-    reduction_expr(S,T,N,X,L,:(+=),:vadd,:vsum,zero(T))
+function Base.prod(A::AbstractFixedSizeArray)
+    s = zero(eltype(A))
+    @avx for i ∈ eachindex(A)
+        s *= A[i]
+    end
+    s
 end
+                  
 @inline Base.sum(A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T}}) where {S,T} = sum(A.parent)
-@generated function Base.prod(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
-    reduction_expr(S,T,N,X,L,:(*=),:vmul,:vprod,one(T))
-end
 @inline Base.prod(A::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T}}) where {S,T} = prod(A.parent)
 
 function Base.cumsum!(A::AbstractMutableFixedSizeVector{M}) where {M}
@@ -65,17 +26,6 @@ end
 Base.cumsum(A::AbstractMutableFixedSizeVector) = cumsum!(copy(A))
 Base.cumsum(A::AbstractConstantFixedSizeVector) = ConstantFixedSizeVector(cumsum!(FixedSizeVector(A)))
 
-# @generated function Base.all(::typeof(isfinite), a::AbstractFixedSizeVector{M,T}) where {M,T}
-#     quote
-#         $(Expr(:meta,:inline))
-#         bv = $(Expr(:tuple, [:(Core.VecElement(true)) for w ∈ 1:W]...))
-#         @vvectorize $T for m ∈ 1:$M
-#             bv = SIMDPirates.vand(bv, SIMDPirates.visfinite(a[m]))
-#         end
-#         SIMDPirates.vall(bv)
-#     end
-# end
-# # @generated function allfinite(a::AbstractFixedSizeVector{M,T}) where {M,T}
 @generated function Base.all(::typeof(isfinite), a::AbstractFixedSizeVector{M,T}) where {M,T}
     W, Wshift = VectorizationBase.pick_vector_width_shift(M, T)
     U = VectorizationBase.mask_type(W)
@@ -96,37 +46,6 @@ Base.cumsum(A::AbstractConstantFixedSizeVector) = ConstantFixedSizeVector(cumsum
         mask >= $(Base.unsafe_trunc(U, (1 << W) - 1))
     end
 end
-
-# @generated function Base.maximum(A::AbstractFixedSizeArray{S,T,P,L}) where {S,T,P,L}
-#     W, Wshift = VectorizationBase.pick_vector_width_shift(L, T)
-#     V = Vec{W,T}
-#     q = quote
-#         $(Expr(:meta,:inline))
-#         m = SIMDPirates.vbroadcast($V, -Inf)
-#         pA = VectorizationBase.vectorizable(A)
-#     end
-#     fulliters = L >> Wshift
-#     if fulliters > 0
-#         push!(q.args,
-#         quote
-#             for l ∈ 0:$(fulliters-1)
-#                 a = SIMDPirates.vabs(SIMDPirates.vload($V, pA + l*$W))
-#                 m = SIMDPirates.vmax(a, m)
-#             end
-#         end)
-#     end
-#     r = L & (W - 1)
-#     if r > 0
-#         U = VectorizationBase.mask_type(W)
-#         push!(q.args, quote
-#             mask = $( U(2^r-1) )
-#             a = SIMDPirates.vabs(SIMDPirates.vload($V, pA + $(fulliters*W), mask ))
-#             m = vmax(m, a)
-#         end)
-#     end
-#     push!(q.args, :(SIMDPirates.vmaximum(m)))
-#     q
-# end
 
 @generated function Base.maximum(
     ::typeof(abs),

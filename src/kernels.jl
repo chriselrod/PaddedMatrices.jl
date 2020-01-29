@@ -151,6 +151,7 @@ ie, A is not transposed, and B is transposed.
         end
     end
 end
+
 @noinline function mul_block_nt(V, W, R1, R2, m_rep, N, P, poffset::Symbol, vA = :vA, B = :B, gemm = nothing)
     Prange = 1:P
     loop_max = isa(N, Number) ? N - 1 : :($N - 1)
