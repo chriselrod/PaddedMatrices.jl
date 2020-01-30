@@ -18,10 +18,11 @@ end
 function calc_NXL(SV::Core.SimpleVector, T, padded_rows::Int, align_stride::Bool = true, pad_to_align_length::Bool = false)
     L = padded_rows
     N = length(SV)
-    X = Int[ 1 ]
+    X = Int[ (SV[1])::Int == 1 ? 0 : 1 ]
     for n ∈ 2:N
-        push!(X, L)
-        L *= (SV[n])::Int
+        svn = (SV[n])::Int
+        push!(X, svn == 1 ? 0 : L)
+        L *= svn
     end
     LA = VectorizationBase.align(L,T)
     if pad_to_align_length # why???
@@ -75,11 +76,11 @@ end
 end
 
 @inline VectorizationBase.stridedpointer(A::AbstractFixedSizeArray{S,T,N,X}) where {S,T,N,X} = VectorizationBase.StaticStridedPointer{T,X}(pointer(A))
-@inline VectorizationBase.stridedpointer(A::Transpose{T,<:AbstractFixedSizeArray{S,T,1,Tuple{M}}) where {S,T,M} = VectorizationBase.StaticStridedPointer{T,Tuple{0,M}}(pointer(A))
-@inline VectorizationBase.stridedpointer(A::Transpose{T,<:AbstractFixedSizeArray{S,T,2,Tuple{M,N}}) where {S,T,M,N} = VectorizationBase.StaticStridedPointer{T,Tuple{N,M}}(pointer(A))
-@generated function VectorizationBase.stridedpointer(A::Transpose{T,AbstractFixedSizeArray{S,T,N,X}}) where {S,T,N,X}
-    VectorizationBase.StaticStridedPointer{T,X}(pointer(A))
-end
+@inline VectorizationBase.stridedpointer(A::Transpose{T,<:AbstractFixedSizeArray{S,T,1,Tuple{M}}}) where {S,T,M} = VectorizationBase.StaticStridedPointer{T,Tuple{0,M}}(pointer(A))
+@inline VectorizationBase.stridedpointer(A::Transpose{T,<:AbstractFixedSizeArray{S,T,2,Tuple{M,N}}}) where {S,T,M,N} = VectorizationBase.StaticStridedPointer{T,Tuple{N,M}}(pointer(A))
+# @generated function VectorizationBase.stridedpointer(A::Transpose{T,<:AbstractFixedSizeArray{S,T,N,X}}) where {S,T,N,X}
+    # VectorizationBase.StaticStridedPointer{T,X}(pointer(A))
+# end
 
 
 # @inline FixedSizeVector(A::AbstractConstantFixedSizeVector{M,T,L}) where {M,T,L} = FixedSizeVector{M,T,L}(A.data)
