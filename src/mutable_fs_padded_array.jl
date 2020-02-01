@@ -135,23 +135,18 @@ function zero!(A::AbstractMutableFixedSizeArray{S,Vec{W,T},N,P,L}) where {S,W,T,
     end
 end
 
-@generated function Base.copy(A::AbstractFixedSizeArray{S,T,N,P,L}) where {S,T,N,P,L}
-    quote
-        B = FixedSizeArray{$S,$T,$N,$P,$L}(undef)
-        @vvectorize $T for l ∈ 1:$L
-            B[l] = A[l]
-        end
-        B
+function Base.copy(A::AbstractFixedSizeArray{S,T,N,P,L}) where {S,T,N,P,L}
+    B = FixedSizeArray{S,T,N,P,L}(undef)
+    @avx for l ∈ eachindex(B)
+        B[l] = A[l]
     end
+    B
 end
-@generated function Base.copyto!(B::AbstractMutableFixedSizeArray{S,T,N,P,L}, A::AbstractFixedSizeArray{S,T,N,P,L}) where {S,T,N,P,L}
-    quote
-        $(Expr(:meta,:inline))
-        @vvectorize $T for l ∈ 1:$L
-            B[l] = A[l]
-        end
-        B
+function Base.copyto!(B::AbstractMutableFixedSizeArray{S,T,N,P,L}, A::AbstractFixedSizeArray{S,T,N,P,L}) where {S,T,N,P,L}
+    @avx for l ∈ eachindex(B)
+        B[l] = A[l]
     end
+    B
 end
 Base.similar(A::AbstractMutableFixedSizeArray{S,T,N,P,L}) where {S,T,N,P,L} = FixedSizeArray{S,T,N,P,L}(undef)
 Base.similar(A::AbstractMutableFixedSizeArray{S,T1,N,P,L},::Type{T2}) where {S,T1,T2,N,P,L} = FixedSizeArray{S,T2,N}(undef)
@@ -177,15 +172,12 @@ mutable_similar(A::AbstractArray) = similar(A)
 mutable_similar(A::AbstractFixedSizeArray{S,T,N,R,L}) where {S,T,N,R,L} = FixedSizeArray{S,T,N,R,L}(undef)
 mutable_similar(A::AbstractArray, T) = similar(A, T)
 mutable_similar(A::AbstractFixedSizeArray{S,T1,N,R,L}, ::Type{T2}) where {S,T1,T2,N,R,L} = FixedSizeArray{S,T2,R,L}(undef)
-@generated function Base.fill!(A::AbstractMutableFixedSizeArray{S,T,N,R,L}, x::T) where {S,T,N,R,L}
-    quote
-        $(Expr(:meta,:inline))
-        v = vbroadcast($(VectorizationBase.pick_vector(L, T)), x)
-        @vvectorize $T for l ∈ 1:L
-            A[l] = v
-        end
-        A
+function Base.fill!(A::AbstractMutableFixedSizeArray{S,T,N,R,L}, x::T) where {S,T,N,R,L}
+    v = vbroadcast($(VectorizationBase.pick_vector(L, T)), x)
+    @avx for l ∈ eachindex(A)
+        A[l] = x
     end
+    A
 end
 
 """
@@ -377,25 +369,24 @@ isview(::Type{PtrArray{S,T,N,X,L,V}}) where {S,T,N,X,L,V} = V
             Base.Cartesian.@nif $(N+1) d-> ( d == 1 ? i[d] > $R : i[d] > size(A,d)) d -> ThrowBoundsError("Dimension $d out of bounds") d -> nothing
         end
         # T = eltype(A)
-        VectorizationBase.store!(pointer(A) + sizeof(T) * $ex, convert($T, v))
+        VectorizationBase.store!(gep(pointer(A), $ex), convert($T, v))
         v
     end
 end
 @generated function Base.setindex!(A::AbstractMutableFixedSizeArray{S,T,N,X,L}, v, i::Vararg{Integer,M}) where {S,T,N,X,L,M}
     if M == 1 && !isview(A)
         bound_check = :(i[1] > $L && ThrowBoundsError("index == $(i[1]) > $L == length of array"))
-        ex = :(@inbounds i[1] - 1)
     else
-        ex = sub2ind_expr(X.parameters)
         R = isview(A) ? (S.parameters[1])::Int : (X.parameters[2])::Int
         bound_check = :(Base.Cartesian.@nif $(N+1) d->( d == 1 ? i[d] > $R : i[d] > size(A,d)) d-> ThrowBoundsError("Dimension $d out of bounds") d -> nothing)
     end
+    ex = sub2ind_expr(X.parameters)
     quote
         $(Expr(:meta, :inline))
         @boundscheck begin
             $bound_check
         end
-        VectorizationBase.store!(pointer(A) + sizeof(T) * $ex, convert($T,v))
+        VectorizationBase.store!(gep(pointer(A), $ex), convert($T,v))
         v
     end
 end
@@ -410,7 +401,7 @@ end
         @boundscheck begin
             Base.Cartesian.@nif $(N+1) d->( d == 1 ? i[d] > $R : i[d] > size(A,d)) d -> ThrowBoundsError(A, i) d -> nothing
         end
-        SIMDPirates.vstore!(pointer(A) + sizeof(NTuple{W,Core.VecElement{T}}) * $ex, v)
+        SIMDPirates.vstore!(gep(pointer(A), $ex), v)
         v
     end
 end
@@ -420,18 +411,12 @@ end
 ) where {S,T,N,X,L,M,W}
     R = isview(A) ? (S.parameters[1])::Int : (X.parameters[2])::Int
     ex = sub2ind_expr(X.parameters)
-    if M == 1
-        ex = :(@inbounds i[1] - 1)
-    else
-        R = isview(A) ? (S.parameters[1])::Int : (X.parameters[2])::Int
-        ex = sub2ind_expr(dims, R)
-    end
     quote
         $(Expr(:meta, :inline))
         @boundscheck begin
             Base.Cartesian.@nif $(N+1) d->( d == 1 ? i[d] > $R : i[d] > size(A,d)) d-> ThrowBoundsError("Dimension $d out of bounds") d -> nothing
         end
-        SIMDPirates.vstore!(pointer(A) + sizeof(NTuple{W,Core.VecElement{T}}) * $ex, v)
+        SIMDPirates.vstore!(gep(pointer(A), $ex), v)
         v
     end
 end
@@ -442,24 +427,24 @@ end
 
 @inline function Base.getindex(A::AbstractMutableFixedSizeVector{S,T,L}, i::Integer) where {S,T,L}
     @boundscheck i <= L || ThrowBoundsError("Index $i > full length $L.")
-    VectorizationBase.load(pointer(A) + sizeof(T) * (i - 1))
+    VectorizationBase.load(gep(pointer(A), (i - 1)))
 end
 @inline function Base.getindex(A::AbstractMutableFixedSizeArray, i::Integer)
     @boundscheck i <= full_length(A) || ThrowBoundsError("Index $i > full length $(full_length(A)).")
     T = eltype(A)
-    VectorizationBase.load(pointer(A) + sizeof(T) * (i - 1))
+    VectorizationBase.load(gep(pointer(A), (i - 1)))
 end
 @inline function Base.getindex(A::AbstractMutableFixedSizeVector{S,Vec{W,T},L}, i::Integer) where {S,T,L,W}
     @boundscheck i <= full_length(A) || ThrowBoundsError("Index $i > full length $L.")
-    SIMDPirates.vload(Vec{W,T}, pointer(A) + sizeof(Vec{W,T}) * (i - 1))
+    SIMDPirates.vload(Vec{W,T}, gep(pointer(A), (i - 1)))
 end
 @inline function Base.getindex(A::AbstractMutableFixedSizeArray{S,Vec{W,T},N,X,L}, i::Integer) where {S,T,L,W,N,X}
     @boundscheck i <= L || ThrowBoundsError("Index $i > full length $L.")
-    SIMDPirates.vload(Vec{W,T}, pointer(A) + sizeof(Vec{W,T}) * (i - 1))
+    SIMDPirates.vload(Vec{W,T}, gep(pointer(A), (i - 1)))
 end
 @inline function Base.getindex(A::LinearAlgebra.Adjoint{Union{},<: AbstractMutableFixedSizeArray{S,Vec{W,T},N,X,L}}, i::Integer) where {S,T,L,W,N,X}
     @boundscheck i <= L || ThrowBoundsError("Index $i > full length $L.")
-    SIMDPirates.vload(Vec{W,T}, pointer(A.parent) + sizeof(Vec{W,T}) * (i - 1))
+    SIMDPirates.vload(Vec{W,T}, gep(pointer(A.parent), (i - 1)))
 end
 
 
@@ -471,7 +456,7 @@ end
         @boundscheck begin
             Base.Cartesian.@nif $(N+1) d->(d == 1 ? i[d] > $R : i[d] > size(A,d)) d->ThrowBoundsError() d -> nothing
         end
-        VectorizationBase.load(pointer(A) + $(sizeof(T)) * $ex )
+        VectorizationBase.load(gep(pointer(A), $ex ))
     end
 end
 @generated function Base.getindex(A::AbstractMutableFixedSizeArray{S,T,N,X,L}, i::CartesianIndex{N}) where {S,T,N,X,L}
@@ -482,7 +467,7 @@ end
         @boundscheck begin
             Base.Cartesian.@nif $(N+1) d->(d == 1 ? i[d] > $R : i[d] > size(A, d)) d->ThrowBoundsError() d -> nothing
         end
-        VectorizationBase.load(pointer(A) + $(sizeof(T)) * $ex )
+        VectorizationBase.load(gep(pointer(A), $ex ))
     end
 end
 @generated function Base.getindex(A::AbstractMutableFixedSizeArray{S,Vec{W,T},N,X,L}, i::Vararg{Int,N}) where {S,T,N,X,L,W}
@@ -493,7 +478,7 @@ end
         @boundscheck begin
             Base.Cartesian.@nif $(N+1) d->(d == 1 ? i[d] > $R : i[d] > size(A,d)) d->ThrowBoundsError() d -> nothing
         end
-        SIMDPirates.vload(Vec{W,T}, pointer(A) + $(sizeof(Vec{W,T})) * $ex )
+        SIMDPirates.vload(Vec{W,T}, gep(pointer(A), $ex ))
     end
 end
 @generated function Base.getindex(A::AbstractMutableFixedSizeArray{S,Vec{W,T},N,X,L}, i::CartesianIndex{N}) where {S,T,N,X,L,W}
@@ -504,7 +489,7 @@ end
         @boundscheck begin
             Base.Cartesian.@nif $(N+1) d->(d == 1 ? i[d] > $R : i[d] > size(A,d)) d->ThrowBoundsError() d -> nothing
         end
-        SIMDPirates.vload(Vec{W,T}, pointer(A) + $(sizeof(Vec{W,T})) * $ex )
+        SIMDPirates.vload(Vec{W,T}, gep(pointer(A), $ex ))
     end
 end
 @generated function Base.getindex(A::LinearAlgebra.Adjoint{Union{},<: AbstractMutableFixedSizeMatrix{M,N,Vec{W,T},X,L}}, i::Int, j::Int) where {M,N,W,T,X,L}
@@ -516,7 +501,7 @@ end
                 ThrowBoundsError("At least one of: $j > $M or $i > $N.")
             end
         end
-        SIMDPirates.vload(Vec{W,T}, pointer(A.parent) + $(sizeof(Vec{W,T})) * ( (i-1)*$R + j-1 ))
+        SIMDPirates.vload(Vec{W,T}, gep(pointer(A.parent), ( (i-1)*$R + j-1 )))
     end
 end
 function Base.getindex(A::AbstractMutableFixedSizeVector{S,T,L}, i::Int, j::Int) where {S,T,L}

@@ -9,7 +9,7 @@ using VectorizationBase, SIMDPirates,
     Random, StackPointers, MacroTools,
     SpecialFunctions # Perhaps there is a better way to support erf?
 
-using VectorizationBase: Static, StaticUnitRange, align
+using VectorizationBase: Static, StaticUnitRange, align, gep
 import ReverseDiffExpressionsBase:
     RESERVED_INCREMENT_SEED_RESERVED!, ∂getindex,
     alloc_adjoint, uninitialized, initialized, isinitialized

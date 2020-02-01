@@ -130,49 +130,6 @@ end
 @inline Base.pointer(x::Symmetric{T,<:AbstractMutableFixedSizeMatrix{P,P,T,R,L}}) where {P,T,R,L} = pointer(x.data)
 
 
-@generated function vexp!(
-    B::AbstractMutableFixedSizeArray{S,T,N,X,L},
-) where {S,T,N,X,L}
-    quote
-        $(Expr(:meta,:inline))
-        LoopVectorization.@vvectorize $T for l ∈ 1:$L
-            B[l] = SLEEFPirates.exp(B[l])
-        end
-        B
-    end
-end
-@generated function vexp!(
-    B::AbstractMutableFixedSizeArray{S,T,N,X,L},
-    A::AbstractFixedSizeArray{S,T,N,X,L}
-) where {S,T,N,X,L}
-    quote
-        $(Expr(:meta,:inline))
-        LoopVectorization.@vvectorize $T for l ∈ 1:$L
-            B[l] = SLEEFPirates.exp(A[l])
-        end
-        B
-    end
-end
-@inline function vexp(
-    A::AbstractFixedSizeArray{S,T,N,X,L}
-) where {S,T,N,X,L}
-    vexp!(FixedSizeArray{S,T,N,X,L}(undef), A)
-end
-@inline function vexp(
-    A::AbstractConstantFixedSizeArray{S,T,N,X,L}
-) where {S,T,N,X,L}
-    FixedSizeArray{S,T,N,X,L}(undef) |>
-        vexp! |>
-        ConstantFixedSizeArray
-end
-function vexp(
-    sp::StackPointer,
-    A::AbstractFixedSizeArray{S,T,N,X,L}
-) where {S,T,N,X,L}
-    sp, B = PtrArray{S,T,N,X,L}(sp)
-    sp, vexp!(B, A)
-end
-
 @noinline function pointer_vector_expr(
     outsym::Symbol, @nospecialize(M::Union{Int,Symbol}), T, sp::Bool = true, ptrsym::Symbol = :sptr#; align_dynamic::Bool=true
 )
@@ -215,7 +172,7 @@ unique_copyto!(ptr::Ptr{T}, x::T) where {T} = VectorizationBase.store!(ptr, x)
 function unique_copyto!(ptr::Ptr{T}, x::Union{AbstractPaddedVector{T},AbstractArray{T}}) where {T}
     @inbounds for i ∈ eachindex(x)
         VectorizationBase.store!(ptr, x[i])
-        ptr += sizeof(T)
+        ptr = gep(ptr, 1)
     end
 end
 @generated function unique_copyto!(ptr::Ptr{T}, x::AbstractPaddedArray{T,N}) where {T,N}
@@ -223,7 +180,7 @@ end
         ptrx = pointer(x)
         Base.Cartesian.@nloops $N n x begin
             VectorizationBase.store!(ptr, (Base.Cartesian.@nref $N x n))
-            ptr += $(sizeof(T))
+            ptr = gep(ptr, 1)
         end
     end
 end
@@ -234,16 +191,17 @@ end
         return quote
             ind = 0
             Base.Cartesian.@nloops $(N-1) i j -> 1:size(A,j+1) begin
-                @vvectorize $T 4 for i_0 ∈ 1:$nrows
-                    ptr[i_0] = A[ind + i_0]
+                ptrA = gep(pointer(A), ind)
+                @avx for i_0 ∈ 1:$nrows
+                    ptr[i_0] = ptrA[i_0]
                 end
                 ind += $P
-                ptr += $(sizeof(T))*$nrows
+                ptr = gep(ptr, $nrows)
             end
         end
     else #if N == 1
         return quote
-            @vvectorize $T 4 for i ∈ 1:$nrows
+            @avx for i ∈ 1:$nrows
                 ptr[i] = A[i]
             end
         end

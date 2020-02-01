@@ -14,24 +14,23 @@ function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Boo
     offset::Int = 0
     offset_expr = Expr[]
     size_expr = Expr(:tuple)
-    size_T = sizeof(T)
     for n ∈ 1:N
         xvn = (XV[n])::Int
         if inds[n] <: Integer
-            push!(offset_expr, :($size_T * $xvn * (inds[$n] - 1)))
+            push!(offset_expr, :($xvn * (inds[$n] - 1)))
         else
             push!(x2, xvn)
             if inds[n] == Colon
                 push!(s2, (SV[n])::Int)
             elseif inds[n] <: Static
                 push!(s2, staticrangelength(inds[n]))
-                offset += sizeof(T) * (first(static_type(inds[n])) - 1) * xvn
+                offset += (first(static_type(inds[n])) - 1) * xvn
             elseif inds[n] <: VectorizationBase.StaticUnitRange
                 push!(s2, staticrangelength(inds[n]))
-                offset += sizeof(T) * (first(static_type(inds[n])) - 1) * xvn
+                offset += (first(static_type(inds[n])) - 1) * xvn
             elseif inds[n] <: AbstractRange{<:Integer}
                 push!(s2, -1)
-                push!(offset_expr, :($size_T * $xvn * @inbounds( first(inds[$n]) - 1 )))
+                push!(offset_expr, :($xvn * @inbounds( first(inds[$n]) - 1 )))
                 push!(size_expr.args, Expr(:call, :length, :(@inbounds(inds[$n]))))
             elseif inds[n] <: Base.OneTo
                 push!(s2, -1)
@@ -51,10 +50,10 @@ function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Boo
             ex = :(pointer(A))
         elseif offset == 0
             exo = length(offset_expr) > 1 ? Expr(:call, :+, offset_expr...) : offset_expr
-            ex = :(pointer(A) + _offset)
+            ex = :(gep(pointer(A), _offset))
         else
             exo = Expr(:call, :+, offset, offset_expr...)
-            ex = :(pointer(A) + _offset)
+            ex = :(gep(pointer(A), _offset))
         end
         partial_expr = :(ViewAdjoint{$(Tuple{SV...}),$S2,$(Tuple{XV...}),$X2}(_offset))
         length(s2) == 0 && return :( Expr(:meta,:inline); _offset = $ex; ( VectorizationBase.load( $ex ), $partial_expr ) )
@@ -67,9 +66,13 @@ function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Boo
         if length(offset_expr) == 0 && offset == 0
             ex = :(pointer(A))
         elseif offset == 0
-            ex = Expr(:call, :+, :(pointer(A)), offset_expr...)
+            if length(offset_expr) == 1
+                ex = Expr(:call, :gep, :(pointer(A)), first(offset_expr))
+            else
+                ex = Expr(:call, :gep, :(pointer(A)), Expr(:call, :+, offset_expr...))
+            end
         else
-            ex = Expr(:call, :+, :(pointer(A)), offset, offset_expr...)
+            ex = Expr(:call, :gep, :(pointer(A)), Expr(:call, :+, offset, offset_expr...))
         end
         if length(s2) == 0
             if scalarview
@@ -118,7 +121,7 @@ end
         SVT = tuple(SV.parameters...)
         q = quote
             d = PtrArray{$SV,$T,$NV,$XV,$LV,true}(pointer(c) + b.offset)
-            @inbounds @nloops $NV i j -> $SVT[j] begin
+            @avx @nloops $NV i j -> 1:$SVT[j] begin
                 @nref $NV d i += @nref $NV a i
             end
             nothing
@@ -128,7 +131,7 @@ end
         q = quote
             ptra = pointer(a)
             ptrc = pointer(c) + b.offset
-            @vvectorize $T 4 for r in 1:$(SV.parameters[1])
+            @avx for r in 1:$(SV.parameters[1])
                 ptrc[r] = ptra[r] + ptrc[r]
             end
             nothing
@@ -139,22 +142,22 @@ end
             q = quote
                 ptra = pointer(a)
                 ptrc = pointer(c) + b.offset
-                @vvectorize $T 4 for r in 1:$L
+                @avx for r in 1:$L
                     ptrc[r] = ptra[r] + ptrc[r]
                 end
                 nothing
             end
         else
-            PV = (XV.parameters[2])::Int * sizeof(T) # Take strides along the view's second axis
-            PA = (XA.parameters[2])::Int * sizeof(T)
+            PV = (XV.parameters[2])::Int # Take strides along the view's second axis
+            PA = (XA.parameters[2])::Int
             q = quote
                 ptra = pointer(a)
                 ptrc = pointer(c) + b.offset
                 for c in 1:$(SV.parameters[2])
-                    @vvectorize $T 4 for r in 1:$(SV.parameters[1])
+                    @avx for r in 1:$(SV.parameters[1])
                         ptrc[r] = ptra[r] + ptrc[r]
                     end
-                    ptra += $PA; ptrc += $PV
+                    ptra = gep(ptra, $PA); ptrc = gep(ptrc, $PV)
                 end
                 nothing
             end
@@ -165,8 +168,10 @@ end
             @nloops $(NV-1) i j -> 0:$SVT[j+1]-1 begin
                 offc = $(Expr(:call, :(+), :(b.offset), [:( $(Symbol(:i_,n-1)) * $((XV.parameters[n])::Int) ) for n in 2:NV]...))
                 offa = $(Expr(:call, :(+), [:( $(Symbol(:i_,n-1)) * $((XA.parameters[n])::Int) ) for n in 2:NV]...))
-                @vectorize $T for i_0 ∈ 1:$(ST[1])
-                    c[n + offc] = a[n + offa] + c[n + offc]
+                ctemp = gep(pointer(c), offc)
+                atemp = gep(pointer(a), offa)
+                @avx for i_0 ∈ 1:$(ST[1])
+                    ctemp[i_0] = atemp[i_0] + ctemp[i_0]
                 end
             end
             nothing
@@ -175,7 +180,7 @@ end
     if c <: UninitializedArray
         # then we zero-initialize first
         qi = quote
-            @inbounds for l in 1:$LP
+            @avx for l in 1:$LP
                 c[l] = zero($T)
             end
         end
