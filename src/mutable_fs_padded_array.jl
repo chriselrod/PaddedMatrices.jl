@@ -173,7 +173,6 @@ mutable_similar(A::AbstractFixedSizeArray{S,T,N,R,L}) where {S,T,N,R,L} = FixedS
 mutable_similar(A::AbstractArray, T) = similar(A, T)
 mutable_similar(A::AbstractFixedSizeArray{S,T1,N,R,L}, ::Type{T2}) where {S,T1,T2,N,R,L} = FixedSizeArray{S,T2,R,L}(undef)
 function Base.fill!(A::AbstractMutableFixedSizeArray{S,T,N,R,L}, x::T) where {S,T,N,R,L}
-    v = vbroadcast($(VectorizationBase.pick_vector(L, T)), x)
     @avx for l ∈ eachindex(A)
         A[l] = x
     end
@@ -188,11 +187,11 @@ V stands for "view"; false means not a view, true means that it is a view of a l
 struct PtrArray{S,T,N,X,L,V} <: AbstractMutableFixedSizeArray{S,T,N,X,L}
     ptr::Ptr{T}
 end
-@generated function PtrArray{S,T,N,X,L}(ptr::Ptr{T},::Val{V}=Val{false}()) where {S,T,N,X,L,V}
-    quote
-        $(Expr(:meta,:inline))
-        PtrArray{$S,$T,$N,$X,$L,$V}(ptr)
-    end
+@inline function PtrArray{S,T,N,X,L}(ptr::Ptr{T}) where {S,T,N,X,L}
+    PtrArray{S,T,N,X,L,false}(ptr)
+end
+@inline function PtrArray{S,T,N,X,L}(ptr::Ptr{T},::Val{V}) where {S,T,N,X,L,V}
+    PtrArray{S,T,N,X,L,V}(ptr)
 end
 @generated function PtrArray{S,T,N,X}(ptr::Ptr{T},::Val{V}=Val{false}()) where {S,T,N,X,V}
     L = simple_vec_prod(X.parameters) * last(S.parameters)::Int
