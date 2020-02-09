@@ -6,7 +6,7 @@ module PaddedMatrices
 using VectorizationBase, SIMDPirates,
     SLEEFPirates, VectorizedRNG,
     LoopVectorization, LinearAlgebra,
-    Random, StackPointers, MacroTools,
+    Random, StackPointers,
     SpecialFunctions # Perhaps there is a better way to support erf?
 
 using VectorizationBase: Static, StaticUnitRange, align, gep
@@ -40,11 +40,6 @@ export @Mutable, # @Constant,
 @noinline ThrowBoundsError(str) = throw(str)
 @noinline ThrowBoundsError(A, i) = throw(BoundsError(A, i))
 
-# Like MacroTools.prettify, but it doesn't alias gensyms. This is because doing so before combining expressions could cause problems.
-simplify_expr(ex::Expr; lines = false, macro_module::Union{Nothing,Module} = nothing)::Expr =
-  ex |> (macro_module isa Module ? x -> macroexpand(macro_module,x) : identity) |> (lines ? identity : MacroTools.striplines) |> MacroTools.flatten |> MacroTools.unresolve |> MacroTools.resyntax
-simplify_expr(x) = x
-
 abstract type AbstractPaddedArray{T,N} <: DenseArray{T,N} end # AbstractArray{T,N} end
 abstract type AbstractFixedSizeArray{S<:Tuple,T,N,X<:Tuple,L} <: AbstractPaddedArray{T,N} end
 abstract type AbstractMutableFixedSizeArray{S,T,N,X,L} <: AbstractFixedSizeArray{S,T,N,X,L} end
@@ -62,7 +57,7 @@ const AbstractConstantFixedSizeVector{M,T,L} = AbstractConstantFixedSizeArray{Tu
 const AbstractConstantFixedSizeMatrix{M,N,T,P,L} = AbstractConstantFixedSizeArray{Tuple{M,N},T,2,Tuple{1,P},L}
 
 const AbstractTransposedFixedSizeMatrix{M,N,T} = Union{LinearAlgebra.Transpose{T,<:AbstractFixedSizeArray{Tuple{N,M},T}},LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{Tuple{N,M},T}}}
-const AbstractFixedMatrix{M,N,T} = Union{AbstractTransposedFixedSizeMatrix{M,N,T},AbstractFixedSizeArray{Tuple{N,M},T}}
+const AbstractFixedMatrix{M,N,T} = Union{AbstractTransposedFixedSizeMatrix{M,N,T},AbstractFixedSizeArray{Tuple{M,N},T}}
 
 
 LoopVectorization.maybestaticlength(::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = Static{L}()

@@ -31,7 +31,7 @@ end
 
 check_matmul_sizes(::AbstractFixedMatrix{M,N}, ::AbstractFixedMatrix{M,K}, ::AbstractFixedMatrix{K,N}) where {M,K,N} = nothing
 check_matmul_sizes(::AbstractFixedMatrix{M,N}, ::LinearAlgebra.Diagonal{T,<:AbstractFixedSizeArray{Tuple{M}}}, ::AbstractFixedMatrix{M,N}) where {T,M,N} = nothing
-check_matmul_sizes(::AbstractFixedMatrix, ::AbstractFixedMatrix, ::AbstractFixedMatrix) = throw("Sizes are incompatible!; C: $(size(C)); A: $(size(A)); B: $(size(B))")
+check_matmul_sizes(C::AbstractFixedMatrix, A::AbstractFixedMatrix, B::AbstractFixedMatrix) = throw("Sizes are incompatible!; C: $(size(C)); A: $(size(A)); B: $(size(B))")
 function check_matmul_sizes(C, A, B)
     Mc, Nc = size(C)
     Ma, Ka = size(A)
@@ -49,7 +49,7 @@ function LinearAlgebra.mul!(
     @avx for m ∈ 1:size(C,1)
         for n ∈ 1:size(C,2)
             Cₘₙ = zero(T)
-            for k ∈ 1:1:size(B,1)
+            for k ∈ 1:size(B,1)
                 Cₘₙ += A[m,k] * B[k,n]
             end
             C[m,n] = Cₘₙ
@@ -64,7 +64,7 @@ function nmul!(
     @avx for m ∈ 1:size(C,1)
         for n ∈ 1:size(C,2)
             Cₘₙ = zero(T)
-            for k ∈ 1:1:size(B,1)
+            for k ∈ 1:size(B,1)
                 Cₘₙ -= A[m,k] * B[k,n]
             end
             C[m,n] = Cₘₙ
@@ -95,7 +95,7 @@ function muladd!(
     @avx for m ∈ 1:size(C,1)
         for n ∈ 1:size(C,2)
             Cₘₙ = zero(T)
-            for k ∈ 1:1:size(B,1)
+            for k ∈ 1:size(B,1)
                 Cₘₙ += A[m,k] * B[k,n]
             end
             C[m,n] += Cₘₙ
@@ -110,7 +110,7 @@ function mulsub!(
     @avx for m ∈ 1:size(C,1)
         for n ∈ 1:size(C,2)
             Cₘₙ = zero(T)
-            for k ∈ 1:1:size(B,1)
+            for k ∈ 1:size(B,1)
                 Cₘₙ += A[m,k] * B[k,n]
             end
             C[m,n] = Cₘₙ - C[m,n]
@@ -125,7 +125,7 @@ function nmuladd!(
     @avx for m ∈ 1:size(C,1)
         for n ∈ 1:size(C,2)
             Cₘₙ = zero(T)
-            for k ∈ 1:1:size(B,1)
+            for k ∈ 1:size(B,1)
                 Cₘₙ -= A[m,k] * B[k,n]
             end
             C[m,n] += Cₘₙ
@@ -140,7 +140,7 @@ function nmulsub!(
     @avx for m ∈ 1:size(C,1)
         for n ∈ 1:size(C,2)
             Cₘₙ = zero(T)
-            for k ∈ 1:1:size(B,1)
+            for k ∈ 1:size(B,1)
                 Cₘₙ -= A[m,k] * B[k,n]
             end
             C[m,n] = Cₘₙ - C[m,n]

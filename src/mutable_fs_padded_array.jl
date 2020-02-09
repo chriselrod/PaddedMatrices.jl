@@ -348,7 +348,10 @@ end
 @inline VectorizationBase.vectorizable(A::LinearAlgebra.Diagonal{T,<:AbstractMutableFixedSizeArray}) where {T} = VectorizationBase.Pointer(pointer(A.diag))
 @inline VectorizationBase.vectorizable(A::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeArray}) where {T} = VectorizationBase.Pointer(pointer(A.parent))
 
-
+@inline function flatvector(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
+    PtrArray{Tuple{L},T,1,Tuple{1},L,false}(pointer(A))
+end
+@inline flatvector(a::Number) = a
 # @inline Base.similar(sp::StackPointer, A::AbstractMutableFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = PtrArray{S,T,N,X,L,false}(sp)
 @inline function Base.copy(sp::StackPointer, A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
     sp, B = PtrArray{S,T,N,X,L,false}(sp)
