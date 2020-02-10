@@ -6,24 +6,24 @@ module PaddedMatrices
 using VectorizationBase, SIMDPirates,
     SLEEFPirates, VectorizedRNG,
     LoopVectorization, LinearAlgebra,
-    Random, StackPointers,
-    SpecialFunctions # Perhaps there is a better way to support erf?
+    Random, StackPointers#,
+    # SpecialFunctions # Perhaps there is a better way to support erf?
 
 using VectorizationBase: Static, StaticUnitRange, align, gep
-import ReverseDiffExpressionsBase:
-    RESERVED_INCREMENT_SEED_RESERVED!, ∂getindex,
-    alloc_adjoint, uninitialized, initialized, isinitialized
-import LoopVectorization: isdense
+# import ReverseDiffExpressionsBase:
+    # RESERVED_INCREMENT_SEED_RESERVED!, ∂getindex,
+    # alloc_adjoint, uninitialized, initialized, isinitialized
+# import LoopVectorization: isdense
 
-using Parameters: @unpack
+# using Parameters: @unpack
 
 export @Mutable, # @Constant,
     AbstractFixedSizeArray,
     AbstractFixedSizeVector,
     AbstractFixedSizeMatrix,
-    ConstantFixedSizeArray,
-    ConstantFixedSizeVector,
-    ConstantFixedSizeMatrix,
+    # ConstantFixedSizeArray,
+    # ConstantFixedSizeVector,
+    # ConstantFixedSizeMatrix,
     FixedSizeArray,
     FixedSizeVector,
     FixedSizeMatrix,
@@ -33,7 +33,7 @@ export @Mutable, # @Constant,
     PtrVector, DynamicPtrVector,
     PtrMatrix, DynamicPtrMatrix,
     PtrArray, DynamicPtrArray,
-    LazyMap, Static, StaticOneTo, muladd!, mul!, *ˡ
+    LazyMap, muladd!, mul!, *ˡ
 
 
 @noinline ThrowBoundsError() = throw("Bounds Error")
@@ -66,8 +66,8 @@ LoopVectorization.maybestaticsize(::AbstractFixedSizeArray{<:Tuple{M,N,Vararg}},
 LoopVectorization.maybestaticsize(::AbstractFixedSizeArray{<:Tuple{M,N,K,Vararg}}, ::Val{3}) where {M,N,K} = Static{K}()
 @generated LoopVectorization.maybestaticsize(::AbstractFixedSizeArray{S}, ::Val{I}) where {S,I} = Static{S.parameters[I]}()
 
-LinearAlgebra.checksquare(::AbstractFixedSizeMatrix{M,M}) where {M} = M
-LinearAlgebra.checksquare(::AbstractFixedSizeMatrix) = DimensionMismatch("Matrix is not square.")
+LinearAlgebra.checksquare(::AbstractFixedMatrix{M,M}) where {M} = M
+LinearAlgebra.checksquare(::AbstractFixedMatrix{M,N}) where {M,N} = DimensionMismatch("Matrix is not square: dimensions are ($M,$N).")
                                 
 Base.IndexStyle(::Type{<:AbstractPaddedArray}) = IndexCartesian()
 Base.IndexStyle(::Type{<:AbstractPaddedVector}) = IndexLinear()
@@ -83,11 +83,6 @@ end
 
 # FIXME: Need to clean up this mess
 @inline val_length(::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = Val{L}()
-@inline full_length(::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = L
-@inline full_length(::Type{<: AbstractFixedSizeArray{S,T,N,X,L}}) where {S,T,N,X,L} = L
-@inline full_length(A::AbstractPaddedArray) = length(A.data)
-@inline full_length(::NTuple{N}) where {N} = N
-@inline full_length(::Type{<:NTuple{N}}) where {N} = N
 
 @inline is_sized(::NTuple) = true
 @inline is_sized(::Type{<:NTuple}) = true
@@ -122,18 +117,6 @@ end
     end
     p
 end
-@noinline function isdense(S::Core.SimpleVector, X::Core.SimpleVector)
-    N = length(S)
-    # N == 1 && return true # shortcut not valid in general, as non-unit stride is possible
-    p = 1
-    for n ∈ 1:N-1
-        p *= (S[n])::Int
-    end
-    p == (last(X)::Int)
-end
-@generated function isdense(::Type{<:AbstractFixedSizeArray{S,T,N,X}}) where {S,T,N,X}
-    isdense(S.parameters, X.parameters)
-end
 
 @generated type_length(::AbstractFixedSizeArray{S}) where {S} = simple_vec_prod(S.parameters)
 @generated type_length(::Type{<:AbstractFixedSizeArray{S}}) where {S} = simple_vec_prod(S.parameters)
@@ -167,63 +150,15 @@ end
 @generated function sub2ind(::AbstractFixedSizeArray{S,T,N,X}, i) where {S,T,N,X}
     sub2ind_expr(X.parameters)
 end
-function sum_inds(args)
-    p = 0
-    ex = Expr(:call, :+)
-    for a ∈ args
-        if a isa Integer
-            p += a
-        else
-            push!(ex.args, a)
-        end
-    end
-    length(ex.args) == 1 && return p
-    push!(ex.args, p)
-    ex
-end
-function mul_inds(args)
-    p = 1
-    ex = Expr(:call, :*)
-    for a ∈ args
-        if a isa Integer
-            p *= a
-        else
-            push!(ex.args, a)
-        end
-    end
-    length(ex.args) == 1 && return p
-    push!(ex.args, p)
-    ex
-end
-
-## WHAT IS THIS FOR?
-## ADD DOCS FOR STUBS
-# function vload! end
 
 function calc_padding(nrow::Int, T)
     W = VectorizationBase.pick_vector_width(T)
     W > nrow ? VectorizationBase.nextpow2(nrow) : VectorizationBase.align(nrow, T)
 end
-@noinline function calc_strides(SV::Core.SimpleVector, T)
-    P = calc_padding(first(SV)::Int, T)::Int
-    X = [ 1 ]
-    for n in 2:length(SV)-1
-        push!(X, P)
-        P *= (SV[n])::Int
-    end
-    push!(X, P)
-    X
-end
-# calc_padding(nrow::Int, T) = VectorizationBase.ispow2(nrow) ? nrow : VectorizationBase.align(nrow, T)
 
-# include("stack_pointer.jl")
 include("padded_array.jl")
 include("mutable_fs_padded_array.jl")
-# include("const_fs_padded_array.jl")
-# include("kernels.jl")
 include("blas.jl")
-# include("elementwise.jl")
-# include("array_of_vecs_funcs.jl")
 include("linear_algebra.jl")
 include("rand.jl")
 include("utilities.jl")
@@ -233,12 +168,6 @@ include("lazy_maps.jl")
 include("gradsupport.jl")
 include("zeroinitialized.jl")
 
-function pointer_array_type(::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
-    PtrArray{S,T,N,X,L,false}
-end
-macro temporary_similar(A)
-    :(pointer_array_type($A)(SIMDPirates.alloca(val_length($A), eltype($A))))
-end
 
 @def_stackpointer_fallback vexp ∂materialize DynamicPtrVector DynamicPtrMatrix DynamicPtrArray 
 
@@ -246,7 +175,7 @@ end
 # _precompile_()
 
 function __init__()
-    @add_stackpointer_method vexp ∂materialize DynamicPtrVector DynamicPtrMatrix DynamicPtrArray 
+    # @add_stackpointer_method vexp ∂materialize DynamicPtrVector DynamicPtrMatrix DynamicPtrArray 
     set_zero_subnormals(true)
     # @require ForwardDiff="f6369f11-7733-5829-9624-2563aa707210" @eval using PaddedMatricesForwardDiff
 end

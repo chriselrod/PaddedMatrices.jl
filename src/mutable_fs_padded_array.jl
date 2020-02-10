@@ -428,16 +428,16 @@ end
 # @inline Base.@propagate_inbounds Base.getindex(A::AbstractMutableFixedSizeArray, i...) = A.data[i...]
 
 @inline function Base.getindex(A::AbstractMutableFixedSizeVector{S,T,L}, i::Integer) where {S,T,L}
-    @boundscheck i <= L || ThrowBoundsError("Index $i > full length $L.")
+    @boundscheck i <= L || ThrowBoundsError("Index $i > length $L.")
     VectorizationBase.load(gep(pointer(A), (i - 1)))
 end
 @inline function Base.getindex(A::AbstractMutableFixedSizeArray, i::Integer)
-    @boundscheck i <= full_length(A) || ThrowBoundsError("Index $i > full length $(full_length(A)).")
+    @boundscheck i <= length(A) || ThrowBoundsError("Index $i > length $(length(A)).")
     T = eltype(A)
     VectorizationBase.load(gep(pointer(A), (i - 1)))
 end
 @inline function Base.getindex(A::AbstractMutableFixedSizeVector{S,Vec{W,T},L}, i::Integer) where {S,T,L,W}
-    @boundscheck i <= full_length(A) || ThrowBoundsError("Index $i > full length $L.")
+    @boundscheck i <= length(A) || ThrowBoundsError("Index $i > length $L.")
     SIMDPirates.vload(Vec{W,T}, gep(pointer(A), (i - 1)))
 end
 @inline function Base.getindex(A::AbstractMutableFixedSizeArray{S,Vec{W,T},N,X,L}, i::Integer) where {S,T,L,W,N,X}
