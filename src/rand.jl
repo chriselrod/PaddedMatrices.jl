@@ -1,19 +1,19 @@
 using VectorizedRNG: local_pcg
 
-Random.rand!(A::AbstractMutableFixedSizeArray) = (rand!(local_pcg(), flatvector(A)); A)
-Random.rand!(A::AbstractMutableFixedSizeArray{S,T}, l::T, u::T) where {S,T} = (rand!(local_pcg(), flatvector(A), l, u); A)
+Random.rand!(A::AbstractStrideArray) = (rand!(local_pcg(), flatvector(A)); A)
+Random.rand!(A::AbstractStrideArray{S,T}, l::T, u::T) where {S,T} = (rand!(local_pcg(), flatvector(A), l, u); A)
 # Specific to avoid ambiguities
-Random.randn!(A::AbstractMutableFixedSizeArray) = (randn!(local_pcg(), flatvector(A)); A)
+Random.randn!(A::AbstractStrideArray) = (randn!(local_pcg(), flatvector(A)); A)
 function Random.randn!(
-    A::AbstractMutableFixedSizeArray{S,T,N,X,L},
-    B::Union{T,<:AbstractMutableFixedSizeArray{S,T,N,X,L}}
+    A::AbstractStrideArray{S,T,N,X},
+    B::Union{T,<:AbstractStrideArray{S,T,N,X}}
 ) where {S,T,N,X,L}
     randn!(local_pcg(), flatvector(A), flatvector(B)); A
 end
 function Random.randn!(
-    A::AbstractMutableFixedSizeArray{S,T,N,X,L},
-    B::Union{T,<:AbstractMutableFixedSizeArray{S,T,N,X,L}},
-    C::Union{T,<:AbstractMutableFixedSizeArray{S,T,N,X,L}}
+    A::AbstractStrideArray{S,T,N,X,L},
+    B::Union{T,<:AbstractStrideArray{S,T,N,X,L}},
+    C::Union{T,<:AbstractStrideArray{S,T,N,X,L}}
 ) where {S,T,N,X,L}
     randn!(local_pcg(), flatvector(A), flatvector(B), flatvector(C)); A
 end
@@ -54,17 +54,17 @@ end
 end
 
 
-Random.randexp!(A::AbstractMutableFixedSizeArray) = randexp!(local_pcg(), flatvector(A))
+Random.randexp!(A::AbstractStrideArray) = randexp!(local_pcg(), flatvector(A))
 function Random.randexp!(
-    A::AbstractMutableFixedSizeArray{S,T,N,X,L},
-    B::Union{T,<:AbstractMutableFixedSizeArray{S,T,N,X,L}},
-    C::Union{T,<:AbstractMutableFixedSizeArray{S,T,N,X,L}}
+    A::AbstractStrideArray{S,T,N,X,L},
+    B::Union{T,<:AbstractStrideArray{S,T,N,X,L}},
+    C::Union{T,<:AbstractStrideArray{S,T,N,X,L}}
 ) where {P,S,T<:Union{Float32,Float64},N,X,L}
     randexp!(local_pcg(), flatvector(A), flatvector(B), flatvector(C)); A
 end
 function Random.randexp!(
-    A::AbstractMutableFixedSizeArray{S,T,N,X,L},
-    B::Union{T,<:AbstractMutableFixedSizeArray{S,T,N,X,L}}
+    A::AbstractStrideArray{S,T,N,X,L},
+    B::Union{T,<:AbstractStrideArray{S,T,N,X,L}}
 ) where {P,S,T<:Union{Float32,Float64},N,X,L}
     randexp!(local_pcg(), flatvector(A), flatvector(B)); A
 end
@@ -157,7 +157,7 @@ end
 #     rand_expr(expr, :ConstantFixedSizeArray)
 # end
 
-macro Mutable(expr, args...)
+macro FixedSize(expr, args...)
     rand_expr(expr, :FixedSizeArray, args...)
 end
 # macro Constant(expr, args...)

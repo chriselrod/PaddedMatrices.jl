@@ -7,6 +7,7 @@ struct StrideArray{S,T,N,X,SN,XN,L} <: AbstractStrideArray{S,T,N,X,SN,XN,false,L
 end
 mutable struct FixedSizeArray{S,T,N,X,L} <: AbstractStrideArray{S,T,N,X,0,0,false,L}
     data::NTuple{L,Core.VecElement{T}}
+    @inline FixedSizeArray{S,T,N,X,L}(::UndefInitializer) where {S,T,N,X,L} = new()
 end
 struct ConstantArray{S,T,N,X,L} <: AbstractStrideArray{S,T,N,X,0,0,false,L}
     data::NTuple{L,Core.VecElement{T}}

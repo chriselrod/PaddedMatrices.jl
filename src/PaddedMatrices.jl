@@ -16,7 +16,7 @@ using VectorizationBase: Static, StaticUnitRange, align, gep
 
 # using Parameters: @unpack
 
-export @Mutable, # @Constant,
+export @FixedSize, # @Constant,
     AbstractStrideArray, AbstractStrideVector, AbstractStrideMatrix,
     StrideArray, StrideVector, StrideMatrix,
     FixedSizeArray, FixedSizeVector, FixedSizeMatrix,
@@ -30,22 +30,15 @@ include("size_and_strides.jl")
 include("adjoints.jl")
 include("indexing.jl")
 include("initialization.jl")
-
-
-
-
-
-# include("padded_array.jl")
-# include("mutable_fs_padded_array.jl")
-include("blas.jl")
-include("linear_algebra.jl")
+include("views.jl")
 include("rand.jl")
-include("utilities.jl")
+include("blas.jl")
 include("broadcast.jl")
-include("getindex.jl")
+
+include("stack_pointers.jl")
 include("lazy_maps.jl")
-include("gradsupport.jl")
-include("zeroinitialized.jl")
+# include("gradsupport.jl")
+# include("linear_algebra.jl")
 
 
 # include("precompile.jl")

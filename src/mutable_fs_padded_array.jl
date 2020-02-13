@@ -1,35 +1,4 @@
 
-@noinline function calc_NPL(SV::Core.SimpleVector, T, align_stride::Bool = true, pad_to_align_length::Bool = false)#true)
-    nrow = (SV[1])::Int
-    if align_stride
-        padded_rows = calc_padding(nrow, T)
-    else
-        W, Wshift = VectorizationBase.pick_vector_width_shift(T)
-        TwoN = 2nrow
-        while W >= TwoN
-            W >>>= 1
-        end
-        Wm1 = W - 1
-        # rem = nrow & Wm1
-        padded_rows = (nrow + Wm1) & ~Wm1
-    end
-    calc_NXL(SV, T, padded_rows, align_stride, pad_to_align_length)
-end
-function calc_NXL(SV::Core.SimpleVector, T, padded_rows::Int, align_stride::Bool = true, pad_to_align_length::Bool = false)
-    L = padded_rows
-    N = length(SV)
-    X = Int[ (SV[1])::Int == 1 ? 0 : 1 ]
-    for n ∈ 2:N
-        svn = (SV[n])::Int
-        push!(X, svn == 1 ? 0 : L)
-        L *= svn
-    end
-    LA = VectorizationBase.align(L,T)
-    if pad_to_align_length # why???
-        LA += VectorizationBase.pick_vector_width(T)
-    end
-    N, Tuple{X...}, LA
-end
 
 
 @noinline function init_mutable_fs_padded_array_quote(SV::Core.SimpleVector, T)

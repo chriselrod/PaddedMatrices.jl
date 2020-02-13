@@ -107,6 +107,7 @@ function simple_vec_prod(sv::Core.SimpleVector)
     p
 end
 anyneg1(sv::Core.SimpleVector) = any(s -> s == -1, tointvec(sv))
+tointvec(sv) = tointvec(sv.parameters)
 function tointvec(sv::Core.SimpleVector)
     v = Vector{Int}(undef, length(sv))
     for i ∈ eachindex(v)

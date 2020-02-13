@@ -30,39 +30,53 @@ end
 staticrangelength(::Type{Static{R}}) where {R} = 1 + last(R) - first(R)
 staticrangelength(::Type{VectorizationBase.StaticUnitRange{L,U}}) where {L,U} = 1 + U - L
 
-struct ViewAdjoint{SP,SV,XP,XV}
+struct ViewAdjoint{SP,SV,XP,XV,SN,XN}
     offset::Int
+    size::NTuple{SN,UInt32}
+    stride::NTuple{XN,UInt32}
 end
 
 
-function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Bool = false, scalarview::Bool = false)
+function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Bool, scalarview::Bool, L::Int)
     N = length(SV)
     s2 = Int[]
     x2 = Int[]
+    sti = 0; xti = 0
+    st2 = Expr(:tuple)
+    xt2 = Expr(:tuple)
     offset::Int = 0
     offset_expr = Expr[]
     size_expr = Expr(:tuple)
     for n ∈ 1:N
+        svn = (SV[n])::Int
+        svn == -1 && (sti += 1)
         xvn = (XV[n])::Int
+        xvn == -1 && (xti += 1)
         if inds[n] <: Integer
             push!(offset_expr, :($xvn * (inds[$n] - 1)))
         else
             push!(x2, xvn)
+            if xvn == -1
+                push!(xt2.args, Expr(:ref, :Astride, xti))
+            end
             if inds[n] == Colon
-                push!(s2, (SV[n])::Int)
-            elseif inds[n] <: Static
-                push!(s2, staticrangelength(inds[n]))
-                offset += (first(static_type(inds[n])) - 1) * xvn
+                push!(s2, svn)
+                if svn == -1
+                    push!(st2.args, Expr(:ref, :Asize, sti))
+                end
+            # elseif inds[n] <: Static
+                # push!(s2, staticrangelength(inds[n]))
+                # offset += (first(static_type(inds[n])) - 1) * xvn
             elseif inds[n] <: VectorizationBase.StaticUnitRange
                 push!(s2, staticrangelength(inds[n]))
                 offset += (first(static_type(inds[n])) - 1) * xvn
             elseif inds[n] <: AbstractRange{<:Integer}
                 push!(s2, -1)
                 push!(offset_expr, :($xvn * @inbounds( first(inds[$n]) - 1 )))
-                push!(size_expr.args, Expr(:call, :length, :(@inbounds(inds[$n]))))
+                push!(st2.args, Expr(:call, :%, Expr(:call, :length, :(@inbounds(inds[$n]))), UInt32))
             elseif inds[n] <: Base.OneTo
                 push!(s2, -1)
-                push!(size_expr.args, Expr(:call, :length, :(@inbounds(inds[$n]))))
+                push!(st2.args, Expr(:call, :%, Expr(:call, :length, :(@inbounds(inds[$n]))), UInt32))
             else
                 throw("Indices of type $(inds[n]) not currently supported.")
             end
@@ -70,69 +84,51 @@ function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Boo
     end
     S2 = Tuple{s2...}
     X2 = Tuple{x2...}
-    L = prod(x2) * last(s2)
-    if partial
-        @assert length(size_expr.args) == 0
-        if length(offset_expr) == 0 && offset == 0
-            exo = 0
-            ex = :(pointer(A))
-        elseif offset == 0
-            exo = length(offset_expr) > 1 ? Expr(:call, :+, offset_expr...) : offset_expr
-            ex = :(gep(pointer(A), _offset))
+    if length(offset_expr) == 0 && offset == 0
+        ex = :(pointer(A))
+    elseif offset == 0
+        if length(offset_expr) == 1
+            ex = Expr(:call, :gep, :(pointer(A)), first(offset_expr))
         else
-            exo = Expr(:call, :+, offset, offset_expr...)
-            ex = :(gep(pointer(A), _offset))
-        end
-        partial_expr = :(ViewAdjoint{$(Tuple{SV...}),$S2,$(Tuple{XV...}),$X2}(_offset))
-        length(s2) == 0 && return :( Expr(:meta,:inline); _offset = $ex; ( VectorizationBase.load( $ex ), $partial_expr ) )
-        return quote
-            $(Expr(:meta,:inline))
-            _offset = $exo
-            PtrArray{$S2,$T,$(length(s2)),$X2,$L,true}($ex), $partial_expr
+            ex = Expr(:call, :gep, :(pointer(A)), Expr(:call, :+, offset_expr...))
         end
     else
-        if length(offset_expr) == 0 && offset == 0
-            ex = :(pointer(A))
-        elseif offset == 0
-            if length(offset_expr) == 1
-                ex = Expr(:call, :gep, :(pointer(A)), first(offset_expr))
-            else
-                ex = Expr(:call, :gep, :(pointer(A)), Expr(:call, :+, offset_expr...))
-            end
+        ex = Expr(:call, :gep, :(pointer(A)), Expr(:call, :+, offset, offset_expr...))
+    end
+    if length(s2) == 0
+        if scalarview
+            return Expr(:block, Expr(:meta,:inline) :(VectorizationBase.Pointer( $ex ) ))
         else
-            ex = Expr(:call, :gep, :(pointer(A)), Expr(:call, :+, offset, offset_expr...))
-        end
-        if length(s2) == 0
-            if scalarview
-                return :( Expr(:meta,:inline); VectorizationBase.Pointer( $ex ) )
-            else
-                return :( Expr(:meta,:inline); VectorizationBase.load( $ex ) )
-            end
-        end
-        if length(size_expr.args) == 0
-            return quote
-                $(Expr(:meta,:inline))
-                PtrArray{$S2,$T,$(length(s2)),$X2,$L,true}($ex)
-            end
-        else
-            return quote
-                $(Expr(:meta,:inline))
-                DSFSPtrArray{$S2,$T,$(length(s2)),$X2,$(length(size_expr))}($ex, $size_expr)
-            end
+            return Expr(:block, Expr(:meta,:inline), :(VectorizationBase.load( $ex ) ))
         end
     end
+    SN = length(st2.args)
+    XN = length(xt2.args)
+    q = quote
+        $(Expr(:meta,:inline))
+        _offset = $ex
+    end
+    SN > 0 && push!(q.args, Expr(:(=), :Asize, Expr(:(.), :A, QuoteNode(:size))))
+    XN > 0 && push!(q.args, Expr(:(=), :Astride, Expr(:(.), :A, QuoteNode(:stride))))
+    if partial
+        partial_expr = :(ViewAdjoint{$(Tuple{SV...}),$S2,$(Tuple{XV...}),$X2,$SN,$XN}(_offset, $st2, $xt2))
+        push!(q.args, :(@inbounds PtrArray{$S2,$T,$(length(s2)),$X2,$SN,$XN,true,$L}(gep(pointer(A), _offset), $st2, $xt2), $partial))
+    else
+        push!(q.args, :(@inbounds PtrArray{$S2,$T,$(length(s2)),$X2,$SN,$XN,true,$L}(gep(pointer(A), _offset), $st2, $xt2)))
+    end
+    q
 end
 """
 Note that the stride will currently only be correct when N <= 2.
 Perhaps R should be made into a stride-tuple?
 """
-@generated function Base.getindex(A::AbstractMutableFixedSizeArray{S,T,N,X,L}, inds...) where {S,T,N,X,L}
+@generated function Base.getindex(A::AbstractStrideArray{S,T,N,X,SN,XN,V,L}, inds...) where {S,T,N,X,SN,XN,V,L}
     @assert length(inds) == N
-    generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, false)
+    generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, false, L)
 end
-@generated function Base.view(A::AbstractMutableFixedSizeArray{S,T,N,X,L}, inds...) where {S,T,N,X,L}
+@generated function Base.view(A::AbstractStrideArray{S,T,N,X,SN,XN,V,L}, inds...) where {S,T,N,X,SN,XN,V,L}
     @assert length(inds) == N
-    generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, true)
+    generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, true, L)
 end
 
 

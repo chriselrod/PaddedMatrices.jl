@@ -33,11 +33,6 @@ end
     sub2ind_expr(X.parameters, :A)
 end
 
-function calc_padding(nrow::Int, T)
-    W = VectorizationBase.pick_vector_width(T)
-    W > nrow ? VectorizationBase.nextpow2(nrow) : VectorizationBase.align(nrow, T)
-end
-
 @noinline ThrowBoundsError(A, i) = throw(BoundsError(A, i))
                                 
 Base.IndexStyle(::Type{<:AbstractStrideArray}) = IndexCartesian()
