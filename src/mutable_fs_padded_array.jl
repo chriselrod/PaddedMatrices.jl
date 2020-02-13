@@ -75,9 +75,6 @@ end
     :(FixedSizeMatrix{$M,$N,$T,$P,$(P*N)}(undef))
 end
 
-@inline VectorizationBase.stridedpointer(A::AbstractFixedSizeArray{S,T,N,X}) where {S,T,N,X} = VectorizationBase.StaticStridedPointer{T,X}(pointer(A))
-@inline VectorizationBase.stridedpointer(A::Transpose{T,<:AbstractFixedSizeArray{S,T,1,Tuple{M}}}) where {S,T,M} = VectorizationBase.StaticStridedPointer{T,Tuple{0,M}}(pointer(A))
-@inline VectorizationBase.stridedpointer(A::Transpose{T,<:AbstractFixedSizeArray{S,T,2,Tuple{M,N}}}) where {S,T,M,N} = VectorizationBase.StaticStridedPointer{T,Tuple{N,M}}(pointer(A))
 # @generated function VectorizationBase.stridedpointer(A::Transpose{T,<:AbstractFixedSizeArray{S,T,N,X}}) where {S,T,N,X}
     # VectorizationBase.StaticStridedPointer{T,X}(pointer(A))
 # end
@@ -285,10 +282,6 @@ end
 @inline VectorizationBase.vectorizable(A::LinearAlgebra.Diagonal{T,<:AbstractMutableFixedSizeArray}) where {T} = VectorizationBase.Pointer(pointer(A.diag))
 @inline VectorizationBase.vectorizable(A::LinearAlgebra.Adjoint{T,<:AbstractMutableFixedSizeArray}) where {T} = VectorizationBase.Pointer(pointer(A.parent))
 
-@inline function flatvector(A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
-    PtrArray{Tuple{L},T,1,Tuple{1},L,false}(pointer(A))
-end
-@inline flatvector(a::Number) = a
 
 isview(::Any) = false
 isview(::PtrArray{S,T,N,X,L,V}) where {S,T,N,X,L,V} = V
