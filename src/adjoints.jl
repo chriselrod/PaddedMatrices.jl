@@ -65,10 +65,10 @@ end
 # For vectors
 
 @inline function Base.adjoint(A::AbstractFixedSizeArray{Tuple{S},T,1,Tuple{1},V,L}) where {S,T,V,L}
-    PtrArray{Tuple{1,S},T,2,Tuple{0,1},0,0,V,L}(pointer(A) tuple(), tuple())
+    PtrArray{Tuple{1,S},T,2,Tuple{0,1},0,0,V,L}(pointer(A), tuple(), tuple())
 end
 @inline function Base.transpose(A::AbstractFixedSizeArray{Tuple{S},T,1,Tuple{1},V,L}) where {S,T,V,L}
-    PtrArray{Tuple{1,S},T,2,Tuple{0,1},0,0,V,L}(pointer(A)), tuple(), tuple()))
+    PtrArray{Tuple{1,S},T,2,Tuple{0,1},0,0,V,L}(pointer(A), tuple(), tuple())
 end
 @inline function Base.adjoint(A::AbstractStrideArray{Tuple{-1},T,1,Tuple{1},1,0,V,-1}) where {T,V}
     PtrArray{Tuple{1,-1},T,2,Tuple{0,1},1,0,V,-1}(pointer(A), A.size, tuple())

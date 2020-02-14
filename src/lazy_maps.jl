@@ -1,19 +1,15 @@
 
-struct LazyMap{F,S,T,N,X,L} <: AbstractFixedSizeArray{S,T,N,X,L}
-    f::F
-    ptr::Ptr{T}
-end
-struct VectorizableMap{F,T}
-    f::F
-    ptr::Ptr{T}
-end
+# struct VectorizableMap{F,T}
+    # f::F
+    # ptr::Ptr{T}
+# end
 @inline Base.pointer(m::LazyMap) = m.ptr
-@inline VectorizationBase.vectorizable(m::LazyMap{F,S,T}) where {F,S,T} = VectorizableMap{F,T}(m.f, m.ptr)
-@inline Base.:+(m::VectorizableMap{F,T}, i::Integer) where {F,T} = VectorizableMap{F,T}(m.f, gep(m.ptr, i))
-@inline Base.:+(i::Integer, m::VectorizableMap{F,T}) where {F,T} = VectorizableMap{F,T}(m.f, gep(m.ptr, i))
-@inline Base.:-(m::VectorizableMap{F,T}, i::Integer) where {F,T} = VectorizableMap{F,T}(m.f, gep(m.ptr, -i))
+# @inline VectorizationBase.vectorizable(m::LazyMap{F,S,T}) where {F,S,T} = VectorizableMap{F,T}(m.f, m.ptr)
+# @inline Base.:+(m::VectorizableMap{F,T}, i::Integer) where {F,T} = VectorizableMap{F,T}(m.f, gep(m.ptr, i))
+# @inline Base.:+(i::Integer, m::VectorizableMap{F,T}) where {F,T} = VectorizableMap{F,T}(m.f, gep(m.ptr, i))
+# @inline Base.:-(m::VectorizableMap{F,T}, i::Integer) where {F,T} = VectorizableMap{F,T}(m.f, gep(m.ptr, -i))
 
-@inline function LazyMap(f::F, A::AbstractMutableFixedSizeArray{S,T,N,X,L}) where {F,S,T,N,X,L}
+@inline function LazyMap(f::F, A::AbstractStrideArray{S,T,N,X,SN,XN,V,L}) where {S,T,N,X,SN,XN,V,L}
     LazyMap{F,S,T,N,X,L}(f, pointer(A))
 end
     

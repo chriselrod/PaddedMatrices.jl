@@ -95,13 +95,6 @@ function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Boo
     else
         ex = Expr(:call, :gep, :(pointer(A)), Expr(:call, :+, offset, offset_expr...))
     end
-    if length(s2) == 0
-        if scalarview
-            return Expr(:block, Expr(:meta,:inline) :(VectorizationBase.Pointer( $ex ) ))
-        else
-            return Expr(:block, Expr(:meta,:inline), :(VectorizationBase.load( $ex ) ))
-        end
-    end
     SN = length(st2.args)
     XN = length(xt2.args)
     q = quote
@@ -110,11 +103,16 @@ function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Boo
     end
     SN > 0 && push!(q.args, Expr(:(=), :Asize, Expr(:(.), :A, QuoteNode(:size))))
     XN > 0 && push!(q.args, Expr(:(=), :Astride, Expr(:(.), :A, QuoteNode(:stride))))
+    arraydef = if length(s2) == 0
+        scalarview ? :(VectorizationBase.Pointer) : :(VectorizationBase.load)
+    else
+        :(PtrArray{$S2,$T,$(length(s2)),$X2,$SN,$XN,true,$L})
+    end
     if partial
         partial_expr = :(ViewAdjoint{$(Tuple{SV...}),$S2,$(Tuple{XV...}),$X2,$SN,$XN}(_offset, $st2, $xt2))
-        push!(q.args, :(@inbounds PtrArray{$S2,$T,$(length(s2)),$X2,$SN,$XN,true,$L}(gep(pointer(A), _offset), $st2, $xt2), $partial))
+        push!(q.args, :(@inbounds $arraydef(gep(pointer(A), _offset), $st2, $xt2), $partial))
     else
-        push!(q.args, :(@inbounds PtrArray{$S2,$T,$(length(s2)),$X2,$SN,$XN,true,$L}(gep(pointer(A), _offset), $st2, $xt2)))
+        push!(q.args, :(@inbounds $arraydef(gep(pointer(A), _offset), $st2, $xt2)))
     end
     q
 end

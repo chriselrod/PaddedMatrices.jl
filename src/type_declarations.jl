@@ -17,6 +17,12 @@ struct PtrArray{S,T,N,X,SN,XN,V,L} <: AbstractStrideArray{S,T,N,X,SN,XN,V,L}
     size::NTuple{SN,UInt32}
     stride::NTuple{XN,UInt32}
 end
+struct LazyMap{F,S,T,N,X,SN,XN,V,L} <: AbstractStrideArray{S,T,N,X,SN,XN,V,L}
+    f::F
+    ptr::Ptr{T}
+    size::NTuple{SN,UInt32}
+    stride::NTuple{XN,UInt32}
+end
 
 const AbstractStrideVector{M,T,X1,SN,XN,V,L} = AbstractStrideArray{Tuple{M},T,1,Tuple{X1},SN,XN,V,L}
 const AbstractStrideMatrix{M,N,T,X1,X2,SN,XN,V,L} = AbstractStrideArray{Tuple{M,N},T,2,Tuple{X1,X2},SN,XN,V,L}

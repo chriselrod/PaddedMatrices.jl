@@ -29,46 +29,24 @@ function nmul!(
     C
 end
 
-check_matmul_sizes(::AbstractStrideMatrix{M,N}, ::AbstractStrideMatrix{M,K}, ::AbstractStrideMatrix{K,N}) where {M,K,N} = nothing
-check_matmul_sizes(C::AbstractStrideMatrix{-1,N}, A::AbstractStrideMatrix{-1,K}, B::AbstractStrideMatrix{K,N}) where {K,N} = check_matmul_sizes_dynamic(C, A, B)
-check_matmul_sizes(C::AbstractStrideMatrix{M,-1}, A::AbstractStrideMatrix{M,K}, B::AbstractStrideMatrix{K,-1}) where {M,K} = check_matmul_sizes_dynamic(C, A, B)
-check_matmul_sizes(C::AbstractStrideMatrix{M,N}, A::AbstractStrideMatrix{M,-1}, B::AbstractStrideMatrix{-1,N}) where {M,N} = check_matmul_sizes_dynamic(C, A, B)
-check_matmul_sizes(C::AbstractStrideMatrix{-1,-1}, A::AbstractStrideMatrix{-1,K}, B::AbstractStrideMatrix{K,-1}) where {K} = check_matmul_sizes_dynamic(C, A, B)
-check_matmul_sizes(C::AbstractStrideMatrix{-1,N}, A::AbstractStrideMatrix{-1,-1}, B::AbstractStrideMatrix{-1,N}) where {N} = check_matmul_sizes_dynamic(C, A, B)
-check_matmul_sizes(C::AbstractStrideMatrix{M,-1}, A::AbstractStrideMatrix{M,-1}, B::AbstractStrideMatrix{-1,-1}) where {M} = check_matmul_sizes_dynamic(C, A, B)
-check_matmul_sizes(C::AbstractStrideMatrix{-1,-1}, A::AbstractStrideMatrix{-1,-1}, B::AbstractStrideMatrix{-1,-1}) = check_matmul_sizes_dynamic(C, A, B)
-
-check_matmul_sizes(::AbstractStrideMatrix{M,N}, ::LinearAlgebra.Diagonal{T,<:AbstractFixedSizeArray{Tuple{M}}}, ::AbstractStrideMatrix{M,N}) where {T,M,N} = nothing
-function check_matmul_sizes(C::AbstractStrideMatrix{M,-1}, A::LinearAlgebra.Diagonal{T,<:AbstractFixedSizeArray{Tuple{M}}}, B::AbstractStrideMatrix{M,-1}) where {T,M}
-    check_matmul_sizes_dynamic(C, A, B)
-end
-function check_matmul_sizes(C::AbstractStrideMatrix{-1,N}, A::LinearAlgebra.Diagonal{T,<:AbstractFixedSizeArray{Tuple{-1}}}, B::AbstractStrideMatrix{-1,N}) where {T,N}
-    check_matmul_sizes_dynamic(C, A, B)
-end
-function check_matmul_sizes(C::AbstractStrideMatrix{-1,-1}, A::LinearAlgebra.Diagonal{T,<:AbstractFixedSizeArray{Tuple{-1}}}, B::AbstractStrideMatrix{-1,-1}) where {T}
-    check_matmul_sizes_dynamic(C, A, B)
-end
-check_matmul_sizes(C, A, B) = check_matmul_sizes_dynamic(C, A, B)
-# check_matmul_sizes(C::AbstractStrideMatrix, A::AbstractStrideMatrix, B::AbstractStrideMatrix) = throw("Sizes are incompatible!; C: $(size(C)); A: $(size(A)); B: $(size(B))")
-
-function check_matmul_sizes_dynamic(C, A, B)
-    Mc, Nc = size(C)
-    Ma, Ka = size(A)
-    Kb, Nb = size(B)
-    Mc == Ma || throw("C and A must have the same number of rows, but found $Mc and $Ma.")
-    Nc == Nb || throw("C and B must have the same number of columns, but found $Nc and $Nb.")
-    Ka == Kb || throw("A must have the same number of columns as B has rows, but found $Ka and $Kb.")
-    nothing
+function matmul_sizes(C, A, B)
+    MC, NC = maybestaticsize(C, Val{1:2}())
+    MA, KA = maybestaticsize(A, Val{1:2}())
+    KB, NB = maybestaticsize(B, Val{1:2}())
+    M = VectorizationBase.static_promote(MC, MA)
+    K = VectorizationBase.static_promote(KA, KB)
+    N = VectorizationBase.static_promote(NC, NB)
+    M, K, N
 end
 
 function LinearAlgebra.mul!(
-    C::AbstractStrideMatrix{M,N,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
-) where {M,N,T}
-    check_matmul_sizes(C, A, B)
-    @avx for m ∈ 1:size(C,1)
-        for n ∈ 1:size(C,2)
+    C::AbstractStrideMatrix{<:Any,<:Any,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
+) where {T}
+    M, K, N = matmul_sizes(C, A, B)
+    @avx for m ∈ 1:M
+        for n ∈ 1:N
             Cₘₙ = zero(T)
-            for k ∈ 1:size(B,1)
+            for k ∈ 1:K
                 Cₘₙ += A[m,k] * B[k,n]
             end
             C[m,n] = Cₘₙ
@@ -77,13 +55,13 @@ function LinearAlgebra.mul!(
     C
 end
 function nmul!(
-    C::AbstractStrideMatrix{M,N,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
-) where {M,N,T}
-    check_matmul_sizes(C, A, B)
-    @avx for m ∈ 1:size(C,1)
-        for n ∈ 1:size(C,2)
+    C::AbstractStrideMatrix{<:Any,<:Any,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
+) where {T}
+    M, K, N = matmul_sizes(C, A, B)
+    @avx for m ∈ 1:M
+        for n ∈ 1:N
             Cₘₙ = zero(T)
-            for k ∈ 1:size(B,1)
+            for k ∈ 1:K
                 Cₘₙ -= A[m,k] * B[k,n]
             end
             C[m,n] = Cₘₙ
@@ -94,8 +72,8 @@ end
 
 @inline function Base.:*(
     sp::StackPointer,
-    A::AbstractStrideMatrix{M,K,T},
-    B::AbstractStrideMatrix{K,N,T}
+    A::AbstractStrideMatrix{M,<:Any,T},
+    B::AbstractStrideMatrix{<:Any,N,T}
 ) where {M,K,N,T}
     sp, D = PtrMatrix{M,N,T}(sp)
     sp, mul!(D, A, B)
@@ -108,13 +86,13 @@ function Base.:*(
 end
 
 function muladd!(
-    C::AbstractStrideMatrix{M,N,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
-) where {M,N,T}
-    check_matmul_sizes(C, A, B)
-    @avx for m ∈ 1:size(C,1)
-        for n ∈ 1:size(C,2)
+    C::AbstractStrideMatrix{<:Any,<:Any,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
+) where {T}
+    M, K, N = matmul_sizes(C, A, B)
+    @avx for m ∈ 1:M
+        for n ∈ 1:N
             Cₘₙ = zero(T)
-            for k ∈ 1:size(B,1)
+            for k ∈ 1:K
                 Cₘₙ += A[m,k] * B[k,n]
             end
             C[m,n] += Cₘₙ
@@ -123,13 +101,13 @@ function muladd!(
     C
 end
 function mulsub!(
-    C::AbstractStrideMatrix{M,N,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
-) where {M,N,T}
-    check_matmul_sizes(C, A, B)
-    @avx for m ∈ 1:size(C,1)
-        for n ∈ 1:size(C,2)
+    C::AbstractStrideMatrix{<:Any,<:Any,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
+) where {T}
+    M, K, N = matmul_sizes(C, A, B)
+    @avx for m ∈ 1:M
+        for n ∈ 1:N
             Cₘₙ = zero(T)
-            for k ∈ 1:size(B,1)
+            for k ∈ 1:K
                 Cₘₙ += A[m,k] * B[k,n]
             end
             C[m,n] = Cₘₙ - C[m,n]
@@ -138,13 +116,13 @@ function mulsub!(
     C
 end
 function nmuladd!(
-    C::AbstractStrideMatrix{M,N,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
-) where {M,N,T}
-    check_matmul_sizes(C, A, B)
-    @avx for m ∈ 1:size(C,1)
-        for n ∈ 1:size(C,2)
+    C::AbstractStrideMatrix{<:Any,<:Any,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
+) where {T}
+    M, K, N = matmul_sizes(C, A, B)
+    @avx for m ∈ 1:M
+        for n ∈ 1:N
             Cₘₙ = zero(T)
-            for k ∈ 1:size(B,1)
+            for k ∈ 1:K
                 Cₘₙ -= A[m,k] * B[k,n]
             end
             C[m,n] += Cₘₙ
@@ -153,13 +131,13 @@ function nmuladd!(
     C
 end
 function nmulsub!(
-    C::AbstractStrideMatrix{M,N,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
-) where {M,N,T}
-    check_matmul_sizes(C, A, B)
-    @avx for m ∈ 1:size(C,1)
-        for n ∈ 1:size(C,2)
+    C::AbstractStrideMatrix{<:Any,<:Any,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
+) where {T}
+    M, K, N = matmul_sizes(C, A, B)
+    @avx for m ∈ 1:M
+        for n ∈ 1:N
             Cₘₙ = zero(T)
-            for k ∈ 1:size(B,1)
+            for k ∈ 1:K
                 Cₘₙ -= A[m,k] * B[k,n]
             end
             C[m,n] = Cₘₙ - C[m,n]
@@ -231,26 +209,27 @@ end
 
 
 function LinearAlgebra.mul!(
-    C::AbstractStrideMatrix{M,N,T},
-    A::LinearAlgebra.Diagonal{T,<:AbstractFixedSizeVector{M,T}},
+    C::AbstractStrideMatrix{<:Any,<:Any,T},
+    A::LinearAlgebra.Diagonal{T,<:AbstractStrideVector{<:Any,T}},
     B::AbstractMatrix{T}
-) where {M,N,T}
-    check_matmul_sizes(C,A,B)
+) where {T}
+    M, K, N = matmul_sizes(C, A, B)
+    MandK = VectorizationBase.static_promote(M, K)
     vA = parent(A)
-    @avx for n ∈ 1:size(B,2), m ∈ 1:size(B,1)
+    @avx for n ∈ 1:N, m ∈ 1:MandK
         C[m,n] = vA[m] * B[m,n]
     end
     C
 end
 function Base.:*(
-    A::LinearAlgebra.Diagonal{T,<:AbstractFixedSizeVector{M,T}},
+    A::LinearAlgebra.Diagonal{T,<:AbstractStrideVector{M,T}},
     B::AbstractStrideMatrix{M,N,T}
 ) where {M,N,T}
     mul!(similar(B), A, B)
 end
 function Base.:*(
     sp::StackPointer,
-    A::LinearAlgebra.Diagonal{T,<:AbstractFixedSizeVector{M,T}},
+    A::LinearAlgebra.Diagonal{T,<:AbstractStrideVector{M,T}},
     B::AbstractStrideMatrix{M,N,T}
 ) where {M,N,T}
     sp, C = similar(sp, B)

@@ -10,6 +10,8 @@ LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{M,-1,Vararg}}, 
 LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{-1,-1,Vararg}}, ::Val{2}) where {M} = @inbounds A.size[2]
 LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{M,N,-1,Vararg}}, ::Val{3}) where {M,N} = size(A,3)
 LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{M,N,K,-1,Vararg}}, ::Val{4}) where {M,N,K} = size(A,4)
+LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{M,N,Vararg}}, ::Val{1:2}) where {M,N} = (Static{M}(),Static{N}())
+LoopVectorization.maybestaticsize(A::AbstractStrideArray{Tuple{M}}, ::Val{1:2}) where {M} = (Static{M}(),Static{1}())
 @generated function LoopVectorization.maybestaticsize(A::AbstractFixedSizeArray{S}, ::Val{I}) where {S,I}
     M = (S.parameters[I])::Int
     M == -1 ? :(size(A, $I)) : Static{M}()
@@ -21,7 +23,7 @@ end
 tup_sv_quote(T) = tup_sv_quote(T.parameters)
 function tup_sv_rev_quote(T::Core.SimpleVector, s, trunc = 0)
     t = Expr(:tuple)
-    N = = length(T)
+    N = length(T)
     i = 0
     for n ∈ 1:N-trunc
         Tₙ = (T[n])::Int
@@ -36,7 +38,7 @@ function tup_sv_rev_quote(T::Core.SimpleVector, s, trunc = 0)
 end
 function tup_sv_quote(T::Core.SimpleVector, s, start = 1)
     t = Expr(:tuple)
-    N = = length(T)
+    N = length(T)
     i = 0
     for n ∈ start:N
         Tₙ = (T[n])::Int
@@ -58,15 +60,15 @@ end
 @inline LinearAlgebra.stride1(::AbstractStrideArray{S,T,N,<:Tuple{X,Vararg}}) where {S,T,N,X} = X
 @inline LinearAlgebra.stride1(A::AbstractStrideArray{S,T,N,<:Tuple{-1,Vararg}}) where {S,T,N} = @inbounds A.stride[1]
 
-LinearAlgebra.checksquare(::AbstractFixedMatrix{M,M}) where {M} = M
-LinearAlgebra.checksquare(A::AbstractFixedMatrix{M,-1}) where {M} = ((@assert M == @inbounds A.size[1]); M)
-LinearAlgebra.checksquare(A::AbstractFixedMatrix{-1,M}) where {M} = ((@assert M == @inbounds A.size[1]); M)
-function LinearAlgebra.checksquare(A::AbstractFixedMatrix{-1,-1})
+LinearAlgebra.checksquare(::AbstractStrideMatrix{M,M}) where {M} = M
+LinearAlgebra.checksquare(A::AbstractStrideMatrix{M,-1}) where {M} = ((@assert M == @inbounds A.size[1]); M)
+LinearAlgebra.checksquare(A::AbstractStrideMatrix{-1,M}) where {M} = ((@assert M == @inbounds A.size[1]); M)
+function LinearAlgebra.checksquare(A::AbstractStrideMatrix{-1,-1})
     M, N = @inbounds A.size[1], A.size[2]
     @assert M == N
     M
 end
-LinearAlgebra.checksquare(::AbstractFixedMatrix{M,N}) where {M,N} = DimensionMismatch("Matrix is not square: dimensions are ($M,$N).")
+LinearAlgebra.checksquare(::AbstractStrideMatrix{M,N}) where {M,N} = DimensionMismatch("Matrix is not square: dimensions are ($M,$N).")
 
 # FIXME: Need to clean up this mess
 @inline val_length(::AbstractFixedSizeArray{S,T,N,X,V,L}) where {S,T,N,X,V,L} = Val{L}()

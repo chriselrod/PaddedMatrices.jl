@@ -56,7 +56,7 @@ end
     load(stridedpointer(A), i .- 1)
 end
 @inline Base.getindex(A::AbstractStrideArray, i::CartesianIndex) = getindex(A, i.I)
-@inline Base.getindex(A::AbstractStrideArray, i...) = getindex(A, i)
+@inline Base.getindex(A::AbstractStrideArray, i::Vararg{<:Number}) = getindex(A, i)
 @inline function Base.getindex(A::AbstractStrideArray, i::Integer)
     @boundscheck i > length(A) && ThrowBoundsError(A, i)
     load(pointer(A), i - 1)
