@@ -69,8 +69,9 @@ function tointvecdt(s)
     end
     sv
 end
-@generated function StrideArray{T}(::UndefInitializer, s::NTuple{N,<:Union{Integer,Static}}) where {N,T}
+@generated function StrideArray{T}(::UndefInitializer, s::Tuple) where {T}
     sv = tointvecdt(s)
+    N = length(sv)
     S = Tuple{sv...}
     any(s -> s == -1, sv) || return :(StrideArray{$S,$T}(::UndefInitializer))
     st, xt = partially_sized(sv)
@@ -117,8 +118,9 @@ end
     push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false,-1}(ptr, $st, $xt)))
     q
 end
-@generated function PtrArray(ptr::Ptr{T}, s::NTuple{N,<:Union{Integer,Static}}) where {T,N}
+@generated function PtrArray(ptr::Ptr{T}, s::Tuple) where {T}
     sv = tointvecdt(s)
+    N = length(sv)
     S = Tuple{sv...}
     any(s -> s == -1, sv) || return :(PtrArray{$S}(ptr))
     st, xt = partially_sized(sv)

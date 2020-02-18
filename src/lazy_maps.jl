@@ -3,7 +3,6 @@ struct MappedStridedPointer{F, T, P <: VectorizationBase.AbstractPointer{T}}
     f::F
     ptr::P
 end
-@inline Base.pointer(m::LazyMap) = m.ptr.ptr
 @inline VectorizationBase.stridedpointer(A::LazyMap) = MappedStridedPointer(A.f, stridedpointer(PtrArray(A)))
 # @inline VectorizationBase.vectorizable(m::LazyMap{F,S,T}) where {F,S,T} = MappedStridedPointer{F,T}(m.f, m.ptr)
 # @inline Base.:+(m::MappedStridedPointer{F,T}, i::Integer) where {F,T} = MappedStridedPointer{F,T}(m.f, gep(m.ptr, i))

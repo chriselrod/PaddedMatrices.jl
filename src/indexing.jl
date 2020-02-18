@@ -51,7 +51,7 @@ end
 
 @inline function Base.getindex(A::AbstractStrideArray, i::Tuple)
     @boundscheck begin
-        any(size(A) .> i) && ThrowBoundsError(A, i)
+        any(i .> size(A)) && ThrowBoundsError(A, i)
     end
     load(stridedpointer(A), i .- 1)
 end
@@ -64,7 +64,7 @@ end
 
 @inline function Base.setindex!(A::AbstractStrideArray, v, i::Tuple)
     @boundscheck begin
-        any(size(A) .> i) && ThrowBoundsError(A, i)
+        any(i .> size(A)) && ThrowBoundsError(A, i)
     end
     store!(stridedpointer(A), v, i .- 1)
 end

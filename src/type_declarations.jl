@@ -13,7 +13,7 @@ struct ConstantArray{S,T,N,X,L} <: AbstractStrideArray{S,T,N,X,0,0,false,L}
     data::NTuple{L,Core.VecElement{T}}
 end
 struct PtrArray{S,T,N,X,SN,XN,V,L} <: AbstractStrideArray{S,T,N,X,SN,XN,V,L}
-    data::Ptr{T}
+    ptr::Ptr{T}
     size::NTuple{SN,UInt32}
     stride::NTuple{XN,UInt32}
 end
@@ -36,4 +36,12 @@ const PtrVector{M,T,X1,SN,XN,V,L} = PtrArray{Tuple{M},T,1,Tuple{X1},SN,XN,V,L}
 const PtrMatrix{M,N,T,X1,X2,SN,XN,V,L} = PtrArray{Tuple{M,N},T,2,Tuple{X1,X2},SN,XN,V,L}
 const AbstractFixedSizeArray{S,T,N,X,V,L} = AbstractStrideArray{S,T,N,X,0,0,V,L}
 
+@inline Base.pointer(A::StrideArray) = pointer(A.data)
+@inline Base.unsafe_convert(::Type{Ptr{T}}, A::StrideArray{S,T}) where {S,T} = pointer(A.data)
+@inline Base.pointer(A::FixedSizeArray{S,T}) where {S,T} = Base.unsafe_convert(Ptr{T}, Base.pointer_from_objref(A))
+@inline Base.unsafe_convert(::Type{Ptr{T}}, A::FixedSizeArray{S,T}) where {S,T} = Base.unsafe_convert(Ptr{T}, Base.pointer_from_objref(A))
+@inline Base.pointer(A::PtrArray) = A.ptr
+@inline Base.unsafe_convert(::Type{Ptr{T}}, A::PtrArray{S,T}) where {S,T} = A.ptr
+@inline Base.pointer(A::LazyMap) = A.ptr
+@inline Base.unsafe_convert(::Type{Ptr{T}}, A::LazyMap{S,T}) where {S,T} = A.ptr
 

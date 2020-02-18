@@ -12,7 +12,7 @@ LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{M,N,-1,Vararg}}
 LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{M,N,K,-1,Vararg}}, ::Val{4}) where {M,N,K} = size(A,4)
 LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{M,N,Vararg}}, ::Val{1:2}) where {M,N} = (Static{M}(),Static{N}())
 LoopVectorization.maybestaticsize(A::AbstractStrideArray{Tuple{M}}, ::Val{1:2}) where {M} = (Static{M}(),Static{1}())
-@generated function LoopVectorization.maybestaticsize(A::AbstractFixedSizeArray{S}, ::Val{I}) where {S,I}
+@generated function LoopVectorization.maybestaticsize(A::AbstractStrideArray{S}, ::Val{I}) where {S,I}
     M = (S.parameters[I])::Int
     M == -1 ? :(size(A, $I)) : Static{M}()
 end

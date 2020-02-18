@@ -72,17 +72,35 @@ end
 
 @inline function Base.:*(
     sp::StackPointer,
-    A::AbstractStrideMatrix{M,<:Any,T},
-    B::AbstractStrideMatrix{<:Any,N,T}
-) where {M,K,N,T}
-    sp, D = PtrMatrix{M,N,T}(sp)
+    A::AbstractStrideMatrix{<:Any,<:Any,T},
+    B::AbstractStrideMatrix{<:Any,<:Any,T}
+) where {T}
+    sp, D = PtrArray{T}(sp, (maybestaticsize(A, Val{1}()),maybestaticsize(B, Val{2}())))
     sp, mul!(D, A, B)
 end
 function Base.:*(
-    A::AbstractStrideMatrix{M,K,T},
-    B::AbstractStrideMatrix{K,N,T}
-) where {M,K,N,T}
-    mul!(FixedSizeMatrix{M,N,T}(undef), A, B)
+    A::AbstractStrideMatrix{M,<:Any,T},
+    B::AbstractStrideMatrix{<:Any,N,T}
+) where {M,N,T}
+    mul!(FixedSizeArray{Tuple{M,N},T}(undef), A, B)
+end
+function Base.:*(
+    A::AbstractStrideMatrix{M,<:Any,T},
+    B::AbstractStrideMatrix{<:Any,-1,T}
+) where {M,T}
+    mul!(FixedSizeArray{T}(undef, (Static{M}(), size(B,2))), A, B)
+end
+function Base.:*(
+    A::AbstractStrideMatrix{-1,<:Any,T},
+    B::AbstractStrideMatrix{<:Any,N,T}
+) where {N,T}
+    mul!(FixedSizeArray{T}(undef, (size(A,1), Static{N}())), A, B)
+end
+function Base.:*(
+    A::AbstractStrideMatrix{-1,<:Any,T},
+    B::AbstractStrideMatrix{<:Any,-1,T}
+) where {T}
+    mul!(StrideArray{T}(undef, (size(A,1),size(B,2))), A, B)
 end
 
 function muladd!(
