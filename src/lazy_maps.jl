@@ -1,8 +1,6 @@
 
-struct MappedStridedPointer{F, T, P <: VectorizationBase.AbstractPointer{T}}
-    f::F
-    ptr::P
-end
+using VectorizationBase: MappedStridedPointer
+
 @inline VectorizationBase.stridedpointer(A::LazyMap) = MappedStridedPointer(A.f, stridedpointer(PtrArray(A)))
 # @inline VectorizationBase.vectorizable(m::LazyMap{F,S,T}) where {F,S,T} = MappedStridedPointer{F,T}(m.f, m.ptr)
 # @inline Base.:+(m::MappedStridedPointer{F,T}, i::Integer) where {F,T} = MappedStridedPointer{F,T}(m.f, gep(m.ptr, i))
@@ -13,44 +11,6 @@ end
     LazyMap{F,S,T,N,X,L}(f, pointer(A))
 end
     
-@inline function SIMDPirates.vload(::Type{Vec{W,T}}, m::MappedStridedPointer{F,T}) where {W,F,T}
-    extract_data(m.f(vload(SVec{W,T}, m.ptr)))
-end
-@inline function SIMDPirates.vload(::Type{Vec{W,T}}, m::MappedStridedPointer{F,T}, i) where {W,F,T}
-    extract_data(m.f(vload(SVec{W,T}, m.ptr, i)))
-end
-@inline function SIMDPirates.vload(::Type{Vec{W,T}}, m::MappedStridedPointer{F,T}, mask::Union{<:Unsigned,Vec{W,Bool}}) where {W,F,T}
-    extract_data(m.f(vload(SVec{W,T}, m.ptr, mask)))
-end
-@inline function SIMDPirates.vload(::Type{Vec{W,T}}, m::MappedStridedPointer{F,T}, i, mask::Union{<:Unsigned,Vec{W,Bool}}) where {W,F,T}
-    extract_data(m.f(vload(SVec{W,T}, m.ptr, i, mask)))
-end
-@inline function SIMDPirates.vload(::Type{SVec{W,T}}, m::MappedStridedPointer{F,T}) where {W,F,T}
-    m.f(vload(SVec{W,T}, m.ptr))
-end
-@inline function SIMDPirates.vload(::Type{SVec{W,T}}, m::MappedStridedPointer{F,T}, i) where {W,F,T}
-    m.f(vload(SVec{W,T}, m.ptr, i))
-end
-@inline function SIMDPirates.vload(::Type{SVec{W,T}}, m::MappedStridedPointer{F,T}, mask::Union{<:Unsigned,Vec{W,Bool}}) where {W,F,T}
-    m.f(vload(SVec{W,T}, m.ptr, mask))
-end
-@inline function SIMDPirates.vload(::Type{SVec{W,T}}, m::MappedStridedPointer{F,T}, i, mask::Union{<:Unsigned,Vec{W,Bool}}) where {W,F,T}
-    m.f(vload(SVec{W,T}, m.ptr, i, mask))
-end
-@inline function SIMDPirates.vload(::Val{W}, m::MappedStridedPointer{F,T}) where {W,F,T}
-    m.f(vload(SVec{W,T}, m.ptr))
-end
-@inline function SIMDPirates.vload(::Val{W}, m::MappedStridedPointer{F,T}, i) where {W,F,T}
-    m.f(vload(SVec{W,T}, m.ptr, i))
-end
-@inline function SIMDPirates.vload(::Val{W}, m::MappedStridedPointer{F,T}, mask::Union{<:Unsigned,Vec{W,Bool}}) where {W,F,T}
-    m.f(vload(SVec{W,T}, m.ptr, mask))
-end
-@inline function SIMDPirates.vload(::Val{W}, m::MappedStridedPointer{F,T}, i, mask::Union{<:Unsigned,Vec{W,Bool}}) where {W,F,T}
-    m.f(vload(SVec{W,T}, m.ptr, i, mask))
-end
-
-
 @inline function Base.getindex(A::LazyMap{F,S,T,1,Tuple{1},L}, i::Int) where {F,S,T,N,X,L}
     @boundscheck i <= L || ThrowBoundsError("Index $i > full length $L.")
     A.f(VectorizationBase.load(gep(pointer(A), (i - 1))))

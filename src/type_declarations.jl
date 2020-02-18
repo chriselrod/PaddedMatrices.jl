@@ -17,6 +17,7 @@ struct PtrArray{S,T,N,X,SN,XN,V,L} <: AbstractStrideArray{S,T,N,X,SN,XN,V,L}
     size::NTuple{SN,UInt32}
     stride::NTuple{XN,UInt32}
 end
+# const LazyArray{F,S,T,N,X,SN,XN,V,L} = VectorizationBase.LazyMap{F,A,A<:AbstractStrideArray{S,T,N,X,SN,XN,V,L}}
 struct LazyMap{F,S,T,N,X,SN,XN,V,L} <: AbstractStrideArray{S,T,N,X,SN,XN,V,L}
     f::F
     ptr::Ptr{T}
@@ -35,6 +36,9 @@ const ConstantMatrix{M,N,T,X1,X2,L} = ConstantArray{Tuple{M,N},T,2,Tuple{X1,X2},
 const PtrVector{M,T,X1,SN,XN,V,L} = PtrArray{Tuple{M},T,1,Tuple{X1},SN,XN,V,L}
 const PtrMatrix{M,N,T,X1,X2,SN,XN,V,L} = PtrArray{Tuple{M,N},T,2,Tuple{X1,X2},SN,XN,V,L}
 const AbstractFixedSizeArray{S,T,N,X,V,L} = AbstractStrideArray{S,T,N,X,0,0,V,L}
+const AbstractFixedSizeVector{S,T,X,V,L} = AbstractStrideArray{Tuple{S},T,1,Tuple{X},0,0,V,L}
+const AbstractFixedSizeMatrix{M,N,T,X1,X2,V,L} = AbstractStrideArray{Tuple{M,N},T,2,Tuple{X1,X2},0,0,V,L}
+
 
 @inline Base.pointer(A::StrideArray) = pointer(A.data)
 @inline Base.unsafe_convert(::Type{Ptr{T}}, A::StrideArray{S,T}) where {S,T} = pointer(A.data)
