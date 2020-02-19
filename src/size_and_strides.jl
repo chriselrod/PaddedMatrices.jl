@@ -34,7 +34,7 @@ function tup_sv_rev_quote(T::Core.SimpleVector, s, trunc = 0)
             pushfirst!(t.args, Tₙ)
         end
     end
-    Expr(:block, Expr(:meta, :inline), Expr(:macrocall, Symbol("@inbounds"), LineNumberNode(@__LINE__, @__FILE__), t))
+    Expr(:block, Expr(:meta, :inline), Expr(:macrocall, Symbol("@inbounds"), LineNumberNode(@__LINE__, Symbol(@__FILE__)), t))
 end
 function tup_sv_quote(T::Core.SimpleVector, s, start = 1)
     t = Expr(:tuple)
@@ -49,7 +49,7 @@ function tup_sv_quote(T::Core.SimpleVector, s, start = 1)
             push!(t.args, Tₙ)
         end
     end
-    Expr(:block, Expr(:meta, :inline), Expr(:macrocall, Symbol("@inbounds"), LineNumberNode(@__LINE__, @__FILE__), t))
+    Expr(:block, Expr(:meta, :inline), Expr(:macrocall, Symbol("@inbounds"), LineNumberNode(@__LINE__, Symbol(@__FILE__)), t))
 end
 @generated Base.size(A::AbstractStrideArray{S}) where {S} = tup_sv_quote(S, :size)
 @generated Base.strides(A::AbstractStrideArray{S,T,N,X}) where {S,T,N,X} = tup_sv_quote(X, :stride)

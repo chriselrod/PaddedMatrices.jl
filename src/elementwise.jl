@@ -45,7 +45,7 @@ function elementwise_op_func_quote(m, f, op, eq, sp, alloc::Bool, aisscalar::Boo
         @generated function $m.$f($(args...)) where {S,T,N,X,L}
             # elementwise_op_quote(S.parameters, T, N, X.parameters, L, $(QuoteNode(op)), $(QuoteNode(eq)), $sp, $alloc, $aisscalar, $bisscalar)
             q = Expr(:block,
-             Expr(:macrocall, Symbol("@vvectorize"), LineNumberNode(@__LINE__, @__FILE__), T,
+             Expr(:macrocall, Symbol("@vvectorize"), LineNumberNode(@__LINE__, Symbol(@__FILE__)), T,
                   Expr(:for,
                        Expr(:(=), :l, Expr(:call, :(:), 1, L)),
                        Expr(:block, Expr($(QuoteNode(eq)), Expr(:ref, :C, :l), Expr(:call, $(QuoteNode(op)), $Aref, $Bref)))

@@ -27,7 +27,7 @@ Just subtract 1 for a zero based index.
             push!(inds.args, indi)
         end
     end
-    Expr(:macrocall, Symbol("@inbounds"), LineNumberNode(@__LINE__,@__FILE__), inds)
+    Expr(:macrocall, Symbol("@inbounds"), LineNumberNode(@__LINE__,Symbol(@__FILE__)), inds)
 end
 @generated function sub2ind(A::AbstractStrideArray{S,T,N,X}, i::NTuple{N}) where {S,T,N,X}
     sub2ind_expr(X.parameters, :A)
