@@ -39,9 +39,7 @@ function matmul_sizes(C, A, B)
     M, K, N
 end
 
-function LinearAlgebra.mul!(
-    C::AbstractStrideMatrix{<:Any,<:Any,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
-) where {T}
+@inline function loopmul!(C, A, B)
     M, K, N = matmul_sizes(C, A, B)
     @avx for m ∈ 1:M
         for n ∈ 1:N
@@ -54,6 +52,13 @@ function LinearAlgebra.mul!(
     end
     C
 end
+LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractMatrix, B::AbstractMatrix) = loopmul!(C, A, B)
+LinearAlgebra.mul!(C::AbstractMatrix, A::AbstractStrideMatrix, B::AbstractMatrix) = loopmul!(C, A, B)
+LinearAlgebra.mul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractStrideMatrix) = loopmul!(C, A, B)
+LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractStrideMatrix, B::AbstractMatrix) = loopmul!(C, A, B)
+LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractMatrix, B::AbstractStrideMatrix) = loopmul!(C, A, B)
+LinearAlgebra.mul!(C::AbstractMatrix, A::AbstractStrideMatrix, B::AbstractStrideMatrix) = loopmul!(C, A, B)
+LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractStrideMatrix, B::AbstractStrideMatrix) = loopmul!(C, A, B)
 function nmul!(
     C::AbstractStrideMatrix{<:Any,<:Any,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
 ) where {T}
