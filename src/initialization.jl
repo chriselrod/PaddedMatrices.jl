@@ -118,6 +118,15 @@ end
     push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false,-1}(ptr, $st, $xt)))
     q
 end
+@inline PtrArray{S,T,N}(ptr) where {S,T,N} = PtrArray{S,T}(ptr)
+@inline PtrArray{S,T,N,X,SN,XN}(ptr) where {S,T,N,X,SN,XN} = PtrArray{S,T,X,0,0,true,-1}(ptr)
+@inline PtrArray{S,T,N,X,SN,XN,V}(ptr) where {S,T,N,X,SN,XN,V} = PtrArray{S,T,X,0,0,V,-1}(ptr)
+@generated PtrArray{S,T,N,X,0,0}(ptr) where {S,T,N,X} = Expr(:block, Expr(:meta,:inline), :(PtrArray{$S,$T,$X,0,0,true,$(last(S.parameters)::Int*last(X.parameters)::Int)}(ptr, tuple(), tuple())))
+@generated PtrArray{S,T,N,X,0,0,V}(ptr) where {S,T,N,X,V} = Expr(:block, Expr(:meta,:inline), :(PtrArray{$S,$T,$X,0,0,$V,$(last(S.parameters)::Int*last(X.parameters)::Int)}(ptr, tuple(), tuple())))
+@generated PtrArray{S,T,N,X,0,0}(ptr, ::NTuple{0}, ::NTuple{0}) where {S,T,N,X} = Expr(:block, Expr(:meta,:inline), :(PtrArray{$S,$T,$X,0,0,true,$(last(S.parameters)::Int*last(X.parameters)::Int)}(ptr, tuple(), tuple())))
+@generated PtrArray{S,T,N,X,0,0,V}(ptr, ::NTuple{0}, ::NTuple{0}) where {S,T,N,X,V} = Expr(:block, Expr(:meta,:inline), :(PtrArray{$S,$T,$X,0,0,$V,$(last(S.parameters)::Int*last(X.parameters)::Int)}(ptr, tuple(), tuple())))
+@generated PtrArray{S,T,N,X}(ptr, ::NTuple{0}, ::NTuple{0}) where {S,T,N,X} = Expr(:block, Expr(:meta,:inline), :(PtrArray{$S,$T,$X,0,0,true,$(last(S.parameters)::Int*last(X.parameters)::Int)}(ptr, tuple(), tuple())))
+@generated PtrArray{S,T,N,X,V}(ptr, ::NTuple{0}, ::NTuple{0}) where {S,T,N,X,V} = Expr(:block, Expr(:meta,:inline), :(PtrArray{$S,$T,$X,0,0,$V,$(last(S.parameters)::Int*last(X.parameters)::Int)}(ptr, tuple(), tuple())))
 @generated function PtrArray(ptr::Ptr{T}, s::Tuple) where {T}
     sv = tointvecdt(s)
     N = length(sv)
@@ -134,5 +143,26 @@ end
 end
 @inline function PtrArray(A::AbstractFixedSizeArray{S,T,N,X,V,L}) where {S,T,N,X,V,L}
     PtrAray{S,T,N,X,0,0,V,L}(pointer(A), tuple(), tuple())
+end
+
+@inline function NoPadPtrView{Tuple{L}}(θ::Ptr{T}) where {L,T}
+    PtrArray{Tuple{L},T,1,Tuple{1},0,0,true,L}(θ, tuple(), tuple())
+end
+# @inline function NoPadPtrView{Tuple{M,N}}(θ::Ptr{T}) where {M,N,T}
+    # PtrArray{Tuple{M,N},T,1,Tuple{1,M},0,0,true}(θ)
+# end
+@generated function NoPadPtrView{S}(θ::Ptr{T}) where {S,T}
+    X = Expr(:curly, :Tuple)
+    SV = S.parameters
+    L = 1
+    N = length(SV)
+    for n ∈ 1:N
+        push!(X.parameters, L)
+        L *= (SV[n])::Int
+    end
+    quote
+        $(Expr(:meta,:inline))
+        PtrAray{$S,$T,$N,$X,0,0,true,$L}(θ, tuple(), tuple())
+    end
 end
 
