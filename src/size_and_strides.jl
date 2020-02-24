@@ -118,8 +118,8 @@ function tointvec(sv::Core.SimpleVector)
     v
 end
 
-@generated type_length(::AbstractFixedSizeArray{S}) where {S} = simple_vec_prod(S.parameters)
-@generated type_length(::Type{<:AbstractFixedSizeArray{S}}) where {S} = simple_vec_prod(S.parameters)
+@inline type_length(::AbstractFixedSizeArray{S,T,N,X,V,L}) where {S,T,N,X,V,L} = L
+@inline type_length(::Type{<:AbstractFixedSizeArray{S,T,N,X,V,L}}) where {S,T,N,X,V,L} = L
 @generated param_type_length(::AbstractFixedSizeArray{S}) where {S} = simple_vec_prod(S.parameters)
 @generated param_type_length(::Type{<:AbstractFixedSizeArray{S}}) where {S} = simple_vec_prod(S.parameters)
 @inline is_sized(::Any) = false

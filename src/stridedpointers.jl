@@ -9,10 +9,10 @@ end
 @inline VectorizationBase.gep(ptr::VecStridedPointer{T,X,L}, i::Integer) where {T,X,L} = VecStridedPointer{T,X,L}(ptr.ptr, (i % UInt32) + ptr.offset)
 @inline VecStridedPointer{X}(ptr::NTuple{L,Core.VecElement{T}}) where {T,X,L} = VecStridedPointer{T,X,L}(ptr, 0x00000000)
 @inline VectorizationBase.load(ptr::VecStridedPointer) = @inbounds ptr.ptr[1 + ptr.offset].value
-@inline function SIMDPirates.vload(::Val{W}, ptr::VecStridedPointer{T,X,L}) where {W,T,X,L}
+@inline function SIMDPirates.load(::Val{W}, ptr::VecStridedPointer{T,X,L}) where {W,T,X,L}
     SVec(ntuple(Val(W)) do w @inbounds ptr.ptr[w+ptr.offset].value end)
 end
-@inline function SIMDPirates.vload(::Val{W}, ptr::VecStridedPointer{T,X,L}, ::Unsigned) where {W,T,X,L}
+@inline function SIMDPirates.load(::Val{W}, ptr::VecStridedPointer{T,X,L}, ::Unsigned) where {W,T,X,L}
     SVec(ntuple(Val(W)) do w @inbounds ptr.ptr[w+ptr.offset].value end)
 end
 

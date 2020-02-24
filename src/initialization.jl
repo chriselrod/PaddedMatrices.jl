@@ -47,6 +47,7 @@ function partially_sized(sv)
             L *= svₙ
         end
     end
+    st, xt
 end
 
 @generated function StrideArray{S,T}(::UndefInitializer, s::NTuple{N,<:Integer}) where {S,T,N}
@@ -145,13 +146,13 @@ end
     PtrAray{S,T,N,X,0,0,V,L}(pointer(A), tuple(), tuple())
 end
 
-@inline function NoPadPtrView{Tuple{L}}(θ::Ptr{T}) where {L,T}
+@inline function NoPadPtrView(θ::Ptr{T}, ::Type{Tuple{L}}) where {L,T}
     PtrArray{Tuple{L},T,1,Tuple{1},0,0,true,L}(θ, tuple(), tuple())
 end
 # @inline function NoPadPtrView{Tuple{M,N}}(θ::Ptr{T}) where {M,N,T}
     # PtrArray{Tuple{M,N},T,1,Tuple{1,M},0,0,true}(θ)
 # end
-@generated function NoPadPtrView{S}(θ::Ptr{T}) where {S,T}
+@generated function NoPadPtrView(θ::Ptr{T}, ::Type{S}) where {S,T}
     X = Expr(:curly, :Tuple)
     SV = S.parameters
     L = 1
@@ -164,5 +165,53 @@ end
         $(Expr(:meta,:inline))
         PtrAray{$S,$T,$N,$X,0,0,true,$L}(θ, tuple(), tuple())
     end
+end
+@inline function NoPadPtrView(sp::StackPointer, ::Type{S}) where {S}
+    A = NoPadPtrView(pointer(sp))
+    sp + align(full_length(A)), A
+end
+@inline function NoPadFlatPtrView(sp::StackPointer, ::Type{S}) where {S}
+    A = NoPadPtrView(S, pointer(sp))
+    sp + align(full_length(A)), flatvector(A)
+end
+
+@inline function NoPadPtrViewMulti(θ::Ptr{T}, ::Type{Tuple{L}}, ::Val{M}) where {L,T,M}
+    PtrArray{Tuple{L,M},T,2}(θ)
+end
+@generated function NoPadPtrViewMulti(θ::Ptr{T}, ::Type{S}, ::Val{M}) where {S,T,M}
+    X = Expr(:curly, :Tuple)
+    SV = S.parameters
+    L = 1
+    N = length(SV)
+    for n ∈ 1:N
+        push!(X.parameters, L)
+        L *= (SV[n])::Int
+    end
+    N += 1
+    push!(S.parameters, M)
+    push!(X.parameters, L)
+    L *= M
+    quote
+        $(Expr(:meta,:inline))
+        PtrAray{$S,$T,$N,$X,0,0,true,$L}(θ, tuple(), tuple())
+    end
+end
+@inline function NoPadPtrViewMulti(sp::StackPointer, ::Type{S}, ::Val{M}) where {S,M}
+    A = NoPadPtrViewMulti(S, pointer(sp), Val{M}())
+    sp + align(full_length(A)), A
+end
+@inline function NoPadFlatPtrViewMulti(sp::StackPointer, ::Type{Tuple{L}}, ::Val{M}) where {L,M}
+    A = PtrArray{Tuple{L,M},T,2}(pointer(θ))
+    sp + align(full_length(A)), A
+end
+@generated function NoPadFlatPtrViewMulti(sp::StackPointer, ::Type{S}, ::Val{M}) where {S,M}
+    Expr(
+        :block, Expr(:meta,:inline),
+        Expr(
+            :call, :NoPadPtrViewMulti,
+            Expr(:curly, :Tuple, simple_vec_prod(S.parameters)),
+            :sp, Expr(:call, Expr(:curly, :Val, M))
+        )
+    )
 end
 

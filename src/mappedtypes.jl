@@ -30,8 +30,11 @@ struct MappedVec{F<:Function,W,T} <: VectorizationBase.AbstractStructVec{W,T}
 end
 @inline VectorizationBase.extract_data(v::MappedVec) = v.data
 @inline MappedVec{F}(x::AbstractStructVec, y::AbstractStructVec) where {F} = MappedVec{F}(extract_data(x), extract_data(y))
-Base.:+(x::MappedVec{typeof(exp)}, y::MappedVec{typeof{exp}}) = MappedVec{typeof(exp)}(vadd(x.x, y.x), vmul(x.fx, y.fx))
-Base.:*(x::MappedVec{typeof(log),W}, y::MappedVec{typeof{log},W}) where {W} = MappedVec{typeof(log)}(vmul(x.x, y.x), vadd(x.fx, y.fx))
+@inline mapped(::Type{F}, x::T, fx::T) where {F,T<:Number} = MappedElement{F,T}(x, fx)
+@inline mapped(::Type{F}, x::Vec{W,T}, fx::Vec{W,T}) where {F,W,T} = MappedVec{F,W,T}(x, fx)
+@inline mapped(::Type{F}, x::AbstractStructVec{W,T}, fx::AbstractStructVec{W,T}) where {F,W,T} = MappedVec{F,W,T}(extract_data(x), extract_data(fx))
+@inline Base.:+(x::MappedVec{typeof(exp)}, y::MappedVec{typeof{exp}}) = MappedVec{typeof(exp)}(vadd(x.x, y.x), vmul(x.fx, y.fx))
+@inline Base.:*(x::MappedVec{typeof(log),W}, y::MappedVec{typeof{log},W}) where {W} = MappedVec{typeof(log)}(vmul(x.x, y.x), vadd(x.fx, y.fx))
 
 # Storring into the mapped part of a MappedArray is not allowed.
 # To maintin the mapping, storing into it at all isn't allowed.
@@ -62,23 +65,23 @@ end
     MappedStridedPointer{F}(stridedpointer(PtrArray(A)), A.mappedptr)
 end
 
-@inline function VectorizationBase.load(mpp::MappedStridedPointer{F}, i...) where {F}
+@inline function VectorizationBase.load(mpp::MappedStridedPointer{F}, i::Tuple) where {F}
     p = mpp.ptr
     o = offset(p, i...)
     mp = mpp.mappedptr
-    MappedElement{F}(load(p, o), load(mp, o))
+    MappedElement{F}(load(p.ptr, o), load(mp, o))
 end
 @inline function VectorizationBase.vload(::Val{W}, mpp::MappedStridedPointer{F,T}, i...) where {W,F,T}
     p = mpp.ptr
     o = offset(p, i...)
     mp = mpp.mappedptr
-    MappedVec{F}(vload(Vec{W,T}, p, o), vload(Vec{W,T}, mp, o))
+    MappedVec{F}(vload(Vec{W,T}, p.ptr, o), vload(Vec{W,T}, mp, o))
 end
 @inline function VectorizationBase.vload(::Type{Vec{W,T}}, mpp::MappedStridedPointer{F,T}, i...) where {W,F,T}
     p = mpp.ptr
     o = offset(p, i...)
     mp = mpp.mappedptr
-    MappedVec{F}(vload(Vec{W,T}, p, o), vload(Vec{W,T}, mp, o))
+    MappedVec{F}(vload(Vec{W,T}, p.ptr, o), vload(Vec{W,T}, mp, o))
 end
 
 for (m,f,f⁻¹) ∈ [(:Base,:log,:exp), (:Base,:abs2,:sqrt), (:SLEEFPirates,:nlogit,:ninvlogit), (:SLEEFPirates,:logit,:invlogit)]
