@@ -37,10 +37,26 @@ include("blas.jl")
 include("broadcast.jl")
 
 include("stack_pointers.jl")
+include("mapped_types.jl")
 include("lazy_maps.jl")
-# include("gradsupport.jl")
+include("gradsupport.jl")
 # include("linear_algebra.jl")
 
+function logdensity(x)
+    s = zero(first(x))
+    @avx for i ∈ eachindex(x)
+        s += x[i]*x[i]
+    end
+    -0.5s
+end
+function ∂logdensity!(∂x, x)
+    s = zero(first(x))
+    @avx for i ∈ eachindex(x)
+        s += x[i]*x[i]
+        ∂x[i] = -x[i]
+    end
+    -0.5s
+end
 
 # include("precompile.jl")
 # _precompile_()
