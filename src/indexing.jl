@@ -1,38 +1,3 @@
-function inddimprod(X, i, xi, A::Symbol = :A)
-    Xᵢ = (X[i])::Int
-    if Xᵢ == 1
-        ind = :(i[$i] - 1)
-    elseif Xᵢ == -1
-        ind = :((i[$i] - 1) * ($A.size[$xi] % Int) )
-        xi += 1
-    else
-        ind = :((i[$i] - 1) * $Xᵢ )
-    end
-    ind, xi
-end
-
-"""
-Converts Cartesian one-based index into linear one-based index.
-Just subtract 1 for a zero based index.
-"""
-@noinline function sub2ind_expr(X::Core.SimpleVector, A::Symbol = :A)#, N::Int = length(X))
-    N = length(X)
-    ind1, x1 = inddimprod(X, 1, 1, A)
-    if N == 1
-        inds = ind1
-    else
-        inds = Expr(:call, :+, ind1)
-        for n ∈ 2:N
-            indi, x1 = inddimprod(X, n, x1, A)
-            push!(inds.args, indi)
-        end
-    end
-    Expr(:macrocall, Symbol("@inbounds"), LineNumberNode(@__LINE__,Symbol(@__FILE__)), inds)
-end
-@generated function sub2ind(A::AbstractStrideArray{S,T,N,X}, i::NTuple{N}) where {S,T,N,X}
-    sub2ind_expr(X.parameters, :A)
-end
-
 @noinline ThrowBoundsError(A, i) = throw(BoundsError(A, i))
                                 
 Base.IndexStyle(::Type{<:AbstractStrideArray}) = IndexCartesian()
@@ -53,26 +18,27 @@ end
     @boundscheck begin
         any(i .> size(A)) && ThrowBoundsError(A, i)
     end
-    load(stridedpointer(A), i .- 1)
+    vload(stridedpointer(A), i)
 end
 @inline Base.getindex(A::AbstractStrideArray, i::CartesianIndex) = getindex(A, i.I)
 @inline Base.getindex(A::AbstractStrideArray, i::Vararg{<:Number}) = getindex(A, i)
+@inline Base.getindex(A::AbstractPtrStrideArray, i::Vararg{<:Number}) = getindex(A, i)
 @inline function Base.getindex(A::AbstractStrideArray, i::Integer)
     @boundscheck i > length(A) && ThrowBoundsError(A, i)
-    load(pointer(A), i - 1)
+    vload(pointer(A), i - 1)
 end
 
 @inline function Base.setindex!(A::AbstractStrideArray, v, i::Tuple)
     @boundscheck begin
         any(i .> size(A)) && ThrowBoundsError(A, i)
     end
-    store!(stridedpointer(A), v, i .- 1)
+    vstore!(stridedpointer(A), v, i)
 end
 @inline Base.setindex!(A::AbstractStrideArray, v, i::CartesianIndex) = setindex!(A, v, i.I)
 @inline Base.setindex!(A::AbstractStrideArray, v, i...) = setindex!(A, v, i)
 @inline function Base.setindex!(A::AbstractStrideArray, v, i::Integer)
     @boundscheck i > length(A) && ThrowBoundsError(A, i)
-    store!(pointer(A), v, i - 1)
+    vstore!(pointer(A), v, i - 1)
 end
 
 

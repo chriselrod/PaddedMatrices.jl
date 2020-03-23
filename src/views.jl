@@ -120,11 +120,12 @@ end
 Note that the stride will currently only be correct when N <= 2.
 Perhaps R should be made into a stride-tuple?
 """
-@generated function Base.getindex(A::AbstractStrideArray{S,T,N,X,SN,XN,V,L}, inds...) where {S,T,N,X,SN,XN,V,L}
+@generated function Base.getindex(A::AbstractPtrStrideArray{S,T,N,X,SN,XN,V,L}, inds::Vararg{<:Any,N}) where {S,T,N,X,SN,XN,V,L}
     @assert length(inds) == N
     generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, false, L)
 end
-@generated function Base.view(A::AbstractStrideArray{S,T,N,X,SN,XN,V,L}, inds...) where {S,T,N,X,SN,XN,V,L}
+Base.@propagate_inbounds Base.getindex(A::AbstractStrideArray{S,T,N}, inds::Vararg{<:Any,N}) where {S,T,N} = view(A, inds...)
+@generated function Base.view(A::AbstractPtrStrideArray{S,T,N,X,SN,XN,V,L}, inds...) where {S,T,N,X,SN,XN,V,L}
     @assert length(inds) == N
     generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, true, L)
 end

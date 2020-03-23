@@ -1,5 +1,6 @@
 abstract type AbstractStrideArray{S,T,N,X,SN,XN,V,L} <: DenseArray{T,N} end
 abstract type AbstractMutableStrideArray{S,T,N,X,SN,XN,V,L} <: AbstractStrideArray{S,T,N,X,SN,XN,V,L} end
+abstract type AbstractPtrStrideArray{S,T,N,X,SN,XN,V,L} <: AbstractMutableStrideArray{S,T,N,X,SN,XN,V,L} end
 
 struct StrideArray{S,T,N,X,SN,XN,L} <: AbstractMutableStrideArray{S,T,N,X,SN,XN,false,L}
     data::SubArray{T,1,Vector{T},Tuple{UnitRange{Int64}},true}
@@ -13,7 +14,7 @@ end
 struct ConstantArray{S,T,N,X,L} <: AbstractStrideArray{S,T,N,X,0,0,false,L}
     data::NTuple{L,Core.VecElement{T}}
 end
-struct PtrArray{S,T,N,X,SN,XN,V,L} <: AbstractMutableStrideArray{S,T,N,X,SN,XN,V,L}
+struct PtrArray{S,T,N,X,SN,XN,V,L} <: AbstractPtrStrideArray{S,T,N,X,SN,XN,V,L}
     ptr::Ptr{T}
     size::NTuple{SN,UInt32}
     stride::NTuple{XN,UInt32}

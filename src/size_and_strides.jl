@@ -7,9 +7,12 @@ LoopVectorization.maybestaticsize(::AbstractStrideArray{<:Tuple{M,N,K,Vararg}}, 
 LoopVectorization.maybestaticsize(::AbstractStrideArray{<:Tuple{M,N,K,L,Vararg}}, ::Val{4}) where {M,N,K,L} = Static{L}()
 LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{-1,Vararg}}, ::Val{1}) = @inbounds A.size[1]
 LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{M,-1,Vararg}}, ::Val{2}) where {M} = @inbounds A.size[1]
-LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{-1,-1,Vararg}}, ::Val{2}) where {M} = @inbounds A.size[2]
+LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{-1,-1,Vararg}}, ::Val{2}) = @inbounds A.size[2]
 LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{M,N,-1,Vararg}}, ::Val{3}) where {M,N} = size(A,3)
 LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{M,N,K,-1,Vararg}}, ::Val{4}) where {M,N,K} = size(A,4)
+LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{-1,N,Vararg}}, ::Val{1:2}) where {N} = (A.size[1],Static{N}())
+LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{M,-1,Vararg}}, ::Val{1:2}) where {M} = (Static{M}(),A.size[1])
+LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{-1,-1,Vararg}}, ::Val{1:2}) = (A.size[1], A.size[2])
 LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{M,N,Vararg}}, ::Val{1:2}) where {M,N} = (Static{M}(),Static{N}())
 LoopVectorization.maybestaticsize(A::AbstractStrideArray{Tuple{M}}, ::Val{1:2}) where {M} = (Static{M}(),Static{1}())
 @generated function LoopVectorization.maybestaticsize(A::AbstractStrideArray{S}, ::Val{I}) where {S,I}
@@ -43,7 +46,7 @@ function tup_sv_quote(T::Core.SimpleVector, s, start = 1)
     for n ∈ start:N
         Tₙ = (T[n])::Int
         if Tₙ == -1
-            i += 0
+            i += 1
             push!(t.args, Expr(:call, :%, Expr(:ref, Expr(:(.), :A, QuoteNode(s)), i), Int))
         else
             push!(t.args, Tₙ)
@@ -52,9 +55,9 @@ function tup_sv_quote(T::Core.SimpleVector, s, start = 1)
     Expr(:block, Expr(:meta, :inline), Expr(:macrocall, Symbol("@inbounds"), LineNumberNode(@__LINE__, Symbol(@__FILE__)), t))
 end
 @generated Base.size(A::AbstractStrideArray{S}) where {S} = tup_sv_quote(S, :size)
-@generated Base.strides(A::AbstractStrideArray{S,T,N,X}) where {S,T,N,X} = tup_sv_quote(X, :stride)
-@generated tailstrides(A::AbstractStrideArray{S,T,N,X}) where {S,T,N,X<:Tuple{1,Vararg}} = tup_sv_quote(X, :stride, 2)
-@generated revtailstrides(A::AbstractStrideArray{S,T,N,X}) where {S,T,N,X<:Tuple{1,Vararg}} = tup_sv_rev_quote(X, :stride, 1)
+@generated Base.strides(A::AbstractStrideArray{S,T,N,X}) where {S,T,N,X} = tup_sv_quote(X.parameters, :stride)
+@generated tailstrides(A::AbstractStrideArray{S,T,N,X}) where {S,T,N,X<:Tuple{1,Vararg}} = tup_sv_quote(X.parameters, :stride, 2)
+@generated revtailstrides(A::AbstractStrideArray{S,T,N,X}) where {S,T,N,X<:Tuple{1,Vararg}} = tup_sv_rev_quote(X.parameters, :stride, 1)
 
 
 @inline LinearAlgebra.stride1(::AbstractStrideArray{S,T,N,<:Tuple{X,Vararg}}) where {S,T,N,X} = X
@@ -125,4 +128,18 @@ end
 @inline is_sized(::Any) = false
 
 
-
+@generated function Base.axes(A::AbstractStrideArray{S}) where {S}
+    retexpr = Expr(:tuple,)
+    SV = S.parameters
+    ioff = 1
+    for n in 1:length(SV)
+        sn = (SV[n])::Int
+        if sn == -1
+            push!(retexpr.args, :(Base.OneTo(A.size[$ioff])))
+            ioff += 1
+        else
+            push!(retexpr.args, :(VectorizationBase.StaticUnitRange{1,$sn}()))
+        end
+    end
+    retexpr
+end
