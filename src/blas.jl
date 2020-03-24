@@ -15,7 +15,7 @@ let GEMMLOOPSET = LoopVectorization.LoopSet(
           for k ∈ 1:size(A,2)
               Cₘₙ += A[m,k] * B[k,n]
           end
-          C[m,n] = Cₘₙ
+          C[m,n] += Cₘₙ
       end)
     );
     order = LoopVectorization.choose_order(GEMMLOOPSET)
@@ -23,9 +23,8 @@ let GEMMLOOPSET = LoopVectorization.LoopSet(
     nr = last(order)
     @eval const mᵣ = $mr
     @eval const nᵣ = $nr
-    for T ∈ [Int16, Int32, Int64, Float32, Float64]
-    
-    end
+    # for T ∈ [Int16, Int32, Int64, Float32, Float64]
+    # end
 
     
 end
@@ -52,6 +51,8 @@ function loopmuladd!(
             Cₘₙ = zero(eltype(C))
             for k ∈ 1:K
                 Cₘₙ += A[m,k] * B[k,n]
+                # dummy1 = prefetch1(A, m + mᵣ, k)
+                # dummy2 = prefetch1(B, k, n, 0, nᵣ)
             end
             C[m,n] += Cₘₙ
         end
@@ -64,10 +65,6 @@ function Base.copyto!(B::AbstractStrideArray{S,T,N}, A::AbstractStrideArray{S,T,
         B[I] = A[I]
     end
 end
-@inline prefetch2(x, i) = SIMDPirates.prefetch(gep(x, (VectorizationBase.extract_data(i) - 1,)), Val{2}(), Val{0}())
-@inline prefetch3(x, i) = SIMDPirates.prefetch(gep(x, (VectorizationBase.extract_data(i) - 1,)), Val{1}(), Val{0}())
-@inline prefetch2(x, i, j) = SIMDPirates.prefetch(gep(x, (VectorizationBase.extract_data(i) - 1, VectorizationBase.extract_data(j) - 1)), Val{2}(), Val{0}())
-@inline prefetch3(x, i, j) = SIMDPirates.prefetch(gep(x, (VectorizationBase.extract_data(i) - 1, VectorizationBase.extract_data(j) - 1)), Val{1}(), Val{0}())
 function copyto_prefetch2!(B::AbstractStrideArray{S,T,N}, A::AbstractStrideArray{S,T,N}, C::AbstractStrideArray{S,T,N}) where {S,T,N}
     Cptr = stridedpointer(C)
     for j ∈ 1:size(B,2)
@@ -124,6 +121,7 @@ end
                     # copyto!(Bpacked, Bpmat, Bprefetch)
                     for mo in 0:Miter-1
                         # pack mc x kc block of A
+                        # Apmat = PtrMatrix{$mc,$kc}(gesp(Aptr, (mo*$mc, ko*$kc)))
                         Apacked = PtrMatrix{$mc,$kc,$Ta,$mc}(ptrL2)
                         Apmat = PtrMatrix{$mc,$kc}(gesp(Aptr, (mo*$mc, ko*$kc)))
                         copyto!(Apacked, Apmat)

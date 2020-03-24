@@ -19,7 +19,7 @@ C1 ≈ A * B
 ptrA_mrem = PtrMatrix{-1, K, Float64, M}(pointer(A), M);
 ptrC_mrem = PtrMatrix{-1, N, Float64, M}(pointer(C1), M);
 
-
+@code_native debuginfo=:none loopmuladd!(ptrC_mrem, ptrA_mrem, ptrB)
 
 using PaddedMatrices: copyto_prefetch2!
 @code_warntype copyto_prefetch2!(ptrC_mrem, ptrC_mrem, ptrC_mrem)
@@ -40,18 +40,21 @@ using LoopVectorization: @avx, @_avx, @avx_debug
         B[I] = A[I]
     end
 
+using PaddedMatrices: mᵣ, nᵣ
 using LoopVectorization: @avx_debug
 M2, K2, N2 = matmul_sizes(ptrC_mrem, ptrA_mrem, ptrB)
-ls = @avx_debug for m ∈ 1:M2
-        for n ∈ 1:N2
-            Cₘₙ = zero(T)
-            for k ∈ 1:K2
+ls = @avx_debug for m ∈ 1:M
+        for n ∈ 1:N
+            Cₘₙ = zero(eltype(ptrC_mrem))
+            for k ∈ 1:K
                 Cₘₙ += ptrA_mrem[m,k] * ptrB[k,n]
+                dummy1 = prefetch1(ptrA_mrem, m + mᵣ, k)
+                dummy2 = prefetch1(ptrB, k, n + nᵣ)
             end
             ptrC_mrem[m,n] += Cₘₙ
         end
     end;
-ls.loops
+ls.loops;
 
 
 using LoopVectorization: @_avx
