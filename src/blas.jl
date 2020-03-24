@@ -64,13 +64,40 @@ function Base.copyto!(B::AbstractStrideArray{S,T,N}, A::AbstractStrideArray{S,T,
         B[I] = A[I]
     end
 end
+@inline prefetch2(x, i) = SIMDPirates.prefetch(gep(x, (VectorizationBase.extract_data(i) - 1,)), Val{2}(), Val{0}())
+@inline prefetch3(x, i) = SIMDPirates.prefetch(gep(x, (VectorizationBase.extract_data(i) - 1,)), Val{1}(), Val{0}())
+@inline prefetch2(x, i, j) = SIMDPirates.prefetch(gep(x, (VectorizationBase.extract_data(i) - 1, VectorizationBase.extract_data(j) - 1)), Val{2}(), Val{0}())
+@inline prefetch3(x, i, j) = SIMDPirates.prefetch(gep(x, (VectorizationBase.extract_data(i) - 1, VectorizationBase.extract_data(j) - 1)), Val{1}(), Val{0}())
+function copyto_prefetch2!(B::AbstractStrideArray{S,T,N}, A::AbstractStrideArray{S,T,N}, C::AbstractStrideArray{S,T,N}) where {S,T,N}
+    Cptr = stridedpointer(C)
+    for j ∈ 1:size(B,2)
+        Cptr = gesp(Cptr, (0, (j-1)))
+        @_avx unroll=4 for i ∈ 1:size(B,1)
+            dummy = prefetch2(Cptr, i)
+            B[i,j] = A[i,j]
+        end
+    end
+end
+function copyto_prefetch3!(B::AbstractStrideArray{S,T,N}, A::AbstractStrideArray{S,T,N}, C::AbstractStrideArray{S,T,N}) where {S,T,N}
+    Cptr = stridedpointer(C)
+    for j ∈ 1:size(B,2)
+        Cptr = gesp(Cptr, (0, (j-1)))
+        @_avx unroll=4 for i ∈ 1:size(B,1)
+            dummy = prefetch3(Cptr, i)
+            B[i,j] = A[i,j]
+        end
+    end
+end
 
 @generated function jmul!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}) where {Tc, Ta, Tb}
     L₁, L₂, L₃ = cache_sizes()
     W = VectorizationBase.pick_vector_width(promote_type(Tc, Ta, Tb))
     # We aim for using roughly half of the L1, L2, and L3 caches
+    # kc = 5L₁ ÷ (12nᵣ * sizeof(Tb))
     kc = VectorizationBase.prevpow2( L₁ ÷ (2nᵣ * sizeof(Tb)) )
-    mcrep = ( L₂ ÷ (2kc * sizeof(Ta) * mᵣ * W) )
+    mcrep =  L₂ ÷ (2kc * sizeof(Ta) * mᵣ * W)
+    # mcrep =  5L₂ ÷ (12kc * sizeof(Ta) * mᵣ * W)
+    # mcrep = VectorizationBase.prevpow2( L₂ ÷ (2kc * sizeof(Ta) * mᵣ * W) )
     mc = mcrep * mᵣ * W
     ncrep = VectorizationBase.prevpow2( L₃ ÷ (2kc * sizeof(Tb) * nᵣ) )
     nc = ncrep * nᵣ
@@ -93,12 +120,15 @@ end
                     Bpacked = PtrMatrix{$kc,$nc,$Tb,$kc}(ptrL3)
                     Bpmat = PtrMatrix{$kc,$nc}(gesp(Bptr, (ko*$kc, no*$nc)))
                     copyto!(Bpacked, Bpmat)
-                    # Bpacked = PtrMatrix{$kc,$nc}(gesp(Bptr, (ko*$kc, no*$nc)))
+                    # Bprefetch = PtrMatrix{$kc,$nc}(gesp(Bptr, ((ko+1)*$kc, no*$nc)))
+                    # copyto!(Bpacked, Bpmat, Bprefetch)
                     for mo in 0:Miter-1
                         # pack mc x kc block of A
                         Apacked = PtrMatrix{$mc,$kc,$Ta,$mc}(ptrL2)
                         Apmat = PtrMatrix{$mc,$kc}(gesp(Aptr, (mo*$mc, ko*$kc)))
                         copyto!(Apacked, Apmat)
+                        # Aprefetch = PtrMatrix{$mc,$kc}(gesp(Aptr, ((mo+1)*$mc, ko*$kc)))
+                        # copyto_prefetch3!(Apacked, Apmat, Aprefetch)
                         Cpmat = PtrMatrix{$mc,$nc}(gesp(Cptr, (mo*$mc, no*$nc)))
                         loopmuladd!(Cpmat, Apacked, Bpacked)
                     end

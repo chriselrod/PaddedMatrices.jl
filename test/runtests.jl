@@ -19,6 +19,14 @@ C1 ≈ A * B
 ptrA_mrem = PtrMatrix{-1, K, Float64, M}(pointer(A), M);
 ptrC_mrem = PtrMatrix{-1, N, Float64, M}(pointer(C1), M);
 
+
+
+using PaddedMatrices: copyto_prefetch2!
+@code_warntype copyto_prefetch2!(ptrC_mrem, ptrC_mrem, ptrC_mrem)
+@code_llvm debuginfo=:none copyto_prefetch2!(ptrC_mrem, ptrC_mrem, ptrC_mrem)
+
+copyto_prefetch2!(ptrC_mrem, ptrC_mrem, ptrC_mrem)
+
 using BenchmarkTools
 @benchmark loopmuladd!($ptrC_mrem, $ptrA_mrem, $ptrB)
 

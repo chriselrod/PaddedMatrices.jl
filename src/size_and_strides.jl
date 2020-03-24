@@ -54,7 +54,7 @@ function tup_sv_quote(T::Core.SimpleVector, s, start = 1)
     end
     Expr(:block, Expr(:meta, :inline), Expr(:macrocall, Symbol("@inbounds"), LineNumberNode(@__LINE__, Symbol(@__FILE__)), t))
 end
-@generated Base.size(A::AbstractStrideArray{S}) where {S} = tup_sv_quote(S, :size)
+@generated Base.size(A::AbstractStrideArray{S}) where {S} = tup_sv_quote(S.parameters, :size)
 @generated Base.strides(A::AbstractStrideArray{S,T,N,X}) where {S,T,N,X} = tup_sv_quote(X.parameters, :stride)
 @generated tailstrides(A::AbstractStrideArray{S,T,N,X}) where {S,T,N,X<:Tuple{1,Vararg}} = tup_sv_quote(X.parameters, :stride, 2)
 @generated revtailstrides(A::AbstractStrideArray{S,T,N,X}) where {S,T,N,X<:Tuple{1,Vararg}} = tup_sv_rev_quote(X.parameters, :stride, 1)

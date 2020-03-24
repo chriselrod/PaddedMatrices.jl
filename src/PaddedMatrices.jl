@@ -67,8 +67,13 @@ end
 const L2CACHE = Float64[]
 const L3CACHE = Float64[]
 
-function pack_B!(B::AbstractMatrix{T}, threadid = 1) where {T}
-    
+function threadlocal_L2CACHE_pointer(threadid = Threads.threadid(), ::Type{T} = Float64) where {T}
+    L2 = VectorizationBase.CACHE_SIZE[2]
+    Base.unsafe_convert(Ptr{T}, pointer(L2CACHE)) + VectorizationBase.align(L2) * (thireadid - 1)
+end
+function threadlocal_L3CACHE_pointer(threadid = Threads.threadid(), ::Type{T} = Float64) where {T}
+    L3 = VectorizationBase.CACHE_SIZE[3] ÷ VectorizationBase.NUM_CORES
+    Base.unsafe_convert(Ptr{T}, pointer(L3CACHE)) + VectorizationBase.align(L3) * (thireadid - 1)
 end
 
 function cache_sizes()
