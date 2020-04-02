@@ -75,6 +75,47 @@ function loopmuladd_!(
 end
 
 
+using PaddedMatrices: cache_sizes, mᵣ, nᵣ
+using VectorizationBase
+Ta = Tb = Tc = Float64
+L₁, L₂, L₃ = cache_sizes()
+W = VectorizationBase.pick_vector_width(promote_type(Tc, Ta, Tb))
+# We aim for using roughly half of the L1, L2, and L3 caches
+# kc = 5L₁ ÷ (12nᵣ * sizeof(Tb))
+L₁ ÷ (nᵣ * sizeof(Tb))
+kc = VectorizationBase.prevpow2( 3L₁ ÷ (4nᵣ * sizeof(Tb)) )
+# kc = VectorizationBase.prevpow2( L₁ ÷ (nᵣ * sizeof(Tb)) )
+mcrep =  L₂ ÷ (kc * sizeof(Ta) * mᵣ * W)
+mcrep =  3L₂ ÷ (4kc * sizeof(Ta) * mᵣ * W)
+# mcrep =  5L₂ ÷ (12kc * sizeof(Ta) * mᵣ * W)
+# mcrep = VectorizationBase.prevpow2( L₂ ÷ (2kc * sizeof(Ta) * mᵣ * W) )
+mc = mcrep * mᵣ * W
+ncrep =  3L₃ ÷ (4kc * sizeof(Tb) * nᵣ) 
+nc = ncrep * nᵣ
+
+
+
+
+using PaddedMatrices, BenchmarkTools
+M = 500;
+A = rand(M, M); B = rand(M, M); C1 = similar(A); C2 = similar(A); C3 = similar(A);
+@benchmark PaddedMatrices.jmul!($C1, $A, $B)
+M *= 2
+A = rand(M, M); B = rand(M, M); C1 = similar(A); C2 = similar(A); C3 = similar(A);
+@benchmark PaddedMatrices.jmul!($C1, $A, $B)
+M *= 2
+A = rand(M, M); B = rand(M, M); C1 = similar(A); C2 = similar(A); C3 = similar(A);
+@benchmark PaddedMatrices.jmul!($C1, $A, $B)
+M *= 2
+A = rand(M, M); B = rand(M, M); C1 = similar(A); C2 = similar(A); C3 = similar(A);
+@benchmark PaddedMatrices.jmul!($C1, $A, $B)
+M *= 2
+A = rand(M, M); B = rand(M, M); C1 = similar(A); C2 = similar(A); C3 = similar(A);
+@time PaddedMatrices.jmul!(C1, A, B);
+
+
+
+
 
 using PaddedMatrices
 using SIMDPirates: lifetime_start!, lifetime_end!

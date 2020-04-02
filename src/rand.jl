@@ -1,21 +1,21 @@
-using VectorizedRNG: local_pcg
+using VectorizedRNG: local_rng
 
-Random.rand!(A::AbstractStrideArray) = (rand!(local_pcg(), flatvector(A)); A)
-Random.rand!(A::AbstractStrideArray{S,T}, l::T, u::T) where {S,T} = (rand!(local_pcg(), flatvector(A), l, u); A)
+Random.rand!(A::AbstractStrideArray) = (rand!(local_rng(), flatvector(A)); A)
+Random.rand!(A::AbstractStrideArray{S,T}, l::T, u::T) where {S,T} = (rand!(local_rng(), flatvector(A), l, u); A)
 # Specific to avoid ambiguities
-Random.randn!(A::AbstractStrideArray) = (randn!(local_pcg(), flatvector(A)); A)
+Random.randn!(A::AbstractStrideArray) = (randn!(local_rng(), flatvector(A)); A)
 function Random.randn!(
     A::AbstractStrideArray{S,T,N,X},
     B::Union{T,<:AbstractStrideArray{S,T,N,X}}
 ) where {S,T,N,X,L}
-    randn!(local_pcg(), flatvector(A), flatvector(B)); A
+    randn!(local_rng(), flatvector(A), flatvector(B)); A
 end
 function Random.randn!(
     A::AbstractStrideArray{S,T,N,X,L},
     B::Union{T,<:AbstractStrideArray{S,T,N,X,L}},
     C::Union{T,<:AbstractStrideArray{S,T,N,X,L}}
 ) where {S,T,N,X,L}
-    randn!(local_pcg(), flatvector(A), flatvector(B), flatvector(C)); A
+    randn!(local_rng(), flatvector(A), flatvector(B), flatvector(C)); A
 end
 
 # @generated function Random.randn(rng::VectorizedRNG.AbstractPCG{P}, ::Type{<:ConstantFixedSizeArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
@@ -27,7 +27,7 @@ end
 #     end
 # end
 # function Random.randn(::Type{<:ConstantFixedSizeArray{S,T}}) where {S,T<:Union{Float32,Float64}}
-#     randn(local_pcg(), ConstantFixedSizeArray{S,T})
+#     randn(local_rng(), ConstantFixedSizeArray{S,T})
 # end
 @generated function Random.randn(rng::VectorizedRNG.AbstractPCG, ::Static{S}) where {S}
     if isa(S, Integer)
@@ -49,24 +49,24 @@ end
     end
     quote
         $(Expr(:meta,:inline))
-        randn(local_pcg(), FixedSizeArray{$ST,Float64})
+        randn(local_rng(), FixedSizeArray{$ST,Float64})
     end
 end
 
 
-Random.randexp!(A::AbstractStrideArray) = randexp!(local_pcg(), flatvector(A))
+Random.randexp!(A::AbstractStrideArray) = randexp!(local_rng(), flatvector(A))
 function Random.randexp!(
     A::AbstractStrideArray{S,T,N,X,L},
     B::Union{T,<:AbstractStrideArray{S,T,N,X,L}},
     C::Union{T,<:AbstractStrideArray{S,T,N,X,L}}
 ) where {P,S,T<:Union{Float32,Float64},N,X,L}
-    randexp!(local_pcg(), flatvector(A), flatvector(B), flatvector(C)); A
+    randexp!(local_rng(), flatvector(A), flatvector(B), flatvector(C)); A
 end
 function Random.randexp!(
     A::AbstractStrideArray{S,T,N,X,L},
     B::Union{T,<:AbstractStrideArray{S,T,N,X,L}}
 ) where {P,S,T<:Union{Float32,Float64},N,X,L}
-    randexp!(local_pcg(), flatvector(A), flatvector(B)); A
+    randexp!(local_rng(), flatvector(A), flatvector(B)); A
 end
 
 function Random.rand(::Type{<: FixedSizeArray{S,T}}) where {S,T}

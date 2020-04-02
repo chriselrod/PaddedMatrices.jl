@@ -163,7 +163,7 @@ end
 function PtrMatrix{-1,-1}(A::PackedStridedPointer{T}, nrows::Integer, ncols::Integer) where {T}
     PtrArray{Tuple{-1, -1}, T, 2, Tuple{1,-1}, 2, 1, false, -1}(pointer(A), (nrows,ncols), A.strides)
 end
-
+                     
 @generated function PtrMatrix{M,N,Tb,X}(A::Ptr{Ta}) where {M, N, Ta, Tb, X}
     :(PtrArray{Tuple{$M, $N}, $Tb, 2, Tuple{1,X}, 0, 0, false, $(M*N)}(Base.unsafe_convert(Ptr{$Tb}, A), tuple(), tuple()))
 end
@@ -188,6 +188,7 @@ end
 function PtrMatrix{-1,-1,X}(A::Ptr{T}, nrows::Integer, ncols::Integer) where {T, X}
     PtrArray{Tuple{-1, -1}, T, 2, Tuple{1,X}, 2, 0, false, -1}(A, (nrows,ncols), tuple())
 end
+
 
 
 @inline function NoPadPtrView(θ::Ptr{T}, ::Type{Tuple{L}}) where {L,T}
