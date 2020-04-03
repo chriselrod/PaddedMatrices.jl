@@ -64,31 +64,27 @@ end
 
 # Initialize on package load, else precompile will store excessively sized objects
 # const L1CACHE = Float64[]
-const L2CACHE = Float64[]
-const L3CACHE = Float64[]
-
-function threadlocal_L2CACHE_pointer(threadid = Threads.threadid(), ::Type{T} = Float64) where {T}
-    L2 = VectorizationBase.CACHE_SIZE[2]
-    Base.unsafe_convert(Ptr{T}, pointer(L2CACHE)) + VectorizationBase.align(L2) * (thireadid - 1)
-end
-function threadlocal_L3CACHE_pointer(threadid = Threads.threadid(), ::Type{T} = Float64) where {T}
-    L3 = VectorizationBase.CACHE_SIZE[3] ÷ VectorizationBase.NUM_CORES
-    Base.unsafe_convert(Ptr{T}, pointer(L3CACHE)) + VectorizationBase.align(L3) * (thireadid - 1)
-end
-
+const LCACHE = Float64[]
+# const L3CACHE = Float64[]
 function cache_sizes()
     L₁, L₂, L₃ = VectorizationBase.CACHE_SIZE
     L₃ ÷= VectorizationBase.NUM_CORES # L₃ is shared, L₁ and L₂ are not
-    L₁, L₂, L₃
+    VectorizationBase.align.((L₁, L₂, L₃))
 end
+const L₁, L₂, L₃ = cache_sizes()
+
+function threadlocal_L2CACHE_pointer(threadid = Threads.threadid(), ::Type{T} = Float64) where {T}
+    Base.unsafe_convert(Ptr{T}, pointer(LCACHE)) + (L₂ + L₃) * (threadid - 1)
+end
+function threadlocal_L3CACHE_pointer(threadid = Threads.threadid(), ::Type{T} = Float64) where {T}
+    Base.unsafe_convert(Ptr{T}, pointer(LCACHE)) + (L₂ + L₃) * (threadid - 1) + L₂
+end
+
+
 
 function __init__()
     set_zero_subnormals(true)
-    L1, L2, L3 = cache_sizes()
-    nthread = Threads.nthreads()
-    # resize!(L1CACHE, ((VectorizationBase.align(L1) >>> 3) * nthread))
-    resize!(L2CACHE, ((VectorizationBase.align(L2) >>> 3) * nthread))
-    resize!(L3CACHE, ((VectorizationBase.align(L3) >>> 3) * nthread))
+    resize!(LCACHE, ((L₂ + L₃) >>> 3) * Threads.nthreads())
     # @require ForwardDiff="f6369f11-7733-5829-9624-2563aa707210" @eval using PaddedMatricesForwardDiff
 end
 

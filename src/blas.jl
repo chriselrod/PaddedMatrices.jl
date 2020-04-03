@@ -108,8 +108,9 @@ end
         Aptr = stridedpointer(A)
         Bptr = stridedpointer(B)
         Cptr = stridedpointer(C)
-        ptrL2 = pointer(L2CACHE); ptrL3 = pointer(L3CACHE);
-        GC.@preserve C A B L2CACHE L3CACHE begin
+        ptrL2 = threadlocal_L2CACHE_pointer(1, Ta)
+        ptrL3 = Base.unsafe_convert(Ptr{$Tb}, ptrL2 + $(VectorizationBase.align(sizeof(Ta) * mc * kc)))#threadlocal_L3CACHE_pointer(1, Tb)
+        GC.@preserve C A B LCACHE begin
             for no in 0:Niter-1
                 for ko in 0:Kiter-1
                     # pack kc x nc block of B
@@ -264,8 +265,10 @@ end
         Aptr = stridedpointer(A)
         Bptr = stridedpointer(B)
         Cptr = stridedpointer(C)
-        ptrL2 = pointer(L2CACHE); ptrL3 = pointer(L3CACHE);
-        GC.@preserve C A B L2CACHE L3CACHE begin
+        ptrL2 = threadlocal_L2CACHE_pointer(1, Ta)
+        ptrL3 = Base.unsafe_convert(Ptr{$Tb}, ptrL2 + $(VectorizationBase.align(sizeof(Ta) * mc * kc)))
+        # ptrL3 = threadlocal_L3CACHE_pointer(1, Tb)
+        GC.@preserve C A B LCACHE begin
             for no in 0:Niter-1
                 for ko in 0:Kiter-1
                     # pack kc x nc block of B
