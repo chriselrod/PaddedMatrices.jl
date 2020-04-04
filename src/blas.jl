@@ -88,19 +88,26 @@ function matmul_params(::Type{Tc}, ::Type{Ta}, ::Type{Tb}) where {Tc, Ta, Tb}
     # L₁, L₂, L₃ = cache_sizes()
     W = VectorizationBase.pick_vector_width(promote_type(Tc, Ta, Tb))
     # We aim for using roughly half of the L1, L2, and L3 caches
-    # kc = 5L₁ ÷ (12nᵣ * sizeof(Tb))
+    # kc = 4(L₁ ÷ (12nᵣ * sizeof(Tb)))
+    kc = 12(L₁ ÷ (32nᵣ * sizeof(Tb)))
     # kc = L₁ ÷ (2nᵣ * sizeof(Tb))
-    kc = VectorizationBase.prevpow2( L₁ ÷ (2nᵣ * sizeof(Tb)) )
+    # kc = VectorizationBase.prevpow2( L₁ ÷ (2nᵣ * sizeof(Tb)) )
     log2kc = VectorizationBase.intlog2(kc)
     # mcrep =  3L₂ ÷ (4kc * sizeof(Ta) * mᵣ * W)
     mcrep =  L₂ ÷ (2kc * sizeof(Ta) * mᵣ * W)
     # mcrep =  5L₂ ÷ (12kc * sizeof(Ta) * mᵣ * W)
     # mcrep = VectorizationBase.prevpow2( L₂ ÷ (2kc * sizeof(Ta) * mᵣ * W) )
-    ncrep = 3L₃ ÷ (4kc * sizeof(Tb) * nᵣ)
+    # ncrep = 7L₃ ÷ (8kc * sizeof(Tb) * nᵣ)
+    ncrep = L₃ ÷ (kc * sizeof(Tb) * nᵣ)
+    # ncrep = 3L₃ ÷ (4kc * sizeof(Tb) * nᵣ)
     # ncrep = L₃ ÷ (2kc * sizeof(Tb) * nᵣ)
     mc = mcrep * mᵣ * W
     nc = ncrep * nᵣ
     mc, kc, nc, log2kc
+end
+@generated function matmul_params_val(::Type{Tc}, ::Type{Ta}, ::Type{Tb}) where {Tc, Ta, Tb}
+    mc, kc, nc, log2kc = matmul_params(Tc, Ta, Tb)
+    Val(mc), Val(kc), Val(nc), Val(log2kc)
 end
 
 # function jmul!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, ::Val{mc}, ::Val{kc}, ::Val{nc}, ::Val{log2kc}) where {Tc, Ta, Tb, mc, kc, nc, log2kc}
@@ -764,14 +771,14 @@ function jmult!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{
 end
 
 
-@generated function jmul!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}) where {Tc, Ta, Tb}
-    mc, kc, nc, log2kc = matmul_params(Tc, Ta, Tb)
-    :(jmul!(C, A, B, Val{$mc}(), Val{$kc}(), Val{$nc}(), Val{$log2kc}()))
+function jmul!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}) where {Tc, Ta, Tb}
+    mc, kc, nc, log2kc = matmul_params_val(Tc, Ta, Tb)
+    jmul!(C, A, B, mc, kc, nc, log2kc)
 end
-@generated function jmult!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}) where {Tc, Ta, Tb}
-    mc, kc, nc, log2kc = matmul_params(Tc, Ta, Tb)
-    :(jmult!(C, A, B, Val{$mc}(), Val{$kc}(), Val{$nc}(), Val{$log2kc}()))
-end # function 
+function jmult!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}) where {Tc, Ta, Tb}
+    mc, kc, nc, log2kc = matmul_params_val(Tc, Ta, Tb)
+    jmult!(C, A, B, mc, kc, nc, log2kc)
+end
 
 
 
@@ -1264,13 +1271,13 @@ function nmul!(
 end
 
 
-LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractMatrix, B::AbstractMatrix) = loopmul!(C, A, B)
-LinearAlgebra.mul!(C::AbstractMatrix, A::AbstractStrideMatrix, B::AbstractMatrix) = loopmul!(C, A, B)
-LinearAlgebra.mul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractStrideMatrix) = loopmul!(C, A, B)
-LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractStrideMatrix, B::AbstractMatrix) = loopmul!(C, A, B)
-LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractMatrix, B::AbstractStrideMatrix) = loopmul!(C, A, B)
-LinearAlgebra.mul!(C::AbstractMatrix, A::AbstractStrideMatrix, B::AbstractStrideMatrix) = loopmul!(C, A, B)
-LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractStrideMatrix, B::AbstractStrideMatrix) = loopmul!(C, A, B)
+LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractMatrix, B::AbstractMatrix) = jmul!(C, A, B)
+LinearAlgebra.mul!(C::AbstractMatrix, A::AbstractStrideMatrix, B::AbstractMatrix) = jmul!(C, A, B)
+LinearAlgebra.mul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractStrideMatrix) = jmul!(C, A, B)
+LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractStrideMatrix, B::AbstractMatrix) = jmul!(C, A, B)
+LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractMatrix, B::AbstractStrideMatrix) = jmul!(C, A, B)
+LinearAlgebra.mul!(C::AbstractMatrix, A::AbstractStrideMatrix, B::AbstractStrideMatrix) = jmul!(C, A, B)
+LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractStrideMatrix, B::AbstractStrideMatrix) = jmul!(C, A, B)
 function nmul!(
     C::AbstractStrideMatrix{<:Any,<:Any,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
 ) where {T}
