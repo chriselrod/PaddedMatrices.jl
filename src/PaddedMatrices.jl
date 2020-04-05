@@ -64,8 +64,6 @@ end
 
 # Initialize on package load, else precompile will store excessively sized objects
 # const L1CACHE = Float64[]
-# const ACACHE = Float64[]
-# const BCACHE = Float64[]
 # const L3CACHE = Float64[]
 function cache_sizes()
     L₁, L₂, L₃ = VectorizationBase.CACHE_SIZE
@@ -81,28 +79,33 @@ end
 function threadlocal_L3CACHE_pointer(::Type{T} = Float64, threadid = Threads.threadid()) where {T}
     Base.unsafe_convert(Ptr{T}, pointer(LCACHE)) + (L₂ + L₃) * (threadid - 1) + L₂
 end
-# A_pointer(::Type{T}) where {T} = Base.unsafe_convert(Ptr{T}, pointer(ACACHE))
-# function A_pointer(::Type{T}, ::Val{M}, ::Val{K}, Miter, m, k) where {T, M, K}
-#     ptrA = Base.unsafe_convert(Ptr{T}, pointer(ACACHE))
-#     MKst = M*K*sizeof(T)
-#     ptrA + MKst * (m + (Miter+1) * k)
+const ACACHE = Float64[]
+const BCACHE = Float64[]
+A_pointer(::Type{T}) where {T} = Base.unsafe_convert(Ptr{T}, pointer(ACACHE))
+function A_pointer(::Type{T}, ::Val{M}, ::Val{K}, Miter, m, k) where {T, M, K}
+    ptrA = Base.unsafe_convert(Ptr{T}, pointer(ACACHE))
+    MKst = M*K*sizeof(T)
+    ptrA + MKst * (m + (Miter+1) * k)
+end
+function resize_Acache!(::Type{T}, ::Val{M}, ::Val{K}, Miter, Kiter) where {T, M, K}
+    # sizeof(T) * M should be a multiple of REGISTER_SIZE, therefore the `>>> 3` will be exact division by 8
+    L = (sizeof(T) * M * K * (Miter + 1) * (Kiter + 1)) >>> 3
+    L > length(ACACHE) && resize!(ACACHE, L)
+    nothing
+end
+# function B_pointer(::Type{T} = Float64, threadid = Threads.threadid()) where {T}
+    # Base.unsafe_convert(Ptr{T}, pointer(BCACHE)) + L₃ * (threadid - 1)
 # end
-# function resize_Acache!(::Type{T}, ::Val{M}, ::Val{K}, Miter, Kiter) where {T, M, K}
-#     # sizeof(T) * M should be a multiple of REGISTER_SIZE, therefore the `>>> 3` will be exact division by 8
-#     L = (sizeof(T) * M * K * (Miter + 1) * (Kiter + 1)) >>> 3
-#     L > length(ACACHE) && resize!(ACACHE, L)
-#     nothing
-# end
-# function threadlocal_L3CACHE_pointer(::Type{T} = Float64, threadid = Threads.threadid()) where {T}
-#     Base.unsafe_convert(Ptr{T}, pointer(BCACHE)) + L₃ * (threadid - 1)
-# end
+function B_pointer(::Type{T} = Float64) where {T}
+    Base.unsafe_convert(Ptr{T}, pointer(BCACHE))# + L₃ * (threadid - 1)
+end
 
 
 function __init__()
     set_zero_subnormals(true)
     resize!(LCACHE, ((L₂ + L₃) >>> 3) * Threads.nthreads())
     @assert iszero(reinterpret(UInt, pointer(LCACHE)) % 64)
-    # resize!(BCACHE, (L₃ >>> 3) * Threads.nthreads())
+    resize!(BCACHE, (L₃ >>> 3) )#* Threads.nthreads())
     # @require ForwardDiff="f6369f11-7733-5829-9624-2563aa707210" @eval using PaddedMatricesForwardDiff
 end
 
