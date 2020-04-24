@@ -58,19 +58,20 @@ Base.BroadcastStyle(a::LinearStyle{S,N,X}, b::LinearStyle{S,N,X}) where {S,N,X} 
 Base.BroadcastStyle(a::LinearStyle{S,N}, b::LinearStyle{S,N}) where {S,N} = CartesianStyle{S,N}()
 @generated function Base.BroadcastStyle(a::AbstractStrideStyle{S1,N1}, b::AbstractStrideStyle{S2,N2}) where {S1,S2,N1,N2}
     S = Expr(:curly, :Tuple)
+#    @show N2, N1
     N2 > N1 && return Base.Broadcast.Unknown()
-    foundfirstdiff = false
-    for n ∈ 1:min(N1,N2)
+    # foundfirstdiff = false
+    for n ∈ 1:N2#min(N1,N2)
         s1 = (S1.parameters[n])::Int
         s2 = (S2.parameters[n])::Int
         if s1 == s2
             push!(S.args, s1)
         elseif s2 == 1
-            foundfirstdiff = true
+            # foundfirstdiff = true
             push!(S.args, s1)
         elseif s1 == 1
-            foundfirstdiff || return Base.Broadcast.Unknown()
-            foundfirstdiff = true
+            # foundfirstdiff || return Base.Broadcast.Unknown()
+            # foundfirstdiff = true
             push!(S.args, s2)
         elseif s2 == -1
             push!(S.args, s1)
@@ -80,33 +81,50 @@ Base.BroadcastStyle(a::LinearStyle{S,N}, b::LinearStyle{S,N}) where {S,N} = Cart
             throw("Mismatched sizes: $S1, $S2.")
         end
     end
-    if N2 > N1
-        for n ∈ N1+1:N2
-            push!(S.args, S2.parameters[n])
-        end
-    elseif N1 > N2
-        for n ∈ N2+1:N1
-            push!(S.args, S1.parameters[n])
-        end
+    # if N2 > N1
+    #     for n ∈ N1+1:N2
+    #         push!(S.args, S2.parameters[n])
+    #     end
+    # else
+    # if N1 > N2
+    for n ∈ N2+1:N1
+        push!(S.args, S1.parameters[n])
     end
+    # end
     Expr(:call, Expr(:curly, :CartesianStyle, S, max(N1,N2)))
 end
 
-Base.similar(::Base.Broadcast.Broadcasted{FS}, ::Type{T}) where {S,T,N,FS<:AbstractStrideStyle{S,N}} = FixedSizeArray{S,T,N}(undef)
-Base.similar(sp::StackPointer, ::Base.Broadcast.Broadcasted{FS}, ::Type{T}) where {S,T,FS<:AbstractStrideStyle{S,T},N} = PtrArray{S,T,N}(sp)
+Base.similar(::Base.Broadcast.Broadcasted{FS}, ::Type{T}) where {S,T,N,FS<:AbstractStrideStyle{S,N}} = FixedSizeArray{S,T}(undef)
+Base.similar(sp::StackPointer, ::Base.Broadcast.Broadcasted{FS}, ::Type{T}) where {S,T,FS<:AbstractStrideStyle{S,T},N} = PtrArray{S,T}(sp)
+
 
 function add_single_element_array!(ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol, elementbytes)
     LoopVectorization.pushpreamble!(ls, Expr(:(=), Symbol("##", destname), Expr(:call, :first, bcname)))
     LoopVectorization.add_constant!(ls, destname, elementbytes)
 end
-function add_fs_array!(ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol, loopsyms::Vector{Symbol}, indexes, S, elementbytes)
+function add_fs_array!(ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol, loopsyms::Vector{Symbol}, indexes, S, X, elementbytes)
     ref = Symbol[]
+    # aref = LoopVectorization.ArrayReference(bcname, ref)
+    vptrbc = LoopVectorization.vptr(bcname)
+    LoopVectorization.add_vptr!(ls, bcname, vptrbc, true, true)
+    offset = 0
     for (i,n) ∈ enumerate(indexes)
         s = (S.parameters[i])::Int
-        s == 1 || push!(ref, loopsyms[n])
+        stride = (X.parameters[i])::Int
+        if iszero(stride) || s == 1
+            vptrbc = LoopVectorization.subset_vptr!(
+                ls, vptrbc, i - offset, 1, loopsyms, fill(true, length(indexes))
+            )
+            offset += 1
+        else
+            push!(ref, loopsyms[n])
+        end
     end
     if length(ref) > 0
-        LoopVectorization.add_simple_load!(ls, destname, LoopVectorization.ArrayReference(bcname, ref), elementbytes)
+        mref = LoopVectorization.ArrayReferenceMeta(
+            LoopVectorization.ArrayReference(bcname, ref), fill(true, length(ref)), vptrbc
+        )
+        LoopVectorization.add_simple_load!(ls, destname, mref, mref.ref.indices, elementbytes)
     else
         add_single_element_array!(ls, destname, bcname, elementbytes)
     end
@@ -127,25 +145,28 @@ function add_broadcast_adjoint_array!(
     end
 end
 function LoopVectorization.add_broadcast!(
-    ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol, loopsyms::Vector{Symbol},
-    ::Type{Adjoint{T,A}}, elementbytes::Int = 8
+    ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol,
+    loopsyms::Vector{Symbol}, ::Type{Adjoint{T,A}}, elementbytes::Int = 8
 ) where {T, S, A <: AbstractStrideArray{S, T}}
     add_broadcast_adjoint_array!( ls, destname, bcname, loopsyms, A, sizeof(T) )
 end
 function LoopVectorization.add_broadcast!(
-    ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol, loopsyms::Vector{Symbol},
-    ::Type{Transpose{T,A}}, elementbytes::Int = 8
+    ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol,
+    loopsyms::Vector{Symbol}, ::Type{Transpose{T,A}}, elementbytes::Int = 8
 ) where {T, S, A <: AbstractStrideArray{S, T}}
     add_broadcast_adjoint_array!( ls, destname, bcname, loopsyms, A, sizeof(T) )
 end
 function LoopVectorization.add_broadcast!(
-    ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol, loopsyms::Vector{Symbol},
-    ::Type{A}, elementbytes::Int = 8
-) where {T, S, N, A <: AbstractStrideArray{S, T, N}}
-    add_fs_array!(ls, destname, bcname, loopsyms, 1:min(N,length(loopsyms)), S, sizeof(T))
+    ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol,
+    loopsyms::Vector{Symbol}, ::Type{A}, elementbytes::Int = 8
+) where {T, S, X, N, A <: AbstractStrideArray{S, T, N, X}}
+    add_fs_array!(
+        ls, destname, bcname, loopsyms, 1:min(N,length(loopsyms)), S, X, sizeof(T)
+    )
 end
 
 
+# function Base.Broadcast.materialize!(
 @generated function Base.Broadcast.materialize!(
     dest::A, bc::BC
 ) where {S, T <: Union{Float32,Float64}, N, X, L, A <: AbstractStrideArray{S,T,N,X,L}, FS <: LinearStyle{S,N,X}, BC <: Base.Broadcast.Broadcasted{FS}}
@@ -157,9 +178,9 @@ end
     if L == -1
         Lsym = gensym(:L)
         LoopVectorization.pushpreamble!(ls, Expr(:(=), Lsym, Expr(:call, :length, :dest)))
-        LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 0, Lsym))
+        LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 1, Lsym))
     else
-        LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 0, L))
+        LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 1, L))
     end
     elementbytes = sizeof(T)
     LoopVectorization.add_broadcast!(ls, :dest, :bc, loopsyms, BC, elementbytes)
@@ -172,6 +193,7 @@ end
     # ls
 end
 @generated function Base.Broadcast.materialize!(
+# function Base.Broadcast.materialize!(
     dest::A, bc::BC
 ) where {S, T <: Union{Float32,Float64}, N, X, A <: AbstractStrideArray{S,T,N,X}, BC <: Union{Base.Broadcast.Broadcasted,StrideArrayProduct}}
     # we have an N dimensional loop.
@@ -183,16 +205,16 @@ end
         if Sₙ == -1
             Sₙsym = gensym(:Sₙ)
             LoopVectorization.pushpreamble!(ls, Expr(:(=), Sₙsym, Expr(:call, :size, :dest, n)))
-            LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 0, Sₙsym))
+            LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 1, Sₙsym))
         else
-            LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 0, Sₙ))
+            LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 1, Sₙ))
         end
     end
     elementbytes = sizeof(T)
-    destadj = last(X.parameters)::Int == 1
+    destadj = length(X.parameters) > 1 && last(X.parameters)::Int == 1
     if destadj
         destsym = :dest′
-        pushpreamble!(ls, Expr(:(=), destsym, Expr(:call, Expr(:(.), :LinearAlgebra, QuoteNode(:Transpose)), :dest)))
+        LoopVectorization.pushpreamble!(ls, Expr(:(=), destsym, Expr(:call, Expr(:(.), :LinearAlgebra, QuoteNode(:Transpose)), :dest)))
     else
         destsym = :dest
     end
@@ -204,14 +226,15 @@ end
         if first(X.parameters)::Int != 1
             pushfirst!(LoopVectorization.getindices(ref), Symbol("##DISCONTIGUOUSSUBARRAY##"))
         end
+        ref
     end
     LoopVectorization.add_simple_store!(ls, :dest, destref, elementbytes)
     resize!(ls.loop_order, LoopVectorization.num_loops(ls)) # num_loops may be greater than N, eg Product
+    # return ls
     q = LoopVectorization.lower(ls)
     push!(q.args, :dest)
     pushfirst!(q.args, Expr(:meta,:inline))
     q
-    # ls
 end
 
 # @generated function Base.Broadcast.materialize!(
@@ -223,7 +246,7 @@ end
 #     ls = LoopVectorization.LoopSet(:PaddedMatrices)
 #     pushpreamble!(ls, Expr(:(=), :dest, Expr(:call, :parent, :dest′)))
 #     for (n,itersym) ∈ enumerate(loopsyms)
-#         LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 0, (S.parameters[n])::Int))
+#         LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 1, (S.parameters[n])::Int))
 #     end
 #     elementbytes = sizeof(T)
 #     LoopVectorization.add_broadcast!(ls, :dest, :bc, loopsyms, BC, elementbytes)

@@ -1,6 +1,19 @@
 
-LoopVectorization.maybestaticlength(A::AbstractStrideArray{S,T,N,X,SN,XN,V,-1}) where {S,T,N,X,SN,XN,V} = length(A)
-LoopVectorization.maybestaticlength(::AbstractStrideArray{S,T,N,X,SN,XN,V,L}) where {S,T,N,X,SN,XN,V,L} = Static{L}()
+function sv_pos_product(SV::Core.SimpleVector)
+    L = 1
+    SV = S.parameters
+    for i in eachindex(SV)
+        sv = (SV[i])::Int
+        sv > 0 || return -1
+        L *= sv
+    end
+    L
+end
+
+@generated function LoopVectorization.maybestaticlength(A::AbstractStrideArray{S,T,N,X,SN,XN,V}) where {S,T,N,X,SN,XN,V}
+    L = sv_pos_product(S.parameters)
+    L > 0 ? Static{L}() : :(length(A))
+end
 LoopVectorization.maybestaticsize(::AbstractStrideArray{<:Tuple{M,Vararg}}, ::Val{1}) where {M} = Static{M}()
 LoopVectorization.maybestaticsize(::AbstractStrideArray{<:Tuple{M,N,Vararg}}, ::Val{2}) where {M,N} = Static{N}()
 LoopVectorization.maybestaticsize(::AbstractStrideArray{<:Tuple{M,N,K,Vararg}}, ::Val{3}) where {M,N,K} = Static{K}()
@@ -74,7 +87,6 @@ end
 LinearAlgebra.checksquare(::AbstractStrideMatrix{M,N}) where {M,N} = DimensionMismatch("Matrix is not square: dimensions are ($M,$N).")
 
 # FIXME: Need to clean up this mess
-@inline val_length(::AbstractFixedSizeArray{S,T,N,X,V,L}) where {S,T,N,X,V,L} = Val{L}()
 
 @inline is_sized(::NTuple) = true
 @inline is_sized(::Type{<:NTuple}) = true
@@ -121,8 +133,8 @@ function tointvec(sv::Core.SimpleVector)
     v
 end
 
-@inline type_length(::AbstractFixedSizeArray{S,T,N,X,V,L}) where {S,T,N,X,V,L} = L
-@inline type_length(::Type{<:AbstractFixedSizeArray{S,T,N,X,V,L}}) where {S,T,N,X,V,L} = L
+@generated type_length(::AbstractFixedSizeArray{S}) where {S} = simple_vec_prod(S.parameters)
+@generated type_length(::Type{<:AbstractFixedSizeArray{S}}) where {S} = simple_vec_prod(S.parameters)
 @generated param_type_length(::AbstractFixedSizeArray{S}) where {S} = simple_vec_prod(S.parameters)
 @generated param_type_length(::Type{<:AbstractFixedSizeArray{S}}) where {S} = simple_vec_prod(S.parameters)
 @inline is_sized(::Any) = false

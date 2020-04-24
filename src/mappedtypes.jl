@@ -42,19 +42,19 @@ SIMDPirates.promote_vtype(::Type{<:MappedPairVec{W,F}}, ::Type{<:MappedPairVec{W
 # Storring into the mapped part of a MappedPairArray is not allowed.
 # To maintin the mapping, storing into it at all isn't allowed.
 # Although one can take the Ptr.
-struct MappedPairArray{F<:Function,S,T,N,X,SN,XN,V,L} <: AbstractStrideArray{S,T,N,X,SN,XN,V,L}
+struct MappedPairArray{F<:Function,S,T,N,X,SN,XN,V} <: AbstractStrideArray{S,T,N,X,SN,XN,V}
     ptr::Ptr{T}
     mappedptr::Ptr{T}
     size::NTuple{SN,UInt32}
     stride::NTuple{XN,UInt32}
 end
-@inline function MappedPairArray(::F, A::PtrArray{S,T,N,X,SN,XN,V,L}, mp::Ptr{T}) where {F,S,T,N,X,SN,XN,V,L}
-    MappedPairArray{F,S,T,N,X,SN,XN,V,L}(pointer(A), mp, A.size, A.stride)
+@inline function MappedPairArray(::F, A::PtrArray{S,T,N,X,SN,XN,V}, mp::Ptr{T}) where {F,S,T,N,X,SN,XN,V}
+    MappedPairArray{F,S,T,N,X,SN,XN,V}(pointer(A), mp, A.size, A.stride)
 end
-@inline function MappedPairArray(::F, A::PtrArray{S,T,N,X,0,0,V,L}, mp::Ptr{T}) where {F,S,T,N,X,V,L}
-    MappedPairArray{F,S,T,N,X,0,0,V,L}(pointer(A), mp, tuple(), tuple())
+@inline function MappedPairArray(::F, A::PtrArray{S,T,N,X,0,0,V}, mp::Ptr{T}) where {F,S,T,N,X,V}
+    MappedPairArray{F,S,T,N,X,0,0,V}(pointer(A), mp, tuple(), tuple())
 end
-@inline Base.broadcasted(::F, A::MappedPairArray{F,S,T,N,X,SN,XN,V,L}) where {F,S,T,N,X,SN,XN,V,L} = PtrArray{S,T,N,X,SN,XN,V,L}(A.mappedptr, A.size, A.stride)
+@inline Base.broadcasted(::F, A::MappedPairArray{F,S,T,N,X,SN,XN,V}) where {F,S,T,N,X,SN,XN,V} = PtrArray{S,T,N,X,SN,XN,V}(A.mappedptr, A.size, A.stride)
 @inline Base.pointer(A::MappedPairArray) = A.ptr
 
 struct MappedPairStridedPointer{F<:Function,T,P<:AbstractStridedPointer{T}} <: AbstractStridedPointer{T}
@@ -94,10 +94,10 @@ for (m,f,f⁻¹) ∈ [(:Base,:log,:exp), (:Base,:abs2,:sqrt), (:SLEEFPirates,:nl
         @eval @inline Base.broadcasted(::typeof($f), x::$T{typeof($f)}) = $T{$f⁻¹}(A.fx, x.x)
         @eval @inline Base.broadcasted(::typeof($f⁻¹), x::$T{typeof($f⁻¹)}) = $T{$f}(A.fx, x.d)
     end
-    @eval @inline (::typeof($f))(A::MappedPairArray{typeof($f),S,T,N,X,SN,XN,V,L}) where {S,T,N,X,SN,XN,V,L} = MappedPairArray{typeof($f⁻¹),S,T,N,X,SN,XN,V,L}(A.mappedptr, A.ptr, A.size, A.stride)
-    @eval @inline (::typeof($f⁻¹))(A::MappedPairArray{typeof($f⁻¹),S,T,N,X,SN,XN,V,L}) where {S,T,N,X,SN,XN,V,L} = MappedPairArray{typeof($f),S,T,N,X,SN,XN,V,L}(A.mappedptr, A.ptr, A.size, A.stride)
-    @eval @inline Base.broadcasted(::typeof($f), A::MappedPairArray{typeof($f),S,T,N,X,SN,XN,V,L}) where {S,T,N,X,SN,XN,V,L} = MappedPairArray{typeof($f⁻¹),S,T,N,X,SN,XN,V,L}(A.mappedptr, A.ptr, A.size, A.stride)
-    @eval @inline Base.broadcasted(::typeof($f⁻¹), A::MappedPairArray{typeof($f⁻¹),S,T,N,X,SN,XN,V,L}) where {S,T,N,X,SN,XN,V,L} = MappedPairArray{typeof($f),S,T,N,X,SN,XN,V,L}(A.mappedptr, A.ptr, A.size, A.stride)
+    @eval @inline (::typeof($f))(A::MappedPairArray{typeof($f),S,T,N,X,SN,XN,V}) where {S,T,N,X,SN,XN,V} = MappedPairArray{typeof($f⁻¹),S,T,N,X,SN,XN,V,L}(A.mappedptr, A.ptr, A.size, A.stride)
+    @eval @inline (::typeof($f⁻¹))(A::MappedPairArray{typeof($f⁻¹),S,T,N,X,SN,XN,V}) where {S,T,N,X,SN,XN,V} = MappedPairArray{typeof($f),S,T,N,X,SN,XN,V,L}(A.mappedptr, A.ptr, A.size, A.stride)
+    @eval @inline Base.broadcasted(::typeof($f), A::MappedPairArray{typeof($f),S,T,N,X,SN,XN,V}) where {S,T,N,X,SN,XN,V} = MappedPairArray{typeof($f⁻¹),S,T,N,X,SN,XN,V,L}(A.mappedptr, A.ptr, A.size, A.stride)
+    @eval @inline Base.broadcasted(::typeof($f⁻¹), A::MappedPairArray{typeof($f⁻¹),S,T,N,X,SN,XN,V}) where {S,T,N,X,SN,XN,V} = MappedPairArray{typeof($f),S,T,N,X,SN,XN,V,L}(A.mappedptr, A.ptr, A.size, A.stride)
 end
 
 

@@ -1,25 +1,35 @@
 
-@inline flatvector(A::AbstractFixedSizeArray{S,T,1,Tuple{1},false,L}) where {S,T,L} = A
-@inline function flatvector(A::AbstractFixedSizeArray{S,T,N,<:Tuple{1,Vararg},false,L}) where {S,T,N,L}
-    PtrArray{Tuple{L},T,1,Tuple{1},0,0,false,L}(pointer(A),tuple(),tuple())
+@inline flatvector(A::AbstractFixedSizeArray{S,T,1,Tuple{1},false}) where {S,T} = A
+@generated function flatvector(A::AbstractFixedSizeArray{S,T,N,X,false}) where {S,T,N,X<:Tuple{1,Vararg}}
+    L = last(S.parameters)::Int * last(X.parameters)::Int
+    Expr(
+        :block,
+        Expr(:meta,:inline),
+        :(PtrArray{Tuple{$L},$T,1,Tuple{1},0,0,false}(pointer(A),tuple(),tuple()))
+    )
 end
 
-@inline flatvector(A::StrideArray{S,T,1,Tuple{1},0,0,L}) where {S,T,L} = A
-@inline function flatvector(A::StrideArray{S,T,N,<:Tuple{1,Vararg},0,0,L}) where {S,T,N,L}
-    StrideArray{Tuple{L},T,1,Tuple{1},0,0,L}(A.data, tuple(), tuple())
+@inline flatvector(A::StrideArray{S,T,1,Tuple{1},0,0}) where {S,T} = A
+@generated function flatvector(A::StrideArray{S,T,N,X,0,0}) where {S,T,N,X<:Tuple{1,Vararg}}
+    L = last(S.parameters)::Int * last(X.parameters)::Int
+    Expr(
+        :block,
+        Expr(:meta,:inline),
+        :(StrideArray{Tuple{$L},$T,1,Tuple{1},0,0}(A.data, tuple(), tuple()))
+    )
 end
 
-@inline flatvector(A::StrideArray{S,T,1,Tuple{1},SN,XN,-1}) where {S,T,SN,XN} = A
-@inline function flatvector(A::StrideArray{S,T,N,<:Tuple{1,Vararg},SN,XN,-1}) where {S,T,N,SN,XN}
-    StrideArray{Tuple{-1},T,1,Tuple{1},1,0,-1}(A.data, prod(size(A)), tuple())
+@inline flatvector(A::StrideArray{S,T,1,Tuple{1},SN,XN}) where {S,T,SN,XN} = A
+@inline function flatvector(A::StrideArray{S,T,N,<:Tuple{1,Vararg},SN,XN}) where {S,T,N,SN,XN}
+    StrideArray{Tuple{-1},T,1,Tuple{1},1,0}(A.data, prod(size(A)), tuple())
 end
 
-@inline flatvector(A::AbstractStrideArray{Tuple{-1},T,1,Tuple{1},1,0,false,-1}) where {T} = A
-@inline function flatvector(A::AbstractStrideArray{S,T,N,<:Tuple{1,Vararg},SN,XN,false,-1}) where {S,T,N,SN,XN}
-    PtrArray{Tuple{-1},T,1,Tuple{1},1,0,-1}(pointer(A), prod(size(A)), tuple())
+@inline flatvector(A::AbstractStrideArray{Tuple{-1},T,1,Tuple{1},1,0,false}) where {T} = A
+@inline function flatvector(A::AbstractStrideArray{S,T,N,<:Tuple{1,Vararg},SN,XN,false}) where {S,T,N,SN,XN}
+    PtrArray{Tuple{-1},T,1,Tuple{1},1,0}(pointer(A), prod(size(A)), tuple())
 end
 
-@inline flatvector(A::ConstantArray{S,T,1,Tuple{1},L}) where {S,T,L} = A
+@inline flatvector(A::ConstantArray{S,T,1,Tuple{1}}) where {S,T} = A
 @inline function flatvector(A::ConstantArray{S,T,N,X,L}) where {S,T,N,X,L}
     ConstantArray{Tuple{L},T,1,Tuple{1},L}(A.data)
 end
@@ -37,7 +47,7 @@ struct ViewAdjoint{SP,SV,XP,XV,SN,XN}
 end
 
 
-function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Bool, scalarview::Bool, L::Int)
+function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Bool, scalarview::Bool)
     N = length(SV)
     s2 = Int[]
     x2 = Int[]
@@ -106,7 +116,7 @@ function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Boo
     arraydef = if length(s2) == 0
         scalarview ? :(VectorizationBase.Pointer) : :(VectorizationBase.load)
     else
-        :(PtrArray{$S2,$T,$(length(s2)),$X2,$SN,$XN,true,$L})
+        :(PtrArray{$S2,$T,$(length(s2)),$X2,$SN,$XN,true})
     end
     if partial
         partial_expr = :(ViewAdjoint{$(Tuple{SV...}),$S2,$(Tuple{XV...}),$X2,$SN,$XN}(_offset, $st2, $xt2))
@@ -120,14 +130,14 @@ end
 Note that the stride will currently only be correct when N <= 2.
 Perhaps R should be made into a stride-tuple?
 """
-@generated function Base.getindex(A::AbstractPtrStrideArray{S,T,N,X,SN,XN,V,L}, inds::Vararg{<:Any,N}) where {S,T,N,X,SN,XN,V,L}
+@generated function Base.getindex(A::AbstractPtrStrideArray{S,T,N,X,SN,XN,V}, inds::Vararg{<:Any,N}) where {S,T,N,X,SN,XN,V}
     @assert length(inds) == N
-    generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, false, L)
+    generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, false)
 end
 Base.@propagate_inbounds Base.getindex(A::AbstractStrideArray{S,T,N}, inds::Vararg{<:Any,N}) where {S,T,N} = view(A, inds...)
-@generated function Base.view(A::AbstractPtrStrideArray{S,T,N,X,SN,XN,V,L}, inds...) where {S,T,N,X,SN,XN,V,L}
+@generated function Base.view(A::AbstractPtrStrideArray{S,T,N,X,SN,XN,V}, inds...) where {S,T,N,X,SN,XN,V}
     @assert length(inds) == N
-    generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, true, L)
+    generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, true)
 end
 
 

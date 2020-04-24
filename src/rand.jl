@@ -1,4 +1,4 @@
-using VectorizedRNG: local_rng
+using VectorizedRNG: local_rng, AbstractVRNG
 
 Random.rand!(A::AbstractStrideArray) = (rand!(local_rng(), flatvector(A)); A)
 Random.rand!(A::AbstractStrideArray{S,T}, l::T, u::T) where {S,T} = (rand!(local_rng(), flatvector(A), l, u); A)
@@ -29,7 +29,7 @@ end
 # function Random.randn(::Type{<:ConstantFixedSizeArray{S,T}}) where {S,T<:Union{Float32,Float64}}
 #     randn(local_rng(), ConstantFixedSizeArray{S,T})
 # end
-@generated function Random.randn(rng::VectorizedRNG.AbstractPCG, ::Static{S}) where {S}
+@generated function Random.randn(rng::AbstractVRNG, ::Static{S}) where {S}
     if isa(S, Integer)
         ST = Tuple{S}
     else

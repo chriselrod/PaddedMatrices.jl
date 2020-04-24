@@ -1,3 +1,4 @@
+using PaddedMatrices
 
 @testset "Broadcast" begin
     M, K, N = 47, 85, 74
@@ -7,7 +8,7 @@
     c = @FixedSize rand(29);
     D = @. exp(A) + b * log(c');
 
-    Aa = Array(A); ba = Array(b); ca = Array(c)'
+    Aa = Array(A); ba = Array(b); ca = Array(c);
     Da = @. exp(Aa) + ba * log(ca');
 
     @test D ≈ Da

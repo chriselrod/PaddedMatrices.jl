@@ -19,7 +19,7 @@ end
         L *= svₙ
     end
     W = VectorizationBase.pick_vector_width(T)
-    :(StrideArray{$S,$T,$N,$(ctuple(xv)),0,0,false,$L}(SIMDPirates.valloc($T, $L, $W), tuple(), tuple()))
+    :(StrideArray{$S,$T,$N,$(ctuple(xv)),0,0,false}(SIMDPirates.valloc($T, $L, $W), tuple(), tuple()))
 end
 
 function partially_sized(sv)
@@ -53,11 +53,11 @@ end
 @generated function StrideArray{S,T}(::UndefInitializer, s::NTuple{N,<:Integer}) where {S,T,N}
     sv = tointvec(S)
     @assert N == length(sv)
-    any(s -> s == -1, sv) || return :(StrideArray{$S,$T}(::UndefInitializer))
+    any(isequal(-1), sv) || return :(StrideArray{$S,$T}(::UndefInitializer))
     st, xt = partially_sized(sv)
     SN = length(st.args); XN = length(xt.args)
     W = VectorizationBase.pick_vector_width(T)
-    push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false,-1}(SIMDPirates.valloc($T, $L, $W), $st, $xt)))
+    push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false}(SIMDPirates.valloc($T, $L, $W), $st, $xt)))
     q
 end
 function tointvecdt(s)
@@ -78,7 +78,7 @@ end
     st, xt = partially_sized(sv)
     SN = length(st.args); XN = length(xt.args)
     W = VectorizationBase.pick_vector_width(T)
-    push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false,-1}(SIMDPirates.valloc($T, $L, $W), $st, $xt)))
+    push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false}(SIMDPirates.valloc($T, $L, $W), $st, $xt)))
     q    
 end
 
@@ -105,10 +105,21 @@ end
     N, X, L = calc_NPL(S.parameters, T)
     :(FixedSizeArray{$S,$T,$N,$X,$L}(undef))
 end
+function FixedSizeVector{M,T}(::UndefInitializer) where {M,T}
+    FixedSizeArray{Tuple{M},T,1,Tuple{1},M}(undef)
+end
+@generated function FixedSizeMatrix{M,N,T}(::UndefInitializer) where {M,N,T}
+    X = calc_padding(M, T)
+    :(FixedSizeArray{Tuple{$M,$N},$T,2,Tuple{1,$X},$(X*N)}(undef))
+end
+@generated function FixedSizeMatrix{M,N,T,X}(::UndefInitializer) where {M,N,T,X}
+    @assert X ≥ M
+    :(FixedSizeArray{Tuple{$M,$N},$T,2,Tuple{1,$X},$(X*N)}(undef))
+end
 
 @generated function PtrArray{S}(ptr::Ptr{T}) where {S,T}
     N, X, L = calc_NPL(S.parameters, T)
-    :(PtrArray{$S,$T,$N,$X,0,0,false,$L}(ptr))
+    :(PtrArray{$S,$T,$N,$X,0,0,false}(ptr))
 end
 @generated function PtrArray{S}(ptr::Ptr{T}, s::NTuple{N,<:Integer}) where {S,T,N}
     sv = tointvec(S)
@@ -116,77 +127,144 @@ end
     any(s -> s == -1, sv) || return :(PtrArray{$S}(ptr))
     st, xt = partially_sized(sv)
     SN = length(st.args); XN = length(xt.args)
-    push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false,-1}(ptr, $st, $xt)))
+    push!(q.args, :(PtrArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false}(ptr, $st, $xt)))
     q
 end
-@inline PtrArray{S,T,N}(ptr) where {S,T,N} = PtrArray{S,T}(ptr)
-@inline PtrArray{S,T,N,X,SN,XN}(ptr) where {S,T,N,X,SN,XN} = PtrArray{S,T,X,0,0,true,-1}(ptr)
-@inline PtrArray{S,T,N,X,SN,XN,V}(ptr) where {S,T,N,X,SN,XN,V} = PtrArray{S,T,X,0,0,V,-1}(ptr)
-@generated PtrArray{S,T,N,X,0,0}(ptr) where {S,T,N,X} = Expr(:block, Expr(:meta,:inline), :(PtrArray{$S,$T,$X,0,0,true,$(last(S.parameters)::Int*last(X.parameters)::Int)}(ptr, tuple(), tuple())))
-@generated PtrArray{S,T,N,X,0,0,V}(ptr) where {S,T,N,X,V} = Expr(:block, Expr(:meta,:inline), :(PtrArray{$S,$T,$X,0,0,$V,$(last(S.parameters)::Int*last(X.parameters)::Int)}(ptr, tuple(), tuple())))
-@generated PtrArray{S,T,N,X,0,0}(ptr, ::NTuple{0}, ::NTuple{0}) where {S,T,N,X} = Expr(:block, Expr(:meta,:inline), :(PtrArray{$S,$T,$X,0,0,true,$(last(S.parameters)::Int*last(X.parameters)::Int)}(ptr, tuple(), tuple())))
-@generated PtrArray{S,T,N,X,0,0,V}(ptr, ::NTuple{0}, ::NTuple{0}) where {S,T,N,X,V} = Expr(:block, Expr(:meta,:inline), :(PtrArray{$S,$T,$X,0,0,$V,$(last(S.parameters)::Int*last(X.parameters)::Int)}(ptr, tuple(), tuple())))
-@generated PtrArray{S,T,N,X}(ptr, ::NTuple{0}, ::NTuple{0}) where {S,T,N,X} = Expr(:block, Expr(:meta,:inline), :(PtrArray{$S,$T,$X,0,0,true,$(last(S.parameters)::Int*last(X.parameters)::Int)}(ptr, tuple(), tuple())))
-@generated PtrArray{S,T,N,X,V}(ptr, ::NTuple{0}, ::NTuple{0}) where {S,T,N,X,V} = Expr(:block, Expr(:meta,:inline), :(PtrArray{$S,$T,$X,0,0,$V,$(last(S.parameters)::Int*last(X.parameters)::Int)}(ptr, tuple(), tuple())))
-@generated function PtrArray(ptr::Ptr{T}, s::Tuple) where {T}
-    sv = tointvecdt(s)
-    N = length(sv)
-    S = Tuple{sv...}
-    any(s -> s == -1, sv) || return :(PtrArray{$S}(ptr))
-    st, xt = partially_sized(sv)
-    SN = length(st.args); XN = length(xt.args)
-    push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false,-1}(ptr, $st, $xt)))
-    q
+@inline PtrArray{S,T,N}(ptr::Ptr{T}) where {S,T,N} = PtrArray{S}(ptr)
+# @inline PtrArray{S,T,N,X,SN,XN}(ptr) where {S,T,N,X,SN,XN} = PtrArray{S,T,X,0,0,true}(ptr)
+# @inline PtrArray{S,T,N,X,SN,XN,V}(ptr) where {S,T,N,X,SN,XN,V} = PtrArray{S,T,X,0,0,V}(ptr)
+@inline PtrArray{S,T,N,X}(ptr) where {S,T,N,X} = PtrArray{S,T,X,0,0,true}(ptr, tuple(), tuple())
+@inline PtrArray{S,T,N,X,0}(ptr) where {S,T,N,X} = PtrArray{S,T,X,0,0,true}(ptr, tuple(), tuple())
+@inline PtrArray{S,T,N,X,0,0}(ptr) where {S,T,N,X} = PtrArray{S,T,X,0,0,true}(ptr, tuple(), tuple())
+# @generated PtrArray{S,T,N,X,0,0,V}(ptr) where {S,T,N,X,V} = Expr(:block, Expr(:meta,:inline), :(PtrArray{$S,$T,$X,0,0,$V}(ptr, tuple(), tuple())))
+# @inline PtrArray{S,T,N,X,0,0}(ptr, ::NTuple{0}, ::NTuple{0}) where {S,T,N,X} = PtrArray{S,T,X,0,0,true}(ptr, tuple(), tuple())
+# @generated PtrArray{S,T,N,X,0,0,V}(ptr, ::NTuple{0}, ::NTuple{0}) where {S,T,N,X,V} = Expr(:block, Expr(:meta,:inline), :(PtrArray{$S,$T,$X,0,0,$V,$(last(S.parameters)::Int*last(X.parameters)::Int)}(ptr, tuple(), tuple())))
+# @generated PtrArray{S,T,N,X}(ptr, ::NTuple{0}, ::NTuple{0}) where {S,T,N,X} = Expr(:block, Expr(:meta,:inline), :(PtrArray{$S,$T,$X,0,0,true,$(last(S.parameters)::Int*last(X.parameters)::Int)}(ptr, tuple(), tuple())))
+# @generated PtrArray{S,T,N,X,V}(ptr, ::NTuple{0}, ::NTuple{0}) where {S,T,N,X,V} = Expr(:block, Expr(:meta,:inline), :(PtrArray{$S,$T,$X,0,0,$V,$(last(S.parameters)::Int*last(X.parameters)::Int)}(ptr, tuple(), tuple())))
+@generated function PtrArray(ptr::PackedStridedPointer{T}, sz::NTuple{N}) where {N,T}
+    S = Tuple{(-1 for _ ∈ 1:N)...}
+    X = Tuple{1,(-1 for _ ∈ 2:N)...}
+    :(PtrArray{$S,$T,$N,$X,$N,$(N-1),true}(ptr.ptr, sz, ptr.strides))
 end
 
-@inline function PtrArray(A::AbstractStrideArray{S,T,N,X,SN,XN,V,L}) where {S,T,N,X,SN,XN,V,L}
-    PtrArray{S,T,N,X,SN,XN,V,L}(pointer(A), A.size, A.stride)
+@inline function PtrArray(A::AbstractStrideArray{S,T,N,X,SN,XN,V}) where {S,T,N,X,SN,XN,V}
+    PtrArray{S,T,N,X,SN,XN,V}(pointer(A), A.size, A.stride)
 end
-@inline function PtrArray(A::AbstractFixedSizeArray{S,T,N,X,V,L}) where {S,T,N,X,V,L}
-    PtrArray{S,T,N,X,0,0,V,L}(pointer(A), tuple(), tuple())
+@inline function PtrArray(A::AbstractFixedSizeArray{S,T,N,X,V}) where {S,T,N,X,V}
+    PtrArray{S,T,N,X,0,0,V}(pointer(A), tuple(), tuple())
 end
-function PtrArray(A::AbstractArray{T,N}) where {T,N}
+function PtrArray(A::AbstractArray)
     PtrArray(stridepointer(A), size(A))
 end
-@generated function PtrArray(A::PackedStridedPointer{T}, sze::NTuple{N,Int}) where {N,T}
-    :(PtrArray{Tuple{$(fill(-1,N)...)},$T,$N,Tuple{1,$(fill(-1, N-1)...)},$N,$(N-1),false,-1}(pointer(A), sze, A.strides))
+function PtrMatrix{M,N}(A::PackedStridedPointer{T,1}) where {M, N, T}
+    PtrArray{Tuple{M,N},T,2,Tuple{1,-1},0,1,false}(pointer(A), tuple(), A.strides)
 end
-@generated function PtrMatrix{M,N}(A::PackedStridedPointer{T}) where {M, N, T}
-    :(PtrArray{Tuple{$M, $N}, $T, 2, Tuple{1,-1}, 0, 1, false, $(M*N)}(pointer(A), tuple(), A.strides))
+function PtrMatrix{-1,N}(A::PackedStridedPointer{T,1}, nrows::Integer) where {N, T}
+    PtrArray{Tuple{-1, N}, T, 2, Tuple{1,-1}, 1, 1, false}(pointer(A), (nrows,), A.strides)
 end
-function PtrMatrix{-1,N}(A::PackedStridedPointer{T}, nrows::Integer) where {N, T}
-    PtrArray{Tuple{-1, N}, T, 2, Tuple{1,-1}, 1, 1, false, -1}(pointer(A), (nrows,), A.strides)
+function PtrMatrix{-1,N}(A::PackedStridedPointer{T,1}, ::Static{M}) where {M, N, T}
+    PtrArray{Tuple{M, N}, T, 2, Tuple{1,-1}, 0, 1, false}(pointer(A), tuple(), A.strides)
 end
-function PtrMatrix{M,-1}(A::PackedStridedPointer{T}, ncols::Integer) where {M, T}
-    PtrArray{Tuple{M, -1}, T, 2, Tuple{1,-1}, 1, 1, false, -1}(pointer(A), (ncols,), A.strides)
+function PtrMatrix{M,-1}(A::PackedStridedPointer{T,1}, ncols::Integer) where {M, T}
+    PtrArray{Tuple{M, -1}, T, 2, Tuple{1,-1}, 1, 1, false}(pointer(A), (ncols,), A.strides)
 end
-function PtrMatrix{-1,-1}(A::PackedStridedPointer{T}, nrows::Integer, ncols::Integer) where {T}
-    PtrArray{Tuple{-1, -1}, T, 2, Tuple{1,-1}, 2, 1, false, -1}(pointer(A), (nrows,ncols), A.strides)
+function PtrMatrix{M,-1}(A::PackedStridedPointer{T,1}, ::Static{N}) where {M, N, T}
+    PtrArray{Tuple{M, N}, T, 2, Tuple{1,-1}, 0, 1, false}(pointer(A), tuple(), A.strides)
+end
+function PtrMatrix{-1,-1}(A::PackedStridedPointer{T,1}, nrows::Integer, ncols::Integer) where {T}
+    PtrArray{Tuple{-1, -1}, T, 2, Tuple{1,-1}, 2, 1, false}(pointer(A), (nrows,ncols), A.strides)
+end
+function PtrMatrix{-1,-1}(A::PackedStridedPointer{T,1}, ::Static{M}, ncols::Integer) where {T, M}
+    PtrArray{Tuple{M, -1}, T, 2, Tuple{1,-1}, 1, 1, false}(pointer(A), (ncols,), A.strides)
+end
+function PtrMatrix{-1,-1}(A::PackedStridedPointer{T,1}, nrows::Integer, ::Static{N}) where {T, N}
+    PtrArray{Tuple{-1, N}, T, 2, Tuple{1,-1}, 1, 1, false}(pointer(A), (nrows,), A.strides)
+end
+function PtrMatrix{-1,-1}(A::PackedStridedPointer{T,1}, ::Static{M}, ::Static{N}) where {T, M, N}
+    PtrArray{Tuple{M,N}, T, 2, Tuple{1,-1}, 0, 1, false}(pointer(A), tuple(), A.strides)
+end
+
+function PtrMatrix{M,N}(A::StaticStridedPointer{T,X}) where {M, N, T, X}
+    PtrArray{Tuple{M,N},T,2,X,0,0,false}(pointer(A), tuple(), tuple())
+end
+function PtrMatrix{-1,N}(A::StaticStridedPointer{T,X}, nrows::Integer) where {N, T, X}
+    PtrArray{Tuple{-1, N}, T, 2, X, 1, 0, false}(pointer(A), (nrows,), tuple())
+end
+function PtrMatrix{-1,N}(A::StaticStridedPointer{T,X}, ::Static{M}) where {M, N, T, X}
+    PtrArray{Tuple{M, N}, T, 2, X, 0, 0, false}(pointer(A), tuple(), tuple())
+end
+function PtrMatrix{M,-1}(A::StaticStridedPointer{T,X}, ncols::Integer) where {M, T, X}
+    PtrArray{Tuple{M, -1}, T, 2, X, 1, 0, false}(pointer(A), (ncols,), tuple())
+end
+function PtrMatrix{M,-1}(A::StaticStridedPointer{T,X}, ::Static{N}) where {M, N, T, X}
+    PtrArray{Tuple{M, N}, T, 2, X, 0, 0, false}(pointer(A), tuple(), tuple())
+end
+function PtrMatrix{-1,-1}(A::StaticStridedPointer{T,X}, nrows::Integer, ncols::Integer) where {T, X}
+    PtrArray{Tuple{-1, -1}, T, 2, X, 2, 0, false}(pointer(A), (nrows,ncols), tuple())
+end
+function PtrMatrix{-1,-1}(A::StaticStridedPointer{T,X}, ::Static{M}, ncols::Integer) where {T, M, X}
+    PtrArray{Tuple{M, -1}, T, 2, X, 1, 0, false}(pointer(A), (ncols,), tuple())
+end
+function PtrMatrix{-1,-1}(A::StaticStridedPointer{T,X}, nrows::Integer, ::Static{N}) where {T, N, X}
+    PtrArray{Tuple{-1, N}, T, 2, X, 1, 0, false}(pointer(A), (nrows,), tuple())
+end
+function PtrMatrix{-1,-1}(A::StaticStridedPointer{T,X}, ::Static{M}, ::Static{N}) where {T, M, N, X}
+    PtrArray{Tuple{M,N}, T, 2, X, 0, 0, false}(pointer(A), tuple(), tuple())
 end
                      
-@generated function PtrMatrix{M,N,Tb,X}(A::Ptr{Ta}) where {M, N, Ta, Tb, X}
-    :(PtrArray{Tuple{$M, $N}, $Tb, 2, Tuple{1,X}, 0, 0, false, $(M*N)}(Base.unsafe_convert(Ptr{$Tb}, A), tuple(), tuple()))
+function PtrMatrix{M,N,Tb,X}(A::Ptr{Ta}) where {M, N, Ta, Tb, X}
+    PtrArray{Tuple{M, N}, Tb, 2, Tuple{1,X}, 0, 0, false}(Base.unsafe_convert(Ptr{Tb}, A), tuple(), tuple())
 end
 function PtrMatrix{-1,N,Tb,X}(A::Ptr{Ta}, nrows::Integer) where {N, Ta, Tb, X}
-    PtrArray{Tuple{-1, N}, Tb, 2, Tuple{1,X}, 1, 0, false, -1}(Base.unsafe_convert(Ptr{Tb},A), (nrows,), tuple())
+    PtrArray{Tuple{-1, N}, Tb, 2, Tuple{1,X}, 1, 0, false}(Base.unsafe_convert(Ptr{Tb},A), (nrows,), tuple())
+end
+function PtrMatrix{-1,N,Tb,X}(A::Ptr{Ta}, ::Static{M}) where {M, N, Ta, Tb, X}
+    PtrArray{Tuple{M, N}, Tb, 2, Tuple{1,X}, 0, 0, false}(Base.unsafe_convert(Ptr{Tb},A), tuple(), tuple())
 end
 function PtrMatrix{M,-1,Tb,X}(A::Ptr{Ta}, ncols::Integer) where {M, Ta, Tb, X}
-    PtrArray{Tuple{M, -1}, Tb, 2, Tuple{1,X}, 1, 0, false, -1}(Base.unsafe_convert(Ptr{Tb},A), (ncols,), tuple())
+    PtrArray{Tuple{M, -1}, Tb, 2, Tuple{1,X}, 1, 0, false}(Base.unsafe_convert(Ptr{Tb},A), (ncols,), tuple())
+end
+function PtrMatrix{M,-1,Tb,X}(A::Ptr{Ta}, ::Static{N}) where {M, N, Ta, Tb, X}
+    PtrArray{Tuple{M, N}, Tb, 2, Tuple{1,X}, 0, 0, false}(Base.unsafe_convert(Ptr{Tb},A), tuple(), tuple())
 end
 function PtrMatrix{-1,-1,Tb,X}(A::Ptr{Ta}, nrows::Integer, ncols::Integer) where {Ta, Tb, X}
-    PtrArray{Tuple{-1, -1}, Tb, 2, Tuple{1,X}, 2, 0, false, -1}(Base.unsafe_convert(Ptr{Tb},A), (nrows,ncols), tuple())
+    PtrArray{Tuple{-1, -1}, Tb, 2, Tuple{1,X}, 2, 0, false}(Base.unsafe_convert(Ptr{Tb},A), (nrows,ncols), tuple())
 end
-@generated function PtrMatrix{M,N,X}(A::Ptr{T}) where {M, N, T, X}
-    :(PtrArray{Tuple{$M, $N}, $T, 2, Tuple{1,X}, 0, 0, false, $(M*N)}(A, tuple(), tuple()))
+function PtrMatrix{-1,-1,Tb,X}(A::Ptr{Ta}, nrows::Integer, ::Static{N}) where {N, Ta, Tb, X}
+    PtrArray{Tuple{-1, N}, Tb, 2, Tuple{1,X}, 1, 0, false}(Base.unsafe_convert(Ptr{Tb},A), (nrows,), tuple())
+end
+function PtrMatrix{-1,-1,Tb,X}(A::Ptr{Ta}, ::Static{M}, ncols::Integer) where {M, Ta, Tb, X}
+    PtrArray{Tuple{M, -1}, Tb, 2, Tuple{1,X}, 1, 0, false}(Base.unsafe_convert(Ptr{Tb},A), (ncols,), tuple())
+end
+function PtrMatrix{-1,-1,Tb,X}(A::Ptr{Ta}, ::Static{M}, ::Static{N}) where {M, N, Ta, Tb, X}
+    PtrArray{Tuple{M, M}, Tb, 2, Tuple{1,X}, 0, 0, false}(Base.unsafe_convert(Ptr{Tb},A), tuple(), tuple())
+end
+function PtrMatrix{M,N,X}(A::Ptr{T}) where {M, N, T, X}
+    PtrArray{Tuple{M, N}, T, 2, Tuple{1,X}, 0, 0, false}(A, tuple(), tuple())
 end
 function PtrMatrix{-1,N,X}(A::Ptr{T}, nrows::Integer) where {N, T, X}
-    PtrArray{Tuple{-1, N}, T, 2, Tuple{1,X}, 1, 0, false, -1}(A, (nrows,), tuple())
+    PtrArray{Tuple{-1, N}, T, 2, Tuple{1,X}, 1, 0, false}(A, (nrows,), tuple())
+end
+function PtrMatrix{-1,N,X}(A::Ptr{T}, ::Static{M}) where {M, N, T, X}
+    PtrArray{Tuple{M, N}, T, 2, Tuple{1,X}, 0, 0, false}(A, tuple(), tuple())
 end
 function PtrMatrix{M,-1,X}(A::Ptr{T}, ncols::Integer) where {M, T, X}
-    PtrArray{Tuple{M, -1}, T, 2, Tuple{1,X}, 1, 0, false, -1}(A, (ncols,), tuple())
+    PtrArray{Tuple{M, -1}, T, 2, Tuple{1,X}, 1, 0, false}(A, (ncols,), tuple())
+end
+function PtrMatrix{M,-1,X}(A::Ptr{T}, ::Static{N}) where {M, N, T, X}
+    PtrArray{Tuple{M, N}, T, 2, Tuple{1,X}, 0, 0, false}(A, tuple(), tuple())
 end
 function PtrMatrix{-1,-1,X}(A::Ptr{T}, nrows::Integer, ncols::Integer) where {T, X}
-    PtrArray{Tuple{-1, -1}, T, 2, Tuple{1,X}, 2, 0, false, -1}(A, (nrows,ncols), tuple())
+    PtrArray{Tuple{-1, -1}, T, 2, Tuple{1,X}, 2, 0, false}(A, (nrows,ncols), tuple())
+end
+function PtrMatrix{-1,-1,X}(A::Ptr{T}, nrows::Integer, ::Static{N}) where {N, T, X}
+    PtrArray{Tuple{-1, N}, T, 2, Tuple{1,X}, 1, 0, false}(A, (nrows,), tuple())
+end
+function PtrMatrix{-1,-1,X}(A::Ptr{T}, ::Static{M}, ncols::Integer) where {M, T, X}
+    PtrArray{Tuple{M, -1}, T, 2, Tuple{1,X}, 1, 0, false}(A, (ncols,), tuple())
+end
+function PtrMatrix{-1,-1,X}(A::Ptr{T}, ::Static{M}, ::Static{N}) where {M, N, T, X}
+    PtrArray{Tuple{M, N}, T, 2, Tuple{1,X}, 0, 0, false}(A, tuple(), tuple())
 end
 
 
@@ -194,8 +272,8 @@ end
 @inline function NoPadPtrView(θ::Ptr{T}, ::Type{Tuple{L}}) where {L,T}
     PtrArray{Tuple{L},T,1,Tuple{1},0,0,true,L}(θ, tuple(), tuple())
 end
-@inline function Base.similar(A::PtrArray{S,T,N,X,SN,XN,V,L}, ptr::Ptr{T}) where {S,T,N,X,SN,XN,V,L}
-    PtrArray{S,T,N,X,SN,XN,V,L}(ptr, A.size, A.stride)
+@inline function Base.similar(A::PtrArray{S,T,N,X,SN,XN,V}, ptr::Ptr{T}) where {S,T,N,X,SN,XN,V}
+    PtrArray{S,T,N,X,SN,XN,V}(ptr, A.size, A.stride)
 end
 # @inline function NoPadPtrView{Tuple{M,N}}(θ::Ptr{T}) where {M,N,T}
     # PtrArray{Tuple{M,N},T,1,Tuple{1,M},0,0,true}(θ)
@@ -203,15 +281,10 @@ end
 @generated function NoPadPtrView(θ::Ptr{T}, ::Type{S}) where {S,T}
     X = Expr(:curly, :Tuple)
     SV = S.parameters
-    L = 1
     N = length(SV)
-    for n ∈ 1:N
-        push!(X.parameters, L)
-        L *= (SV[n])::Int
-    end
     quote
         $(Expr(:meta,:inline))
-        PtrArray{$S,$T,$N,$X,0,0,true,$L}(θ, tuple(), tuple())
+        PtrArray{$S,$T,$N,$X,0,0,true}(θ, tuple(), tuple())
     end
 end
 @inline function NoPadPtrView(sp::StackPointer, ::Type{S}) where {S}
