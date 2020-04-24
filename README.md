@@ -17,7 +17,7 @@ The native types are optionally statically sized, and optionally given padding t
 * `FixedSizeArray` from this library with padding, named `PaddedArray` in the legend.
 * The base `Matrix{Float64}` type, using the `PaddedMatrices.jmul!` method.
 
-![SizedArrayBenchmarks](docs/src/assets/sizedarrayBenchmarks.svg)
+![SizedArrayBenchmarks](docs/src/assets/sizedarraybenchmarks.svg)
 
 All matrices were square and filled with `Float64` elements. Size refers to the number of rows and columns.
 Inplace multiplication was used for all but the `SArray`. For the `FixedSizeArray`s, `LinearAlgebra.mul!` simple redirects to `jmul!`, which is capable of taking advantage of static size information.
@@ -41,5 +41,118 @@ The BLAS libraries do not support integer multiplication, so the comparison is n
 ![i32gemmbenchmarks](docs/src/assets/gemmi32.svg)
 `Int32` multiplication is much faster, but still lags behind `Float64` performance.
 For some reason, the generic matmul is slower for `Int32`; I have not investigated why.
+
+There is also a threaded `PaddedMatrices.jmult!`, however it is not well optimized. It currently naively spawns a new task for each packed block of `A` and `B`. When `A` and `B` aren't large, this leads to too few tasks for much parallelism. When they are large, the number of tasks is excessive.
+
+Additionally, the library uses [VectorizedRNG.jl](https://github.com/chriselrod/VectorizedRNG.jl) for random number generation.
+```julia
+julia> using PaddedMatrices, StaticArrays, BenchmarkTools
+
+julia> @benchmark @SMatrix rand(8,8)
+BenchmarkTools.Trial: 
+  memory estimate:  0 bytes
+  allocs estimate:  0
+  --------------
+  minimum time:     95.624 ns (0.00% GC)
+  median time:      96.285 ns (0.00% GC)
+  mean time:        96.350 ns (0.00% GC)
+  maximum time:     119.485 ns (0.00% GC)
+  --------------
+  samples:          10000
+  evals/sample:     968
+
+julia> @benchmark @FixedSize rand(8,8)
+BenchmarkTools.Trial: 
+  memory estimate:  544 bytes
+  allocs estimate:  1
+  --------------
+  minimum time:     30.688 ns (0.00% GC)
+  median time:      36.902 ns (0.00% GC)
+  mean time:        47.708 ns (20.02% GC)
+  maximum time:     1.161 μs (88.61% GC)
+  --------------
+  samples:          10000
+  evals/sample:     995
+
+julia> @benchmark @SMatrix randn(8,8)
+BenchmarkTools.Trial: 
+  memory estimate:  0 bytes
+  allocs estimate:  0
+  --------------
+  minimum time:     259.418 ns (0.00% GC)
+  median time:      267.362 ns (0.00% GC)
+  mean time:        268.058 ns (0.00% GC)
+  maximum time:     347.910 ns (0.00% GC)
+  --------------
+  samples:          10000
+  evals/sample:     390
+
+julia> @benchmark @FixedSize randn(8,8)
+BenchmarkTools.Trial: 
+  memory estimate:  544 bytes
+  allocs estimate:  1
+  --------------
+  minimum time:     95.552 ns (0.00% GC)
+  median time:      100.451 ns (0.00% GC)
+  mean time:        111.481 ns (8.42% GC)
+  maximum time:     1.269 μs (84.12% GC)
+  --------------
+  samples:          10000
+  evals/sample:     954
+```
+and it uses [LoopVectorization.jl](https://github.com/chriselrod/LoopVectorization.jl) for broadcasts:
+```julia
+julia> using PaddedMatrices, StaticArrays, BenchmarkTools
+
+julia> Afs = @FixedSize randn(13,29); Asm = SMatrix{13,29}(Array(Afs));
+
+julia> bfs = @FixedSize rand(13); bsv = SVector{13}(bfs);
+
+julia> cfs = @FixedSize rand(29); csv = SVector{29}(cfs);
+
+julia> Dfs = @. exp(Afs) + bfs * log(cfs');
+
+julia> Dfs ≈ @. exp(Asm) + bsv * log(csv')
+true
+
+julia> @benchmark @. exp($Afs) + $bfs * log($cfs')
+BenchmarkTools.Trial:
+  memory estimate:  4.06 KiB
+  allocs estimate:  1
+  --------------
+  minimum time:     645.871 ns (0.00% GC)
+  median time:      703.147 ns (0.00% GC)
+  mean time:        790.847 ns (10.55% GC)
+  maximum time:     11.067 μs (84.82% GC)
+  --------------
+  samples:          10000
+  evals/sample:     170
+
+julia> @benchmark @. exp($Asm) + $bsv * log($csv')
+BenchmarkTools.Trial:
+  memory estimate:  0 bytes
+  allocs estimate:  0
+  --------------
+  minimum time:     3.620 μs (0.00% GC)
+  median time:      3.658 μs (0.00% GC)
+  mean time:        3.669 μs (0.00% GC)
+  maximum time:     6.189 μs (0.00% GC)
+  --------------
+  samples:          10000
+  evals/sample:     8
+
+julia> @benchmark @. $Dfs = exp($Afs) + $bfs * log($cfs')
+BenchmarkTools.Trial:
+  memory estimate:  0 bytes
+  allocs estimate:  0
+  --------------
+  minimum time:     461.500 ns (0.00% GC)
+  median time:      462.199 ns (0.00% GC)
+  mean time:        462.732 ns (0.00% GC)
+  maximum time:     599.357 ns (0.00% GC)
+  --------------
+  samples:          10000
+  evals/sample:     196
+```
 
 

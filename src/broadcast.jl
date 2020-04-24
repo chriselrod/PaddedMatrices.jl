@@ -94,7 +94,14 @@ Base.BroadcastStyle(a::LinearStyle{S,N}, b::LinearStyle{S,N}) where {S,N} = Cart
     Expr(:call, Expr(:curly, :CartesianStyle, S, max(N1,N2)))
 end
 
-Base.similar(::Base.Broadcast.Broadcasted{FS}, ::Type{T}) where {S,T,N,FS<:AbstractStrideStyle{S,N}} = FixedSizeArray{S,T}(undef)
+# function Base.similar(
+    # ::Base.Broadcast.Broadcasted{FS}, ::Type{T}
+# ) where {S,T<:Union{VectorizationBase.FloatingTypes,PaddedMatrices.VectorizationBase.IntTypes,PaddedMatrices.VectorizationBase.UIntTypes},N,FS<:AbstractStrideStyle{S,N}}
+function Base.similar(
+    ::Base.Broadcast.Broadcasted{FS}, ::Type{T}
+) where {S,T,N,FS<:AbstractStrideStyle{S,N}}
+    FixedSizeArray{S,T}(undef)
+end
 Base.similar(sp::StackPointer, ::Base.Broadcast.Broadcasted{FS}, ::Type{T}) where {S,T,FS<:AbstractStrideStyle{S,T},N} = PtrArray{S,T}(sp)
 
 

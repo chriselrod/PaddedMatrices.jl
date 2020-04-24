@@ -1,7 +1,7 @@
 name = "PaddedMatrices"
 uuid = "aaaacae8-1622-11e9-2a5c-532679323890"
 authors = ["Chris Elrod <elrodc@gmail.com>"]
-version = "0.1.0"
+version = "0.1.1"
 
 [deps]
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
@@ -14,11 +14,11 @@ VectorizationBase = "3d5dd08c-fd9d-11e8-17fa-ed2836048c2f"
 VectorizedRNG = "33b4df10-0173-11e9-2a0c-851a7edac40e"
 
 [compat]
-LoopVectorization = "0.6.28,0.7"
+LoopVectorization = "0.7.1"
 StackPointers = "0.1.2"
-SIMDPirates = "0.7.8"
+SIMDPirates = "0.7.16"
 SLEEFPirates = "0.4.4"
-VectorizationBase = "0.10"
+VectorizationBase = "0.10.5"
 VectorizedRNG = "0.1.6"
 julia = "1.3"
 
