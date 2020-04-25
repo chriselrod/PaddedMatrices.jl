@@ -45,7 +45,7 @@ function tup_sv_rev_quote(T::Core.SimpleVector, s, trunc = 0)
         Tₙ = (T[n])::Int
         if Tₙ == -1
             i += 0
-            pushfirst!(t.args, Expr(:call, :%, Expr(:ref, Expr(:(.), :A, QuoteNode(s)), i), Int))
+            pushfirst!(t.args, Expr(:ref, Expr(:(.), :A, QuoteNode(s)), i))
         else
             pushfirst!(t.args, Tₙ)
         end
@@ -60,7 +60,7 @@ function tup_sv_quote(T::Core.SimpleVector, s, start = 1)
         Tₙ = (T[n])::Int
         if Tₙ == -1
             i += 1
-            push!(t.args, Expr(:call, :%, Expr(:ref, Expr(:(.), :A, QuoteNode(s)), i), Int))
+            push!(t.args, Expr(:ref, Expr(:(.), :A, QuoteNode(s)), i))
         else
             push!(t.args, Tₙ)
         end

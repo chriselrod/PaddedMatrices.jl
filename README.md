@@ -22,7 +22,7 @@ The native types are optionally statically sized, and optionally given padding t
 All matrices were square and filled with `Float64` elements. Size refers to the number of rows and columns.
 Inplace multiplication was used for all but the `SArray`. For the `FixedSizeArray`s, `LinearAlgebra.mul!` simple redirects to `jmul!`, which is capable of taking advantage of static size information.
 
-`StaticArray`s currently relies on unrolling the operations, and taking advantage of LLVM's powerful [SLP vectorizer](https://llvm.org/docs/Vectorizers.html#the-slp-vectorizer). It performs best for `2x2`, `3x3`, `4x4`, `6x6`, and `8x8` matrices on this architecture. Between stack allocation and marking these operations for inline, `SMatrix` achieves better performance than the alternatives at these sizes.
+`StaticArray`s currently relies on unrolling the operations, and taking advantage of LLVM's powerful [SLP vectorizer](https://llvm.org/docs/Vectorizers.html#the-slp-vectorizer). It performs best for `2x2`, `3x3`, `4x4`, and `8x8` matrices on this architecture. Between stack allocation and marking these operations for inline, `SMatrix` achieves better performance than the alternatives at these sizes.
 
 PaddedMatrices relies on [LoopVectorization.jl](https://github.com/chriselrod/LoopVectorization.jl) to generate microkernels. Perhaps I should make it unroll more agressively at small static sizes, and also mark it for inlining. For now, it doesn't achieve quite the same performance as an `SMatrix` at `8x8`, `6x6`, and `4x4` and below. However, at `9x9` and beyond, even the dynamically sized `PaddedMatrices.jmul!` method achieves better performance than `SMatrix` or `MMatrix`. Of course, `StaticArrays` is primarily concerned with `10x10` matrices and smaller, and the `SMatrix` type allows you to use the more convenient non-mutating API without worrying about allocations or memory management.
 
@@ -49,56 +49,56 @@ Additionally, the library uses [VectorizedRNG.jl](https://github.com/chriselrod/
 julia> using PaddedMatrices, StaticArrays, BenchmarkTools
 
 julia> @benchmark @SMatrix rand(8,8)
-BenchmarkTools.Trial: 
+BenchmarkTools.Trial:
   memory estimate:  0 bytes
   allocs estimate:  0
   --------------
-  minimum time:     95.624 ns (0.00% GC)
-  median time:      96.285 ns (0.00% GC)
-  mean time:        96.350 ns (0.00% GC)
-  maximum time:     119.485 ns (0.00% GC)
+  minimum time:     95.751 ns (0.00% GC)
+  median time:      96.082 ns (0.00% GC)
+  mean time:        96.325 ns (0.00% GC)
+  maximum time:     147.361 ns (0.00% GC)
   --------------
   samples:          10000
-  evals/sample:     968
+  evals/sample:     977
 
 julia> @benchmark @FixedSize rand(8,8)
-BenchmarkTools.Trial: 
-  memory estimate:  544 bytes
+BenchmarkTools.Trial:
+  memory estimate:  624 bytes
   allocs estimate:  1
   --------------
-  minimum time:     30.688 ns (0.00% GC)
-  median time:      36.902 ns (0.00% GC)
-  mean time:        47.708 ns (20.02% GC)
-  maximum time:     1.161 μs (88.61% GC)
+  minimum time:     33.949 ns (0.00% GC)
+  median time:      42.572 ns (0.00% GC)
+  mean time:        50.327 ns (13.49% GC)
+  maximum time:     805.577 ns (79.77% GC)
   --------------
   samples:          10000
-  evals/sample:     995
+  evals/sample:     994
 
 julia> @benchmark @SMatrix randn(8,8)
-BenchmarkTools.Trial: 
+BenchmarkTools.Trial:
   memory estimate:  0 bytes
   allocs estimate:  0
   --------------
-  minimum time:     259.418 ns (0.00% GC)
-  median time:      267.362 ns (0.00% GC)
-  mean time:        268.058 ns (0.00% GC)
-  maximum time:     347.910 ns (0.00% GC)
+  minimum time:     261.055 ns (0.00% GC)
+  median time:      268.551 ns (0.00% GC)
+  mean time:        268.758 ns (0.00% GC)
+  maximum time:     384.105 ns (0.00% GC)
   --------------
   samples:          10000
-  evals/sample:     390
+  evals/sample:     343
 
 julia> @benchmark @FixedSize randn(8,8)
-BenchmarkTools.Trial: 
-  memory estimate:  544 bytes
+BenchmarkTools.Trial:
+  memory estimate:  624 bytes
   allocs estimate:  1
   --------------
-  minimum time:     95.552 ns (0.00% GC)
-  median time:      100.451 ns (0.00% GC)
-  mean time:        111.481 ns (8.42% GC)
-  maximum time:     1.269 μs (84.12% GC)
+  minimum time:     97.017 ns (0.00% GC)
+  median time:      102.932 ns (0.00% GC)
+  mean time:        111.741 ns (6.15% GC)
+  maximum time:     935.145 ns (79.35% GC)
   --------------
   samples:          10000
-  evals/sample:     954
+  evals/sample:     950
 ```
 and it uses [LoopVectorization.jl](https://github.com/chriselrod/LoopVectorization.jl) for broadcasts:
 ```julia

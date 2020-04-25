@@ -89,8 +89,7 @@ function StrideArray(A::AbstractArray{T,N}) where {T,N}
     StrideArray(A, negative_one_tupletype(Val{N}()))
 end
 
-function tointvecdt(@nospecialize(s))
-    ssv = s.paramters
+function tointvecdt(ssv)
     N = length(ssv)::Int
     sv = Vector{Int}(undef, N)
     for n ∈ 1:N
@@ -100,7 +99,7 @@ function tointvecdt(@nospecialize(s))
     sv
 end
 @generated function StrideArray{T}(::UndefInitializer, s::Tuple) where {T}
-    sv = tointvecdt(s)
+    sv = tointvecdt(s.parameters)
     N = length(sv)
     S = Tuple{sv...}
     any(s -> s == -1, sv) || return :(StrideArray{$S,$T}(::UndefInitializer))
@@ -129,10 +128,21 @@ function calc_NXL(SV::Core.SimpleVector, T, padded_rows::Int)
     N, Tuple{X...}, LA
 end
 
+function maybeincreaseL(L::Int, ::Type{T}) where {T}
+    Wm1 = VectorizationBase.pick_vector_width(T) - 1
+    return L + Wm1
+    # if ALIGN_ALL_FS_ARRAYS || (L + Wm1) * sizeof(T) < 512
+    #     L + Wm1
+    # elseif L * sizeof(T) ≥ 512
+    #     L
+    # else
+    #     512 ÷ sizeof(T)
+    # end
+end
 @generated function FixedSizeArray{S,T}(::UndefInitializer) where {S,T}
     N, X, L = calc_NPL(S.parameters, T)
-    Wm1 = VectorizationBase.pick_vector_width(T) - 1
-    :(FixedSizeArray{$S,$T,$N,$X,$(L+Wm1)}(undef))
+    L = maybeincreaseL(L, T)
+    :(FixedSizeArray{$S,$T,$N,$X,$L}(undef))
 end
 @generated function FixedSizeArray{S,T,N,X}(::UndefInitializer) where {S,T,N,X}
     # X may not be monotonic!!!
@@ -147,22 +157,22 @@ end
     maxind = argmax(Xint)
     # Then multiply stride and dimension of that index to get length.
     L = Xint[maxind] * (S.parameters[maxind])::Int
-    Wm1 = VectorizationBase.pick_vector_width(T) - 1
-    :(FixedSizeArray{$S,$T,$N,$X,$(L+Wm1)}(undef))
+    L = maybeincreaseL(L, T)
+    :(FixedSizeArray{$S,$T,$N,$X,$L}(undef))
 end
 @generated function FixedSizeVector{M,T}(::UndefInitializer) where {M,T}
-    Wm1 = VectorizationBase.pick_vector_width(T) - 1
-    :(FixedSizeArray{Tuple{$M},$T,1,Tuple{1},$(M+Wm1)}(undef))
+    L = maybeincreaseL(M, T)
+    :(FixedSizeArray{Tuple{$M},$T,1,Tuple{1},$L}(undef))
 end
 @generated function FixedSizeMatrix{M,N,T}(::UndefInitializer) where {M,N,T}
     X = calc_padding(M, T)
-    Wm1 = VectorizationBase.pick_vector_width(T) - 1
-    :(FixedSizeArray{Tuple{$M,$N},$T,2,Tuple{1,$X},$(X*N + Wm1)}(undef))
+    L = maybeincreaseL(X*N, T)
+    :(FixedSizeArray{Tuple{$M,$N},$T,2,Tuple{1,$X},$L}(undef))
 end
 @generated function FixedSizeMatrix{M,N,T,X}(::UndefInitializer) where {M,N,T,X}
     @assert X ≥ M
-    Wm1 = VectorizationBase.pick_vector_width(T) - 1
-    :(FixedSizeArray{Tuple{$M,$N},$T,2,Tuple{1,$X},$(X*N + Wm1)}(undef))
+    L = maybeincreaseL(X * N, T)
+    :(FixedSizeArray{Tuple{$M,$N},$T,2,Tuple{1,$X},$L}(undef))
 end
 
 @generated function PtrArray{S}(ptr::Ptr{T}) where {S,T}

@@ -38,8 +38,10 @@ end
     end
     vload(stridedpointer(A), i)
 end
-Base.@propagate_inbounds Base.getindex(A::AbstractStrideArray, i::CartesianIndex) = getindex(A, i.I)
-Base.@propagate_inbounds Base.getindex(A::AbstractStrideArray, i::Vararg{<:Number}) = getindex(A, i)
+Base.@propagate_inbounds Base.getindex(A::AbstractStrideArray, i::CartesianIndex) = @show getindex(A, i.I)
+Base.@propagate_inbounds function Base.getindex(A::AbstractStrideArray, i::Vararg{<:Number})
+    getindex(A, i)
+end
 Base.@propagate_inbounds Base.getindex(A::AbstractPtrStrideArray, i::Vararg{<:Number}) = getindex(A, i)
 @inline function Base.getindex(A::AbstractStrideArray, i::Integer)
     @boundscheck i > length(A) && ThrowBoundsError(A, i)
