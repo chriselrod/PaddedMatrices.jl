@@ -16,7 +16,10 @@
                 A = rand(T, s, s);
                 B = rand(T, s, s);
                 C1 = similar(A); C2 = similar(C1);
-                @test mul!(C1, A, B) ≈ PaddedMatrices.jmul!(C2, A, B)
+                blastime = @elapsed mul!(C1, A, B)
+                pmtime = @elapsed PaddedMatrices.jmul!(C2, A, B)
+                @show s, pmtime / blastime
+                @test C1 ≈ C2
             end
         end
     end
