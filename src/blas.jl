@@ -57,6 +57,17 @@ function loopmuladdprefetch!(
     end
     nothing
 end
+@inline function inlineloopmul!(C, A, B)
+    M, K, N = matmul_sizes(C, A, B)
+    @avx for n ∈ 1:N, m ∈ 1:M
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ += A[m,k] * B[k,n]
+        end
+        C[m,n] = Cₘₙ
+    end
+    C
+end
 function loopmul!(C, A, B)
     M, K, N = matmul_sizes(C, A, B)
     @avx for n ∈ 1:N, m ∈ 1:M
@@ -86,6 +97,7 @@ function Base.copyto!(B::AbstractStrideArray{S,T,N}, A::AbstractStrideArray{S,T,
     @avx for I ∈ eachindex(A, B)
         B[I] = A[I]
     end
+    B
 end
 function copyto_prefetch2!(B::AbstractStrideArray{S,T,N}, A::AbstractStrideArray{S,T,N}, C::AbstractStrideArray{S,T,N}) where {S,T,N}
     Cptr = stridedpointer(C)
@@ -787,9 +799,15 @@ function jmult!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{
     C
 end
 
+maybeinline(::Any) = false
+@generated function maybeinline(::AbstractFixedSizeMatrix{M,N,T}) where {M,N,T}
+    sizeof(T) * M * N < 24mᵣ * nᵣ
+end
+                                                                       
 
-function jmul!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}) where {Tc, Ta, Tb}
+@inline function jmul!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}) where {Tc, Ta, Tb}
     mc, kc, nc = matmul_params_val(Tc, Ta, Tb)
+    maybeinline(C) && return inlineloopmul!(C, A, B)
     jmul!(C, A, B, mc, kc, nc)
 end
 function jmult!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}) where {Tc, Ta, Tb}
@@ -1266,7 +1284,7 @@ end # function
 
 
 
-function LinearAlgebra.mul!(
+@inline function LinearAlgebra.mul!(
     c::AbstractVector{T}, A::AbstractStrideMatrix{M,N,T}, b::AbstractVector{T}
 ) where {M,N,T}
     @assert size(c,1) == size(A,1)

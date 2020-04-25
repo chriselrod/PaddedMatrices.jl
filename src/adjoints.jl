@@ -20,16 +20,16 @@ end
     Xnew = reverse_tuple_type(X)
     Expr(:block, Expr(:meta,:inline), Expr(:call, :(PtrArray{$Snew,$T,$N,$Xnew,0,0,$V}), :(pointer(A)), tuple(), tuple()))
 end
-@generated function Base.adjoint(A::AbstractStrideArray{S,T,N,X,SN,XN,V}) where {S,T<:Real,N,X,SN,XN,V}
-    Snew = reverse_tuple_type(S)
-    Xnew = reverse_tuple_type(X)
-    Expr(:block, Expr(:meta,:inline), :(PtrArray{$Snew,$T,$N,$Xnew,$SN,$XN,$V}(pointer(A), rev(A.size), rev(A.stride))))
-end
-@generated function Base.transpose(A::AbstractStrideArray{S,T,N,X,SN,XN,V}) where {S,T,N,X,SN,XN,V}
-    Snew = reverse_tuple_type(S)
-    Xnew = reverse_tuple_type(X)
-    Expr(:block, Expr(:meta,:inline), :(PtrArray{$Snew,$T,$N,$Xnew,$SN,$XN,$V}(pointer(A), rev(A.size), rev(A.stride))))
-end
+# @generated function Base.adjoint(A::AbstractStrideArray{S,T,N,X,SN,XN,V}) where {S,T<:Real,N,X,SN,XN,V}
+#     Snew = reverse_tuple_type(S)
+#     Xnew = reverse_tuple_type(X)
+#     Expr(:block, Expr(:meta,:inline), :(PtrArray{$Snew,$T,$N,$Xnew,$SN,$XN,$V}(pointer(A), rev(A.size), rev(A.stride))))
+# end
+# @generated function Base.transpose(A::AbstractStrideArray{S,T,N,X,SN,XN,V}) where {S,T,N,X,SN,XN,V}
+#     Snew = reverse_tuple_type(S)
+#     Xnew = reverse_tuple_type(X)
+#     Expr(:block, Expr(:meta,:inline), :(PtrArray{$Snew,$T,$N,$Xnew,$SN,$XN,$V}(pointer(A), rev(A.size), rev(A.stride))))
+# end
 @generated function Base.adjoint(A::ConstantArray{S,T,N,X,L}) where {S,T<:Real,N,X,L}
     Snew = reverse_tuple_type(S)
     Xnew = reverse_tuple_type(X)
@@ -50,16 +50,16 @@ end
     Xnew = reverse_tuple_type(X)
     Expr(:block, Expr(:meta,:inline), :(StrideArray{$Snew,$T,$N,$Xnew,0,0}(A.data, rev(A.size), rev(A.stride))))
 end
-@generated function Base.adjoint(A::StrideArray{S,T,N,X,SN,XN}) where {S,T<:Real,N,X,SN,XN}
-    Snew = reverse_tuple_type(S)
-    Xnew = reverse_tuple_type(X)
-    Expr(:block, Expr(:meta,:inline), :(StrideArray{$Snew,$T,$N,$Xnew,$SN,$XN}(A.data, rev(A.size), rev(A.stride))))
-end
-@generated function Base.transpose(A::StrideArray{S,T,N,X,SN,XN}) where {S,T,N,X,SN,XN}
-    Snew = reverse_tuple_type(S)
-    Xnew = reverse_tuple_type(X)
-    Expr(:block, Expr(:meta,:inline), :(StrideArray{$Snew,$T,$N,$Xnew,$SN,$XN}(A.data, rev(A.size), rev(A.stride))))
-end
+# @generated function Base.adjoint(A::StrideArray{S,T,N,X,SN,XN}) where {S,T<:Real,N,X,SN,XN}
+#     Snew = reverse_tuple_type(S)
+#     Xnew = reverse_tuple_type(X)
+#     Expr(:block, Expr(:meta,:inline), :(StrideArray{$Snew,$T,$N,$Xnew,$SN,$XN}(A.data, rev(A.size), rev(A.stride))))
+# end
+# @generated function Base.transpose(A::StrideArray{S,T,N,X,SN,XN}) where {S,T,N,X,SN,XN}
+#     Snew = reverse_tuple_type(S)
+#     Xnew = reverse_tuple_type(X)
+#     Expr(:block, Expr(:meta,:inline), :(StrideArray{$Snew,$T,$N,$Xnew,$SN,$XN}(A.data, rev(A.size), rev(A.stride))))
+# end
 
 
 # For vectors

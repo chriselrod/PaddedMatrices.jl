@@ -22,19 +22,24 @@ end
     :(StrideArray{$S,$T,$N,$(ctuple(xv)),0,0,false}(SIMDPirates.valloc($T, $L, $W), tuple(), tuple()))
 end
 
-function partially_sized(sv)
+function partially_sized(sv, ::Type{T}) where {T}
     st = Expr(:tuple)
     xt = Expr(:tuple)
     xv = similar(sv)
     N = length(sv)
     L = 1
-    q = quote end
+    Lpos = 1
+    q = Expr(:block)
     for n ∈ 1:N
         xv[n] = L
         if L == -1
             xn = Symbol(:stride_,n)
-            push!(q.args, Expr(:(=), xn, Symbol(:stride_, n-1)))
-            push!(xt, xn)
+            calcstride = Expr(:call, :*, Expr(:ref,:s,n-1), Symbol(:stride_, n-1))
+            if n == 2
+                calcstride = Expr(:call, :calc_padding, calcstride, T)
+            end
+            push!(q.args, Expr(:(=), xn, calcstride))
+            push!(xt.args, xn)
         end
         svₙ = sv[n]
         if svₙ == -1
@@ -42,27 +47,51 @@ function partially_sized(sv)
                 push!(q.args, Expr(:(=), Symbol(:stride_, n), L))
             end
             L = -1
-            push!(st, Expr(:ref, :s, n))
-        elseif L != -1
-            L *= svₙ
+            push!(st.args, Expr(:ref, :s, n))
+        else
+            if n == 1
+                svₙ = calc_padding(svₙ, T)
+            end
+            Lpos *= svₙ
+            if L != -1
+                L *= svₙ
+            end
         end
     end
-    st, xt
+    Lexpr = if L == -1
+        Expr(:call, :*, Symbol(:stride_, N), Expr(:ref, :s, N))
+    else
+        Lpos
+    end
+    q, st, xt, xv, Lexpr
 end
 
-@generated function StrideArray{S,T}(::UndefInitializer, s::NTuple{N,<:Integer}) where {S,T,N}
+@generated function StrideArray{S,T}(
+# function StrideArray{S,T}(
+    ::UndefInitializer, s::NTuple{N,<:Integer}
+) where {S,T,N}
     sv = tointvec(S)
     @assert N == length(sv)
     any(isequal(-1), sv) || return :(StrideArray{$S,$T}(::UndefInitializer))
-    st, xt = partially_sized(sv)
+    q, st, xt, xv, L = partially_sized(sv, T)
     SN = length(st.args); XN = length(xt.args)
-    W = VectorizationBase.pick_vector_width(T)
-    push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false}(SIMDPirates.valloc($T, $L, $W), $st, $xt)))
+    # W = VectorizationBase.pick_vector_width(T)
+    push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN}(SIMDPirates.valloc($T, $L), $st, $xt)))
     q
 end
-function tointvecdt(s)
+function StrideArray(A::AbstractArray{T}, ::Type{S}) where {T,S<:Tuple}
+    StrideArray{S,T}(undef, size(A)) .= A
+end
+@generated function negative_one_tupletype(::Val{N}) where {N}
+    Expr(:curly, :Tuple, (-1 for _ ∈ 1:N)...)
+end
+function StrideArray(A::AbstractArray{T,N}) where {T,N}
+    StrideArray(A, negative_one_tupletype(Val{N}()))
+end
+
+function tointvecdt(@nospecialize(s))
     ssv = s.paramters
-    N = length(ssv)
+    N = length(ssv)::Int
     sv = Vector{Int}(undef, N)
     for n ∈ 1:N
         ssvₙ = ssv[n]
@@ -75,10 +104,9 @@ end
     N = length(sv)
     S = Tuple{sv...}
     any(s -> s == -1, sv) || return :(StrideArray{$S,$T}(::UndefInitializer))
-    st, xt = partially_sized(sv)
+    q, st, xt, xv, L = partially_sized(sv, T)
     SN = length(st.args); XN = length(xt.args)
-    W = VectorizationBase.pick_vector_width(T)
-    push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false}(SIMDPirates.valloc($T, $L, $W), $st, $xt)))
+    push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN}(SIMDPirates.valloc($T, $L), $st, $xt)))
     q    
 end
 
@@ -103,18 +131,38 @@ end
 
 @generated function FixedSizeArray{S,T}(::UndefInitializer) where {S,T}
     N, X, L = calc_NPL(S.parameters, T)
-    :(FixedSizeArray{$S,$T,$N,$X,$L}(undef))
+    Wm1 = VectorizationBase.pick_vector_width(T) - 1
+    :(FixedSizeArray{$S,$T,$N,$X,$(L+Wm1)}(undef))
 end
-function FixedSizeVector{M,T}(::UndefInitializer) where {M,T}
-    FixedSizeArray{Tuple{M},T,1,Tuple{1},M}(undef)
+@generated function FixedSizeArray{S,T,N,X}(::UndefInitializer) where {S,T,N,X}
+    # X may not be monotonic!!!
+    # Largest stride corresponds to last dimension.
+    # So, find max stride index
+    Xv = X.parameters
+    @assert N == length(X.parameters) == length(S.parameters)
+    Xint = Vector{Int}(undef, N)
+    for n in 1:N
+        Xint[n] = (Xv[n])::Int
+    end
+    maxind = argmax(Xint)
+    # Then multiply stride and dimension of that index to get length.
+    L = Xint[maxind] * (S.parameters[maxind])::Int
+    Wm1 = VectorizationBase.pick_vector_width(T) - 1
+    :(FixedSizeArray{$S,$T,$N,$X,$(L+Wm1)}(undef))
+end
+@generated function FixedSizeVector{M,T}(::UndefInitializer) where {M,T}
+    Wm1 = VectorizationBase.pick_vector_width(T) - 1
+    :(FixedSizeArray{Tuple{$M},$T,1,Tuple{1},$(M+Wm1)}(undef))
 end
 @generated function FixedSizeMatrix{M,N,T}(::UndefInitializer) where {M,N,T}
     X = calc_padding(M, T)
-    :(FixedSizeArray{Tuple{$M,$N},$T,2,Tuple{1,$X},$(X*N)}(undef))
+    Wm1 = VectorizationBase.pick_vector_width(T) - 1
+    :(FixedSizeArray{Tuple{$M,$N},$T,2,Tuple{1,$X},$(X*N + Wm1)}(undef))
 end
 @generated function FixedSizeMatrix{M,N,T,X}(::UndefInitializer) where {M,N,T,X}
     @assert X ≥ M
-    :(FixedSizeArray{Tuple{$M,$N},$T,2,Tuple{1,$X},$(X*N)}(undef))
+    Wm1 = VectorizationBase.pick_vector_width(T) - 1
+    :(FixedSizeArray{Tuple{$M,$N},$T,2,Tuple{1,$X},$(X*N + Wm1)}(undef))
 end
 
 @generated function PtrArray{S}(ptr::Ptr{T}) where {S,T}
@@ -125,7 +173,7 @@ end
     sv = tointvec(S)
     @assert N == length(sv)
     any(s -> s == -1, sv) || return :(PtrArray{$S}(ptr))
-    st, xt = partially_sized(sv)
+    q, st, xt, xv, L = partially_sized(sv, T)
     SN = length(st.args); XN = length(xt.args)
     push!(q.args, :(PtrArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false}(ptr, $st, $xt)))
     q
@@ -335,4 +383,13 @@ end
         )
     )
 end
+
+function Base.similar(::AbstractFixedSizeArray{S,Told,N,X}, ::Type{T}) where {S,T,N,X,Told}
+    FixedSizeArray{S,T,N,X}(undef)
+end
+function Base.similar(A::AbstractStrideArray{S}, ::Type{T}) where {S,T}
+    StrideArray{S,T}(undef, size(A))
+end
+
+
 

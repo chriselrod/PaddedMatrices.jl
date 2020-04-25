@@ -34,7 +34,7 @@ end
 mkl_set_num_threads(1)
 
 function runbench(::Type{T}) where {T}
-    (StructVector ∘ map)([2, 4, 8:8:128..., round.(Int, (10:65) .^2.2)...]) do sz
+    (StructVector ∘ map)([2, 4, 8:8:256..., ( (16:100) .^ 2)...]) do sz
         n, k, m = sz, sz, sz
         C1 = zeros(T, n, m)
         C2 = zeros(T, n, m)
@@ -58,14 +58,16 @@ function runbench(::Type{T}) where {T}
         end
         @assert C1 ≈ C3
         if T <: Integer
-            @show (matrix_size=sz, lvBLAS=lvb, OpenBLAS=opb, PaddedMatrices = pmb)
+            res = (matrix_size=sz, lvBLAS=lvb, OpenBLAS=opb, PaddedMatrices = pmb)
+            @show res
         else
             mklb = @elapsed mklmul!(C4, A, B)
             if 2mklb < BenchmarkTools.DEFAULT_PARAMETERS.seconds
                 mklb = min(mklb, @belapsed mklmul!($C4, $A, $B))         #samples=100
             end
             @assert C1 ≈ C4
-            @show (matrix_size=sz, lvBLAS=lvb, OpenBLAS=opb, PaddedMatrices = pmb, MKL = mklb)
+            res = (matrix_size=sz, lvBLAS=lvb, OpenBLAS=opb, PaddedMatrices = pmb, MKL = mklb)
+            @show res
         end
     end
 end

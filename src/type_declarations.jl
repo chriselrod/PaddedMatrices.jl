@@ -9,7 +9,12 @@ struct StrideArray{S,T,N,X,SN,XN} <: AbstractMutableStrideArray{S,T,N,X,SN,XN,fa
 end
 mutable struct FixedSizeArray{S,T,N,X,L} <: AbstractMutableStrideArray{S,T,N,X,0,0,false}
     data::NTuple{L,Core.VecElement{T}}
-    @inline FixedSizeArray{S,T,N,X,L}(::UndefInitializer) where {S,T,N,X,L} = new()
+    ptr::Ptr{T}
+    @inline function FixedSizeArray{S,T,N,X,L}(::UndefInitializer) where {S,T,N,X,L}
+        A = new()
+        A.ptr = VectorizationBase.align(Base.pointer_from_objref(A))
+        A
+    end
 end
 struct ConstantArray{S,T,N,X,L} <: AbstractStrideArray{S,T,N,X,0,0,false}
     data::NTuple{L,Core.VecElement{T}}
@@ -47,8 +52,8 @@ const AbstractMutableFixedSizeMatrix{M,N,T,X1,X2,V} = AbstractMutableStrideArray
 
 @inline Base.pointer(A::StrideArray) = pointer(A.data)
 @inline Base.unsafe_convert(::Type{Ptr{T}}, A::StrideArray{S,T}) where {S,T} = pointer(A.data)
-@inline Base.pointer(A::FixedSizeArray{S,T}) where {S,T} = Base.unsafe_convert(Ptr{T}, Base.pointer_from_objref(A))
-@inline Base.unsafe_convert(::Type{Ptr{T}}, A::FixedSizeArray{S,T}) where {S,T} = Base.unsafe_convert(Ptr{T}, Base.pointer_from_objref(A))
+@inline Base.pointer(A::FixedSizeArray{S,T}) where {S,T} = A.ptr
+@inline Base.unsafe_convert(::Type{Ptr{T}}, A::FixedSizeArray{S,T}) where {S,T} = A.ptr
 @inline Base.pointer(A::PtrArray) = A.ptr
 @inline Base.unsafe_convert(::Type{Ptr{T}}, A::PtrArray{S,T}) where {S,T} = A.ptr
 @inline Base.pointer(A::LazyMap) = A.ptr
