@@ -43,6 +43,10 @@ Base.@propagate_inbounds function Base.getindex(A::AbstractStrideArray, i::Varar
     getindex(A, i)
 end
 Base.@propagate_inbounds Base.getindex(A::AbstractPtrStrideArray, i::Vararg{<:Number}) = getindex(A, i)
+@inline function Base.getindex(A::AbstractPtrStrideArray, i::Integer)
+    @boundscheck i > length(A) && ThrowBoundsError(A, i)
+    vload(pointer(A), i - 1)
+end
 @inline function Base.getindex(A::AbstractStrideArray, i::Integer)
     @boundscheck i > length(A) && ThrowBoundsError(A, i)
     vload(pointer(A), i - 1)
