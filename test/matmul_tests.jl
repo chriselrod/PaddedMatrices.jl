@@ -11,9 +11,9 @@
     @testset "jmul" begin
         for T in (Float32, Float64, Int32, Int64)
             @show T, @__LINE__
-            # @time for i in 2:(T <: Integer ? 20 : 100)
-                # s = round(Int, i^1.6505149978319904)
-            @time for s in 2:100
+            @time for i in 2:20#(T <: Integer ? 20 : 100)
+                s = round(Int, i^3#1.6505149978319904)
+            # @time for s in 2:200
                 A = rand(T, s, s);
                 B = rand(T, s, s);
                 C1 = similar(A); C2 = similar(C1);
