@@ -29,45 +29,6 @@ let GEMMLOOPSET = LoopVectorization.LoopSet(
     
 end
 
-function loopmulprefetch!(C, A, B)
-    M, K, N = matmul_sizes(C, A, B)
-    @avx for n ∈ 1:N, m ∈ 1:M
-        Cₘₙ = zero(eltype(C))
-        for k ∈ 1:K
-            Cₘₙ += A[m,k] * B[k,n]
-            dummy1 = prefetch0(A, m, k + 3)
-        end
-        C[m,n] = Cₘₙ
-    end
-    nothing
-end
-function loopmuladdprefetch!(
-    C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix
-)
-    M, K, N = matmul_sizes(C, A, B)
-    @avx for n ∈ 1:N, m ∈ 1:M
-        Cₘₙ = zero(eltype(C))
-        for k ∈ 1:K
-            Cₘₙ += A[m,k] * B[k,n]
-            dummy1 = prefetch0(A, m, k + 3)
-            # dummy1 = prefetch0(A, m + mᵣ, k)
-            # dummy2 = prefetch0(B, k, n, 0, nᵣ)
-        end
-        C[m,n] += Cₘₙ
-    end
-    nothing
-end
-@inline function inlineloopmul!(C, A, B)
-    M, K, N = matmul_sizes(C, A, B)
-    @avx for n ∈ 1:N, m ∈ 1:M
-        Cₘₙ = zero(eltype(C))
-        for k ∈ 1:K
-            Cₘₙ += A[m,k] * B[k,n]
-        end
-        C[m,n] = Cₘₙ
-    end
-    C
-end
 function loopmul!(C, A, B)
     M, K, N = matmul_sizes(C, A, B)
     @avx for n ∈ 1:N, m ∈ 1:M
@@ -92,6 +53,54 @@ function loopmuladd!(
     end
     nothing
 end
+
+@static if VectorizationBase.REGISTER_SIZE ≥ 64
+    function loopmulprefetch!(C, A, B)
+        M, K, N = matmul_sizes(C, A, B)
+        @avx for n ∈ 1:N, m ∈ 1:M
+            Cₘₙ = zero(eltype(C))
+            for k ∈ 1:K
+                Cₘₙ += A[m,k] * B[k,n]
+                dummy1 = prefetch0(A, m, k + 3)
+            end
+            C[m,n] = Cₘₙ
+        end
+        nothing
+    end
+    function loopmuladdprefetch!(
+        C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix
+    )
+        M, K, N = matmul_sizes(C, A, B)
+        @avx for n ∈ 1:N, m ∈ 1:M
+            Cₘₙ = zero(eltype(C))
+            for k ∈ 1:K
+                Cₘₙ += A[m,k] * B[k,n]
+                dummy1 = prefetch0(A, m, k + 3)
+                # dummy1 = prefetch0(A, m + mᵣ, k)
+                # dummy2 = prefetch0(B, k, n, 0, nᵣ)
+            end
+            C[m,n] += Cₘₙ
+        end
+        nothing
+    end
+else
+    const loopmulprefetch! = loopmul!
+    const loopmuladdprefetch! = loopmuladd!
+end
+
+@inline function inlineloopmul!(C, A, B)
+    M, K, N = matmul_sizes(C, A, B)
+    @avx for n ∈ 1:N, m ∈ 1:M
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ += A[m,k] * B[k,n]
+        end
+        C[m,n] = Cₘₙ
+    end
+    C
+end
+
+
 
 function Base.copyto!(B::AbstractStrideArray{S,T,N}, A::AbstractStrideArray{S,T,N}) where {S,T,N}
     @avx for I ∈ eachindex(A, B)
