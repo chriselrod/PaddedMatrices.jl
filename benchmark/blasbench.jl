@@ -117,6 +117,9 @@ end
 create_df(res, ::Type{T}) where {T} = create_float_df(res, sizeof(T))
 create_df(res, ::Type{T}) where {T<:Integer} = create_int_df(res, sizeof(T))
 
+using PaddedMatrices
+const PICTURES = joinpath(pkgdir(PaddedMatrices), "docs", "src", "assets")
+
 res = create_df(tf64, Float64)
 plt = res |> @vlplot(
     :line, color = :Library,

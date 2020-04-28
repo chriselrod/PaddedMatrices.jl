@@ -8,7 +8,7 @@ using VectorizationBase, SIMDPirates,
     Random, StackPointers#,
     # SpecialFunctions # Perhaps there is a better way to support erf?
 
-using VectorizationBase: Static, StaticUnitRange, align, gep, offset, AbstractStructVec, AbstractStridedPointer, AbstractSIMDVector
+using VectorizationBase: Static, StaticUnitRange, align, gep, offset, AbstractStructVec, AbstractStridedPointer, AbstractSIMDVector, vnoaliasstore!
 using LoopVectorization: maybestaticsize
 # import ReverseDiffExpressionsBase:
     # RESERVED_INCREMENT_SEED_RESERVED!, ∂getindex,
@@ -34,6 +34,7 @@ include("indexing.jl")
 include("initialization.jl")
 include("views.jl")
 include("rand.jl")
+include("kernels.jl")
 include("blas.jl")
 include("broadcast.jl")
 

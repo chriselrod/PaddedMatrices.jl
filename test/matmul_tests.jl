@@ -11,7 +11,7 @@
     @testset "jmul" begin
         for T in (Float32, Float64, Int32, Int64)
             @show T, @__LINE__
-            @time for i in 2:(T <: Integer ? 10 : 20)
+            @time for i in 2:(T <: Integer ? 10 : 15)
                 # s = round(Int, i^1.6505149978319904)
                 s = i^3
                 # @time for s in 2:200

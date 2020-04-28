@@ -36,6 +36,7 @@ end
 
 @generated Base.size(A::AbstractFixedSizeArray{S}) where {S} = Expr(:tuple, S.parameters...)
 @generated Base.strides(A::AbstractFixedSizeArray{S,T,N,X}) where {S,T,N,X} = Expr(:tuple, X.parameters...)
+@inline Base.stride(A::AbstractStrideArray, i::Int) = strides(A)[i]
 tup_sv_quote(T) = tup_sv_quote(T.parameters)
 function tup_sv_rev_quote(T::Core.SimpleVector, s, trunc = 0)
     t = Expr(:tuple)
