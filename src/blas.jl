@@ -29,14 +29,17 @@ end
 
 function matmul_params(::Type{T}) where {T}
     W = VectorizationBase.pick_vector_width(T)
-    kc = 10(L₁ ÷ (20nᵣ * sizeof(T)))
-    mcrep =  L₂ ÷ (2kc * sizeof(T) * mᵣ * W)
-    ncrep = 5L₃ ÷ (16kc * sizeof(T) * nᵣ)
+    # kc = 10(L₁ ÷ (20nᵣ * sizeof(T)))
+    kc = 15(L₁ ÷ (20nᵣ * sizeof(T)))
+    # mcrep =  L₂ ÷ (2kc * sizeof(T) * mᵣ * W)
+    mcrep =  5L₂ ÷ (8kc * sizeof(T) * mᵣ * W)
+    ncrep = 8L₃ ÷ (16kc * sizeof(T) * nᵣ)
+    # ncrep = 5L₃ ÷ (16kc * sizeof(T) * nᵣ)
     mc = mcrep * mᵣ * W
     nc = ncrep * nᵣ * VectorizationBase.NUM_CORES
     mc, kc, nc
 end
-@generated function matmul_params_val(::Type{T}) where {T}
+function matmul_params_val(::Type{T}) where {T}
     mc, kc, nc = matmul_params(T)
     Val(mc), Val(kc), Val(nc)
 end
@@ -185,9 +188,10 @@ function jmul!(
 ) where {Tc, Ta, Tb, mc, kc, nc}
     M, K, N = matmul_sizes(C, A, B)
     if N ≤ nc
-        if isone(LinearAlgebra.stride1(A)) && ( (M < 40)  || ((M ≤ mc) && iszero(stride(A,2) % VectorizationBase.pick_vector_width(Ta))))
+        W = VectorizationBase.pick_vector_width(Tc)
+        if isone(LinearAlgebra.stride1(A)) && ( (M ≤ 72)  || ((2M ≤ 5mc) && iszero(stride(A,2) % W)))
             loopmul!(C, A, B, α, β); return C
-        elseif K < 3kc
+        elseif K ≤ 4kc
             return jmulpackAonly!(C, A, B, α, β, Val{mc}(), Val{kc}(), Val{nc}())
         end
     else#if N > 4nc
@@ -754,16 +758,14 @@ function packarray_B!(dest::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ},T}, src::Abst
     end
 end
 function packarray_B!(dest::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ},T}, src::AbstractStrideArray{Tuple{K,Nᵣ,Nᵢ},T}, nr) where {Nᵣ,K,Nᵢ,T}
-    @avx for nᵢ ∈ axes(src,3), k ∈ axes(dest,2), nᵣ ∈ axes(dest,1)
-        dest[nᵣ,k,nᵢ] = src[k,nᵣ,nᵢ]
+    @avx for nᵢ ∈ axes(src,3), k ∈ axes(dest,2), nᵣᵢ ∈ axes(dest,1)
+        dest[nᵣᵢ,k,nᵢ] = src[k,nᵣᵢ,nᵢ]
     end
     if !iszero(nr)
         nᵢ = size(dest,3)
-        @avx for k ∈ axes(dest,2), nᵣ ∈ 1:nr
-            dest[nᵣ,k,nᵢ] = src[k,nᵣ,nᵢ]
-        end
-        @avx for k ∈ axes(dest,2), nᵣ ∈ nr+1:size(dest,1)
-            dest[nᵣ,k,nᵢ] = zero(T)
+        nᵣₛ = Static{nᵣ}()
+        @avx for k ∈ axes(dest,2), nᵣᵢ ∈ 1:nᵣₛ
+            dest[nᵣ,k,nᵢ] = nᵣᵢ > nᵣ ? zero(T) : src[k,nᵣ,nᵢ]
         end
     end
 end

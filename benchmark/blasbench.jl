@@ -5,15 +5,20 @@ using MaBLAS, StructArrays, LinearAlgebra, BenchmarkTools
 using PaddedMatrices: jmul!
 BLAS.set_num_threads(1); Base.Threads.nthreads()
 
+function check_if_should_pack(C, A, mc)
+    M = size(A,1)
+    M > 72 && !((2M ≤ 5mc) & iszero(stride(A,2) % MaBLAS.VectorizationBase.pick_vector_width(eltype(C))))
+end
+
 function blocked_mul!(C, A, B)
     mc = 160
-    dopack =  2size(C,1) > 5mc
+    dopack = check_if_should_pack(C, A, mc)
     MaBLAS.mul!(C, A, B; packing=dopack, cache_params=(cache_m=mc, cache_k=400, cache_n=4080), kernel_params=(Val(16), Val(12)))
 end
 function blocked_mul40x5!(C, A, B)
-    mc = 160
-    dopack =  2size(C,1) > 5mc
-    MaBLAS.mul!(C, A, B; packing=dopack, cache_params=(cache_m=mc, cache_k=400, cache_n=4080), kernel_params=(Val(40), Val(5)))
+    mc = 120
+    dopack = check_if_should_pack(C, A, mc)
+    MaBLAS.mul!(C, A, B; packing=dopack, cache_params=(cache_m=mc, cache_k=600, cache_n=2700), kernel_params=(Val(40), Val(5)))
 end
 
 randa(::Type{T}, dim...) where {T} = rand(T, dim...)
@@ -47,7 +52,7 @@ end
 
 mkl_set_num_threads(1)
 
-function runbench(::Type{T}, sizes = [2, 4, 8:5:256..., ( (16:63) .^ 2)...]) where {T}
+function runbench(::Type{T}, sizes = [2, 4, 8:256..., ( (16:89) .^ 2)...]) where {T}
     (StructVector ∘ map)(sizes) do sz
         n, k, m = sz, sz, sz
         C1 = zeros(T, n, m)
@@ -60,22 +65,30 @@ function runbench(::Type{T}, sizes = [2, 4, 8:5:256..., ( (16:63) .^ 2)...]) whe
         BenchmarkTools.DEFAULT_PARAMETERS.seconds = 0.05
 
         opb = @elapsed mul!(C1, A, B)
-        if 2opb < BenchmarkTools.DEFAULT_PARAMETERS.seconds
-            opb = min(opb, @belapsed mul!($C1, $A, $B))         #samples=100
+        opb = if 2opb < BenchmarkTools.DEFAULT_PARAMETERS.seconds
+            min(opb, @belapsed mul!($C1, $A, $B))
+        else
+            min(opb, @elapsed mul!($C1, $A, $B))
         end
         lvb = @elapsed blocked_mul!(C2, A, B)
-        if 2lvb < BenchmarkTools.DEFAULT_PARAMETERS.seconds
-            lvb = min(lvb, @belapsed blocked_mul!($C2, $A, $B)) #samples=100
+        lvb = if 2lvb < BenchmarkTools.DEFAULT_PARAMETERS.seconds
+            min(lvb, @belapsed blocked_mul!($C2, $A, $B))
+        else
+            min(lvb, @elapsed blocked_mul!($C2, $A, $B))
         end
         @assert C1 ≈ C2
         mab = @elapsed blocked_mul40x5!(C2, A, B)
-        if 2mab < BenchmarkTools.DEFAULT_PARAMETERS.seconds
-            mab = min(mab, @belapsed blocked_mul40x5!($C2, $A, $B)) #samples=100
+        mab = if 2mab < BenchmarkTools.DEFAULT_PARAMETERS.seconds
+            min(mab, @belapsed blocked_mul40x5!($C2, $A, $B)) #samples=100
+        else
+            min(mab, @belapsed blocked_mul40x5!($C2, $A, $B)) #samples=100
         end
         @assert C1 ≈ C2
         pmb = @elapsed jmul!(C3, A, B)
-        if 2pmb < BenchmarkTools.DEFAULT_PARAMETERS.seconds
-            pmb = min(pmb, @belapsed jmul!($C3, $A, $B))         #samples=100
+        pmb = if 2pmb < BenchmarkTools.DEFAULT_PARAMETERS.seconds
+            min(pmb, @belapsed jmul!($C3, $A, $B))         #samples=100
+        else
+            min(pmb, @elapsed jmul!($C3, $A, $B))         #samples=100
         end
         @assert C1 ≈ C3
         if T <: Integer
@@ -83,8 +96,10 @@ function runbench(::Type{T}, sizes = [2, 4, 8:5:256..., ( (16:63) .^ 2)...]) whe
             @show res
         else
             mklb = @elapsed mklmul!(C4, A, B)
-            if 2mklb < BenchmarkTools.DEFAULT_PARAMETERS.seconds
-                mklb = min(mklb, @belapsed mklmul!($C4, $A, $B))         #samples=100
+            mklb = if 2mklb < BenchmarkTools.DEFAULT_PARAMETERS.seconds
+                min(mklb, @belapsed mklmul!($C4, $A, $B))
+            else
+                min(mklb, @elapsed mklmul!($C4, $A, $B))
             end
             @assert C1 ≈ C4
             res = (matrix_size=sz, MaBLAS_16x12=lvb, MaBLAS_40x5=mab, OpenBLAS=opb, PaddedMatrices = pmb, MKL = mklb)
@@ -157,7 +172,7 @@ function plot(tf, ::Type{T} = Float64, PICTURES = "/home/chriselrod/Pictures") w
         :line, color = :Library,
        x = {:Size, scale={type=:log}}, y = {:GFLOPS},#, scale={type=:log}},
         # x = {:Size}, y = {:GFLOPS},#, scale={type=:log}},
-        width = 900, height = 600
+        width = 1800, height = 600
     )
     save(joinpath(PICTURES, "gemm$(string(T)).png"), plt)
 end
