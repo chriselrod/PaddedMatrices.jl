@@ -85,72 +85,7 @@ function loopmul!(C, A, B, α, β)
     nothing
 end
 
-@static if VectorizationBase.REGISTER_SIZE ≥ 64
-    function loopmulprefetch!(C, A, B, ::Val{1}, ::Val{0})
-        M, K, N = matmul_sizes(C, A, B)
-        @avx for n ∈ 1:N, m ∈ 1:M
-            Cₘₙ = zero(eltype(C))
-            for k ∈ 1:K
-                Cₘₙ += A[m,k] * B[k,n]
-                dummy1 = prefetch0(A, m, k + 3)
-            end
-            C[m,n] = Cₘₙ
-        end
-        nothing
-    end
-    function loopmulprefetch!(C, A, B, ::Val{1}, ::Val{1})
-        M, K, N = matmul_sizes(C, A, B)
-        @avx for n ∈ 1:N, m ∈ 1:M
-            Cₘₙ = zero(eltype(C))
-            for k ∈ 1:K
-                Cₘₙ += A[m,k] * B[k,n]
-                dummy1 = prefetch0(A, m, k + 3)
-            end
-            C[m,n] += Cₘₙ
-        end
-        nothing
-    end
-    function loopmulprefetch!(C, A, B, α, ::Val{0})
-        M, K, N = matmul_sizes(C, A, B)
-        @avx for n ∈ 1:N, m ∈ 1:M
-            Cₘₙ = zero(eltype(C))
-            for k ∈ 1:K
-                Cₘₙ += A[m,k] * B[k,n]
-                dummy1 = prefetch0(A, m, k + 3)
-            end
-            C[m,n] = α * Cₘₙ
-        end
-        nothing
-    end
-    function loopmulprefetch!(C, A, B, α, ::Val{1})
-        M, K, N = matmul_sizes(C, A, B)
-        @avx for n ∈ 1:N, m ∈ 1:M
-            Cₘₙ = zero(eltype(C))
-            for k ∈ 1:K
-                Cₘₙ += A[m,k] * B[k,n]
-                dummy1 = prefetch0(A, m, k + 3)
-            end
-            C[m,n] += α * Cₘₙ
-        end
-        nothing
-    end
-    function loopmulprefetch!(C, A, B, α, β)
-        M, K, N = matmul_sizes(C, A, B)
-        @avx for n ∈ 1:N, m ∈ 1:M
-            Cₘₙ = zero(eltype(C))
-            for k ∈ 1:K
-                Cₘₙ += A[m,k] * B[k,n]
-                dummy1 = prefetch0(A, m, k + 3)
-                # dummy1 = prefetch0(A, m + mᵣ, k)
-                # dummy2 = prefetch0(B, k, n, 0, nᵣ)
-            end
-            C[m,n] = β * C[m,n] + α * Cₘₙ
-        end
-        nothing
-    end
-else
 const loopmulprefetch! = loopmul!
-end
 
 @inline function inlineloopmul!(C, A, B, ::Val{1}, ::Val{0})
     M, K, N = matmul_sizes(C, A, B)

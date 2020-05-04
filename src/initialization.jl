@@ -229,17 +229,21 @@ end
 function PtrMatrix{M,-1}(A::PackedStridedPointer{T,1}, ::Static{N}) where {M, N, T}
     PtrArray{Tuple{M, N}, T, 2, Tuple{1,-1}, 0, 1, false}(pointer(A), tuple(), A.strides)
 end
-function PtrMatrix{-1,-1}(A::PackedStridedPointer{T,1}, nrows::Integer, ncols::Integer) where {T}
+function PtrMatrix(A::PackedStridedPointer{T,1}, nrows::Integer, ncols::Integer) where {T}
     PtrArray{Tuple{-1, -1}, T, 2, Tuple{1,-1}, 2, 1, false}(pointer(A), (nrows,ncols), A.strides)
 end
-function PtrMatrix{-1,-1}(A::PackedStridedPointer{T,1}, ::Static{M}, ncols::Integer) where {T, M}
+function PtrMatrix(A::PackedStridedPointer{T,1}, ::Static{M}, ncols::Integer) where {T, M}
     PtrArray{Tuple{M, -1}, T, 2, Tuple{1,-1}, 1, 1, false}(pointer(A), (ncols,), A.strides)
 end
-function PtrMatrix{-1,-1}(A::PackedStridedPointer{T,1}, nrows::Integer, ::Static{N}) where {T, N}
+function PtrMatrix(A::PackedStridedPointer{T,1}, nrows::Integer, ::Static{N}) where {T, N}
     PtrArray{Tuple{-1, N}, T, 2, Tuple{1,-1}, 1, 1, false}(pointer(A), (nrows,), A.strides)
 end
-function PtrMatrix{-1,-1}(A::PackedStridedPointer{T,1}, ::Static{M}, ::Static{N}) where {T, M, N}
+function PtrMatrix(A::PackedStridedPointer{T,1}, ::Static{M}, ::Static{N}) where {T, M, N}
     PtrArray{Tuple{M,N}, T, 2, Tuple{1,-1}, 0, 1, false}(pointer(A), tuple(), A.strides)
+end
+function PtrArray{Tuple{-1,M,-1},T,3}(A::PackedStridedPointer{T,1}, sz::Tuple{Int,Int}) where {M,T}
+    Ax = first(A.strides)
+    PtrArray{Tuple{-1,M,-1}, T, 3, Tuple{1,-1,-1}, 2, 2, false}(pointer(A), sz, (Ax,Ax*M))
 end
 
 function PtrMatrix{M,N}(A::StaticStridedPointer{T,X}) where {M, N, T, X}
@@ -257,16 +261,16 @@ end
 function PtrMatrix{M,-1}(A::StaticStridedPointer{T,X}, ::Static{N}) where {M, N, T, X}
     PtrArray{Tuple{M, N}, T, 2, X, 0, 0, false}(pointer(A), tuple(), tuple())
 end
-function PtrMatrix{-1,-1}(A::StaticStridedPointer{T,X}, nrows::Integer, ncols::Integer) where {T, X}
+function PtrMatrix(A::StaticStridedPointer{T,X}, nrows::Integer, ncols::Integer) where {T, X}
     PtrArray{Tuple{-1, -1}, T, 2, X, 2, 0, false}(pointer(A), (nrows,ncols), tuple())
 end
-function PtrMatrix{-1,-1}(A::StaticStridedPointer{T,X}, ::Static{M}, ncols::Integer) where {T, M, X}
+function PtrMatrix(A::StaticStridedPointer{T,X}, ::Static{M}, ncols::Integer) where {T, M, X}
     PtrArray{Tuple{M, -1}, T, 2, X, 1, 0, false}(pointer(A), (ncols,), tuple())
 end
-function PtrMatrix{-1,-1}(A::StaticStridedPointer{T,X}, nrows::Integer, ::Static{N}) where {T, N, X}
+function PtrMatrix(A::StaticStridedPointer{T,X}, nrows::Integer, ::Static{N}) where {T, N, X}
     PtrArray{Tuple{-1, N}, T, 2, X, 1, 0, false}(pointer(A), (nrows,), tuple())
 end
-function PtrMatrix{-1,-1}(A::StaticStridedPointer{T,X}, ::Static{M}, ::Static{N}) where {T, M, N, X}
+function PtrMatrix(A::StaticStridedPointer{T,X}, ::Static{M}, ::Static{N}) where {T, M, N, X}
     PtrArray{Tuple{M,N}, T, 2, X, 0, 0, false}(pointer(A), tuple(), tuple())
 end
                      
@@ -312,17 +316,29 @@ end
 function PtrMatrix{M,-1,X}(A::Ptr{T}, ::Static{N}) where {M, N, T, X}
     PtrArray{Tuple{M, N}, T, 2, Tuple{1,X}, 0, 0, false}(A, tuple(), tuple())
 end
-function PtrMatrix{-1,-1,X}(A::Ptr{T}, nrows::Integer, ncols::Integer) where {T, X}
+function PtrMatrix{X}(A::Ptr{T}, nrows::Integer, ncols::Integer) where {T, X}
     PtrArray{Tuple{-1, -1}, T, 2, Tuple{1,X}, 2, 0, false}(A, (nrows,ncols), tuple())
 end
-function PtrMatrix{-1,-1,X}(A::Ptr{T}, nrows::Integer, ::Static{N}) where {N, T, X}
+function PtrMatrix{X}(A::Ptr{T}, nrows::Integer, ::Static{N}) where {N, T, X}
     PtrArray{Tuple{-1, N}, T, 2, Tuple{1,X}, 1, 0, false}(A, (nrows,), tuple())
 end
-function PtrMatrix{-1,-1,X}(A::Ptr{T}, ::Static{M}, ncols::Integer) where {M, T, X}
+function PtrMatrix{X}(A::Ptr{T}, ::Static{M}, ncols::Integer) where {M, T, X}
     PtrArray{Tuple{M, -1}, T, 2, Tuple{1,X}, 1, 0, false}(A, (ncols,), tuple())
 end
-function PtrMatrix{-1,-1,X}(A::Ptr{T}, ::Static{M}, ::Static{N}) where {M, N, T, X}
+function PtrMatrix{X}(A::Ptr{T}, ::Static{M}, ::Static{N}) where {M, N, T, X}
     PtrArray{Tuple{M, N}, T, 2, Tuple{1,X}, 0, 0, false}(A, tuple(), tuple())
+end
+function PtrMatrix(A::Ptr{T}, nrows::Integer, ncols::Integer, X) where {T}
+    PtrArray{Tuple{-1, -1}, T, 2, Tuple{1,-1}, 2, 1, false}(A, (nrows,ncols), (X,))
+end
+function PtrMatrix(A::Ptr{T}, nrows::Integer, ::Static{N}, X) where {N, T}
+    PtrArray{Tuple{-1, N}, T, 2, Tuple{1,-1}, 1, 1, false}(A, (nrows,), (X,))
+end
+function PtrMatrix(A::Ptr{T}, ::Static{M}, ncols::Integer, X) where {M, T}
+    PtrArray{Tuple{M, -1}, T, 2, Tuple{1,-1}, 1, 1, false}(A, (ncols,), (X,))
+end
+function PtrMatrix(A::Ptr{T}, ::Static{M}, ::Static{N}, X) where {M, N, T}
+    PtrArray{Tuple{M, N}, T, 2, Tuple{1,-1}, 0, 1, false}(A, tuple(), (X,))
 end
 
 

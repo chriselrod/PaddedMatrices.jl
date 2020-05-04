@@ -32,7 +32,7 @@ include("adjoints.jl")
 include("stridedpointers.jl")
 include("indexing.jl")
 include("initialization.jl")
-include("views.jl")
+# include("views.jl")
 include("rand.jl")
 include("kernels.jl")
 include("blas.jl")
@@ -73,13 +73,16 @@ function cache_sizes()
 end
 const L₁, L₂, L₃ = cache_sizes()
 
-const LCACHE = Float64[]
+const LCACHEARRAY = Float64[]
+const LCACHE = Ref{Ptr{Float64}}()
+
 function threadlocal_L2CACHE_pointer(::Type{T} = Float64, threadid = Threads.threadid()) where {T}
-    Base.unsafe_convert(Ptr{T}, pointer(LCACHE)) + (L₂ + L₃) * (threadid - 1)
+    Base.unsafe_convert(Ptr{T}, LCACHE[]) + (L₂ + L₃) * (threadid - 1)
 end
 function threadlocal_L3CACHE_pointer(::Type{T} = Float64, threadid = Threads.threadid()) where {T}
-    Base.unsafe_convert(Ptr{T}, pointer(LCACHE)) + (L₂ + L₃) * (threadid - 1) + L₂
+    Base.unsafe_convert(Ptr{T}, LCACHE[]) + (L₂ + L₃) * (threadid - 1) + L₂
 end
+#=
 const ACACHE = Float64[]
 const BCACHE = Float64[]
 A_pointer(::Type{T}) where {T} = Base.unsafe_convert(Ptr{T}, pointer(ACACHE))
@@ -100,13 +103,15 @@ end
 function B_pointer(::Type{T} = Float64) where {T}
     Base.unsafe_convert(Ptr{T}, pointer(BCACHE))# + L₃ * (threadid - 1)
 end
-
+=#
 
 function __init__()
-    set_zero_subnormals(true)
-    resize!(LCACHE, ((L₂ + L₃) >>> 3) * Threads.nthreads())
-    @assert iszero(reinterpret(UInt, pointer(LCACHE)) % 64)
-    resize!(BCACHE, (L₃ >>> 3) )#* Threads.nthreads())
+#    set_zero_subnormals(true)
+    page_size = ccall(:jl_getpagesize, Int, ())
+    resize!(LCACHEARRAY, ((L₂ + L₃ * VectorizationBase.NUM_CORES) >>> 3) * Threads.nthreads() + page_size)
+    LCACHE[] = VectorizationBase.align(pointer(LCACHEARRAY), page_size)
+    @assert iszero(reinterpret(UInt, LCACHE[]) % page_size)
+  #  resize!(BCACHE, (L₃ >>> 3) )#* Threads.nthreads())
     # @require ForwardDiff="f6369f11-7733-5829-9624-2563aa707210" @eval using PaddedMatricesForwardDiff
 end
 

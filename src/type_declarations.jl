@@ -25,6 +25,14 @@ struct PtrArray{S,T,N,X,SN,XN,V} <: AbstractPtrStrideArray{S,T,N,X,SN,XN,V}
     ptr::Ptr{T}
     size::NTuple{SN,Int}
     stride::NTuple{XN,Int}
+    @inline function PtrArray{S,T,N,X,SN,XN,V}(ptr::Ptr{T}, size::NTuple{SN,Int}, stride::NTuple{XN,Int}) where {S,T,N,X,SN,XN,V}
+        @assert N == length(S.parameters) == length(X.parameters) "Dimensions declared: $N; Size: $S; Strides: $X"
+#        quote
+#            $(Expr(:meta,:inline))
+        # new{$S,$T,$N,$X,$SN,$XN,$V}(ptr, size, stride)
+        new(ptr, size, stride)
+#        end
+    end
 end
 # const LazyArray{F,S,T,N,X,SN,XN,V,L} = VectorizationBase.LazyMap{F,A,A<:AbstractStrideArray{S,T,N,X,SN,XN,V,L}}
 struct LazyMap{F,S,T,N,X,SN,XN,V} <: AbstractStrideArray{S,T,N,X,SN,XN,V}

@@ -1,13 +1,5 @@
 
 @testset "MatMul" begin
-    @testset "FixedSize" begin
-        for s in 2:32
-            A = @FixedSize rand(s,s);
-            B = @FixedSize rand(s,s);
-            Aa = Array(A); Ba = Array(B);
-            @test Aa * Ba ≈ A * B
-        end
-    end
     @testset "jmul" begin
         for T in (Float32, Float64, Int32, Int64)
             @show T, @__LINE__
@@ -27,6 +19,14 @@
                 @show s, pmtime, pmops
                 @test C1 ≈ C2
             end
+        end
+    end
+    @testset "FixedSize" begin
+        for s in 2:32
+            A = @FixedSize rand(s,s);
+            B = @FixedSize rand(s,s);
+            Aa = Array(A); Ba = Array(B);
+            @test Aa * Ba ≈ A * B
         end
     end
 end

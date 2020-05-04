@@ -46,7 +46,7 @@ struct ViewAdjoint{SP,SV,XP,XV,SN,XN}
     stride::NTuple{XN,UInt32}
 end
 
-
+static_type(::Type{StaticUnitRange{L,U}}) where {L,U} = (L,U)
 function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Bool, scalarview::Bool)
     N = length(SV)
     s2 = Int[]
@@ -120,9 +120,9 @@ function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Boo
     end
     if partial
         partial_expr = :(ViewAdjoint{$(Tuple{SV...}),$S2,$(Tuple{XV...}),$X2,$SN,$XN}(_offset, $st2, $xt2))
-        push!(q.args, :(@inbounds $arraydef(gep(pointer(A), _offset), $st2, $xt2), $partial))
+        push!(q.args, :(@inbounds $arraydef( _offset, $st2, $xt2), $partial))
     else
-        push!(q.args, :(@inbounds $arraydef(gep(pointer(A), _offset), $st2, $xt2)))
+        push!(q.args, :(@inbounds $arraydef( _offset, $st2, $xt2)))
     end
     q
 end
@@ -134,7 +134,9 @@ Perhaps R should be made into a stride-tuple?
     @assert length(inds) == N
     generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, false)
 end
-Base.@propagate_inbounds Base.getindex(A::AbstractStrideArray{S,T,N}, inds::Vararg{<:Any,N}) where {S,T,N} = view(A, inds...)
+Base.@propagate_inbounds function Base.getindex(A::AbstractStrideArray{S,T,N}, inds::Vararg{<:Any,N}) where {S,T,N}
+    view(A, inds...)
+end
 @generated function Base.view(A::AbstractPtrStrideArray{S,T,N,X,SN,XN,V}, inds...) where {S,T,N,X,SN,XN,V}
     @assert length(inds) == N
     generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, true)
