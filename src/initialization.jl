@@ -212,7 +212,7 @@ end
     PtrArray{S,T,N,X,0,0,V}(pointer(A), tuple(), tuple())
 end
 function PtrArray(A::AbstractArray)
-    PtrArray(stridepointer(A), size(A))
+    PtrArray(stridedpointer(A), size(A))
 end
 function PtrMatrix{M,N}(A::PackedStridedPointer{T,1}) where {M, N, T}
     PtrArray{Tuple{M,N},T,2,Tuple{1,-1},0,1,false}(pointer(A), tuple(), A.strides)

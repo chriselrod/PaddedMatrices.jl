@@ -36,7 +36,7 @@ function matmul_params(::Type{T}) where {T}
     ncrep = 8L₃ ÷ (16kc * sizeof(T) * nᵣ)
     # ncrep = 5L₃ ÷ (16kc * sizeof(T) * nᵣ)
     mc = mcrep * mᵣ * W
-    nc = ncrep * nᵣ * VectorizationBase.NUM_CORES
+    nc = ncrep * nᵣ #* VectorizationBase.NUM_CORES
     mc, kc, nc
 end
 function matmul_params_val(::Type{T}) where {T}
@@ -123,8 +123,7 @@ function pack_A(Aptr, mc, kc, ::Type{Ta}, mo::Int, k::Int) where {Ta}
     Apacked
 end
 
-function jmulpackAonly!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}) where {Tc, Ta, Tb, mc, kc, nc}
-    M, K, N = matmul_sizes(C, A, B)
+function jmulpackAonly!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}, (M, K, N) = matmul_sizes(C, A, B)) where {Tc, Ta, Tb, mc, kc, nc}
     W = VectorizationBase.pick_vector_width(Tc)
     mᵣW = mᵣ * W
 
@@ -153,13 +152,13 @@ function jmulpackAonly!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::Abstrac
             # pack mreps_per_iter x Krepetitions block of A
             Apacked_krem = pack_A_krem(Aptr, mreps_per_iter, Tc, mo, Krem)
             Cpmat_nrem = PtrMatrix(gesp(Cptr, (mo*mreps_per_iter, 0)), mreps_per_iter, N)
-            loopmulprefetch!(Cpmat_nrem, Apacked_krem, Bpacked_krem_nrem, α, β)
+            loopmul!(Cpmat_nrem, Apacked_krem, Bpacked_krem_nrem, α, β, (mreps_per_iter, Krem, N))
         end
         # Mrem
         if Mrem > 0
             Apacked_mrem_krem = pack_A_mrem_krem(Aptr, mreps_per_iter, Tc, Mrem, Krem, Miter)
             Cpmat_mrem_nrem = PtrMatrix(gesp(Cptr, (Miter*mreps_per_iter, 0)), Mrem, N)
-            loopmulprefetch!(Cpmat_mrem_nrem, Apacked_mrem_krem, Bpacked_krem_nrem, α, β)
+            loopmul!(Cpmat_mrem_nrem, Apacked_mrem_krem, Bpacked_krem_nrem, α, β, (Mrem, Krem, N))
         end
         k = Krem
         for ko in 1:Kiter
@@ -169,13 +168,13 @@ function jmulpackAonly!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::Abstrac
                 # pack mreps_per_iter x Krepetitions block of A
                 Apacked = pack_A(Aptr, mreps_per_iter, Krepetitions, Tc, mo, k)
                 Cpmat_nrem = PtrMatrix(gesp(Cptr, (mo*mreps_per_iter, 0)), mreps_per_iter, N)
-                loopmulprefetch!(Cpmat_nrem, Apacked, Bpacked_nrem, α, Val{1}())
+                loopmul!(Cpmat_nrem, Apacked, Bpacked_nrem, α, Val{1}(), (mreps_per_iter, Krepetitions, N))
             end
             # Mrem
             if Mrem > 0
                 Apacked_mrem = pack_A_mrem(Aptr, mreps_per_iter, Krepetitions, Tc, Mrem, k, Miter)
                 Cpmat_mrem_nrem = PtrMatrix(gesp(Cptr, (Miter*mreps_per_iter, 0)), Mrem, N)
-                loopmulprefetch!(Cpmat_mrem_nrem, Apacked_mrem, Bpacked_nrem, α, Val{1}())
+                loopmul!(Cpmat_mrem_nrem, Apacked_mrem, Bpacked_nrem, α, Val{1}(), (Mrem, Krepetitions, N))
             end
             k += Krepetitions
         end
@@ -183,10 +182,29 @@ function jmulpackAonly!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::Abstrac
     C
 end
 
+
+contiguousstride1(::Any) = false
+contiguousstride1(::DenseArray) = true
+contiguousstride1(A::LinearAlgebra.StridedArray) = isone(stride1(A))
+contiguousstride1(::SubArray{T,N,P,S}) where {T,N,P,S<:Tuple{Int,Vararg}} = false
+
+
+
 function jmul!(
-    C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}
+    C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}, (M, K, N) = matmul_sizes(C, A, B)
 ) where {Tc, Ta, Tb, mc, kc, nc}
-    M, K, N = matmul_sizes(C, A, B)
+    if K * N ≤ kc * nc#L₃ * VectorizationBase.NUM_CORES
+        W = VectorizationBase.pick_vector_width(Tc)
+        if contiguousstride1(A) && ( (M ≤ 72)  || ((2M ≤ 5mc) && iszero(stride(A,2) % W)))
+            loopmul!(C, A, B, α, β, (M,K,N))
+            return C
+        else
+            return jmulpackAonly!(C, A, B, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
+        end
+    else
+        return jmulh!(C, A, B, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
+    end
+    
     if N ≤ nc
         W = VectorizationBase.pick_vector_width(Tc)
         if isone(LinearAlgebra.stride1(A)) && ( (M ≤ 72)  || ((2M ≤ 5mc) && iszero(stride(A,2) % W)))
@@ -451,7 +469,7 @@ function loopmul!(
     C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ,Nᵢ}},
     A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
     B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
-    ::Val{1}, ::Val{0}
+    ::Val{1}, ::Val{0},
 ) where {Mᵣ,Mᵢ,K,Nᵣ,Nᵢ}
     Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
     Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
@@ -752,7 +770,6 @@ function packarray_A!(dest::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}}, src::Abstra
     end
 end
 function packarray_B!(dest::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ},T}, src::AbstractStrideArray{Tuple{K,Nᵣ,Nᵢ},T}) where {Nᵣ,K,Nᵢ,T}
-    # @inbounds for k ∈ axes(dest,2), nᵢ ∈ axes(dest,3), nᵣ ∈ axes(dest,1)
     @avx for k ∈ axes(dest,2), nᵢ ∈ axes(dest,3), nᵣ ∈ axes(dest,1)
         dest[nᵣ,k,nᵢ] = src[k,nᵣ,nᵢ]
     end
@@ -764,8 +781,13 @@ function packarray_B!(dest::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ},T}, src::Abst
     if !iszero(nr)
         nᵢ = size(dest,3)
         nᵣₛ = Static{nᵣ}()
-        @avx for k ∈ axes(dest,2), nᵣᵢ ∈ 1:nᵣₛ
-            dest[nᵣ,k,nᵢ] = nᵣᵢ > nᵣ ? zero(T) : src[k,nᵣ,nᵢ]
+        # @avx for k ∈ axes(dest,2), nᵣᵢ ∈ 1:nᵣₛ
+            # dest[nᵣᵢ,k,nᵢ] = nᵣᵢ ≤ nᵣ ? src[k,nᵣᵢ,nᵢ] : zero(T)
+        # end
+        @inbounds for k ∈ axes(dest,2)
+             @simd ivdep for nᵣᵢ ∈ 1:nᵣₛ
+                 dest[nᵣᵢ,k,nᵢ] = nᵣᵢ ≤ nᵣ ? src[k,nᵣᵢ,nᵢ] : zero(T)
+             end
         end
     end
 end
@@ -875,12 +897,11 @@ function jmulh!(
     jmulh!(C, A, B, α, β, mc, kc, nc)
 end
 function jmulh!(
-    C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}
+    C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}, (M, K, N) = matmul_sizes(C, A, B)
 # ) where {Tc, Ta, Tb}
 ) where {Ta, Tb, Tc, mc, kc, nc}
     W = VectorizationBase.pick_vector_width(Tc)
     mᵣW = mᵣ * W
-    M, K, N = matmul_sizes(C, A, B)
 
     num_n_iter = cld(N, nc)
     nreps_per_iter = N ÷ num_n_iter
@@ -1010,7 +1031,7 @@ function jmulh!(
                 if ncrepremrem > 0
                     # if calcnrrem && ncrepremrem > 0
                     Cpmat_mrem_nrem = PtrMatrix(gesp(Cptr, (Miter*mreps_per_iter, Noff + ncreprem * nᵣ)), Mrem, ncrepremrem)
-                    loopmul!(Cpmat_mrem_nrem, Apacked_mrem_krem, Bpacked_krem_nrem', α, β)
+                    loopmul!(Cpmat_mrem_nrem, Apacked_mrem_krem, Bpacked_krem_nrem', α, β, (Mrem, Krem, ncrepremrem))
                 end
 
             end
@@ -1051,7 +1072,7 @@ function jmulh!(
                     # if calcnrrem && ncrepremrem > 0
                     if ncrepremrem > 0
                         Cpmat_mrem_nrem = PtrMatrix(gesp(Cptr, (Miter*mreps_per_iter, Noff + ncreprem * nᵣ)), Mrem, ncrepremrem)
-                        loopmul!(Cpmat_mrem_nrem, Apacked_mrem, Bpacked_nrem', α, Val(1))
+                        loopmul!(Cpmat_mrem_nrem, Apacked_mrem, Bpacked_nrem', α, Val(1), (Mrem, Krepetitions, ncrepremrem))
                     end
 
                 end

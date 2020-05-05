@@ -28,8 +28,7 @@ let GEMMLOOPSET = LoopVectorization.LoopSet(
     
 end
 
-function loopmul!(C, A, B, ::Val{1}, ::Val{0})
-    M, K, N = matmul_sizes(C, A, B)
+function loopmul!(C, A, B, ::Val{1}, ::Val{0}, (M, K, N) = matmul_sizes(C, A, B))
     @avx for n ∈ 1:N, m ∈ 1:M
         Cₘₙ = zero(eltype(C))
         for k ∈ 1:K
@@ -39,8 +38,7 @@ function loopmul!(C, A, B, ::Val{1}, ::Val{0})
     end
     nothing
 end
-function loopmul!(C, A, B, ::Val{1}, ::Val{1})
-    M, K, N = matmul_sizes(C, A, B)
+function loopmul!(C, A, B, ::Val{1}, ::Val{1}, (M, K, N) = matmul_sizes(C, A, B))
     @avx for n ∈ 1:N, m ∈ 1:M
         Cₘₙ = zero(eltype(C))
         for k ∈ 1:K
@@ -50,8 +48,7 @@ function loopmul!(C, A, B, ::Val{1}, ::Val{1})
     end
     nothing
 end
-function loopmul!(C, A, B, α, ::Val{0})
-    M, K, N = matmul_sizes(C, A, B)
+function loopmul!(C, A, B, α, ::Val{0}, (M, K, N) = matmul_sizes(C, A, B))
     @avx for n ∈ 1:N, m ∈ 1:M
         Cₘₙ = zero(eltype(C))
         for k ∈ 1:K
@@ -62,8 +59,7 @@ function loopmul!(C, A, B, α, ::Val{0})
     nothing
 end
 
-function loopmul!(C, A, B, α, ::Val{1})
-    M, K, N = matmul_sizes(C, A, B)
+function loopmul!(C, A, B, α, ::Val{1}, (M, K, N) = matmul_sizes(C, A, B))
     @avx for n ∈ 1:N, m ∈ 1:M
         Cₘₙ = zero(eltype(C))
         for k ∈ 1:K
@@ -73,8 +69,7 @@ function loopmul!(C, A, B, α, ::Val{1})
     end
     nothing
 end
-function loopmul!(C, A, B, α, β)
-    M, K, N = matmul_sizes(C, A, B)
+function loopmul!(C, A, B, α, β, (M, K, N) = matmul_sizes(C, A, B))
     @avx for n ∈ 1:N, m ∈ 1:M
         Cₘₙ = zero(eltype(C))
         for k ∈ 1:K
@@ -109,8 +104,7 @@ end
     end
     C
 end
-inlineloopmul!(C, A, B, α, β) = inlineloopmuladd!(C, A, B, α, β)
-@inline function inlineloopmuladd!(C, A, B, α, β)
+@inline function inlineloopmul!(C, A, B, α, β)
     M, K, N = matmul_sizes(C, A, B)
     @avx for n ∈ 1:N, m ∈ 1:M
         Cₘₙ = zero(eltype(C))

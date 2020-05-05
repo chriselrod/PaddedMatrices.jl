@@ -1,7 +1,7 @@
 
 #using Gaius
 
-using MaBLAS, StructArrays, LinearAlgebra, BenchmarkTools
+using MaBLAS, PaddedMatrices, StructArrays, LinearAlgebra, BenchmarkTools
 using PaddedMatrices: jmul!
 BLAS.set_num_threads(1); Base.Threads.nthreads()
 
@@ -52,7 +52,7 @@ end
 
 mkl_set_num_threads(1)
 
-function runbench(::Type{T}, sizes = [2, 4, 8:256..., ( (16:89) .^ 2)...]) where {T}
+function runbench(::Type{T}, sizes = [2:255..., ( round.(Int, range(26.15105483720698,length=201) .^ 1.6989476505010863))...]) where {T}
     (StructVector ∘ map)(sizes) do sz
         n, k, m = sz, sz, sz
         C1 = zeros(T, n, m)
@@ -68,27 +68,27 @@ function runbench(::Type{T}, sizes = [2, 4, 8:256..., ( (16:89) .^ 2)...]) where
         opb = if 2opb < BenchmarkTools.DEFAULT_PARAMETERS.seconds
             min(opb, @belapsed mul!($C1, $A, $B))
         else
-            min(opb, @elapsed mul!($C1, $A, $B))
+            min(opb, @elapsed mul!(C1, A, B))
         end
         lvb = @elapsed blocked_mul!(C2, A, B)
         lvb = if 2lvb < BenchmarkTools.DEFAULT_PARAMETERS.seconds
             min(lvb, @belapsed blocked_mul!($C2, $A, $B))
         else
-            min(lvb, @elapsed blocked_mul!($C2, $A, $B))
+            min(lvb, @elapsed blocked_mul!(C2, A, B))
         end
         @assert C1 ≈ C2
         mab = @elapsed blocked_mul40x5!(C2, A, B)
         mab = if 2mab < BenchmarkTools.DEFAULT_PARAMETERS.seconds
             min(mab, @belapsed blocked_mul40x5!($C2, $A, $B)) #samples=100
         else
-            min(mab, @belapsed blocked_mul40x5!($C2, $A, $B)) #samples=100
+            min(mab, @elapsed blocked_mul40x5!(C2, A, B)) #samples=100
         end
         @assert C1 ≈ C2
         pmb = @elapsed jmul!(C3, A, B)
         pmb = if 2pmb < BenchmarkTools.DEFAULT_PARAMETERS.seconds
             min(pmb, @belapsed jmul!($C3, $A, $B))         #samples=100
         else
-            min(pmb, @elapsed jmul!($C3, $A, $B))         #samples=100
+            min(pmb, @elapsed jmul!(C3, A, B))         #samples=100
         end
         @assert C1 ≈ C3
         if T <: Integer
@@ -99,7 +99,7 @@ function runbench(::Type{T}, sizes = [2, 4, 8:256..., ( (16:89) .^ 2)...]) where
             mklb = if 2mklb < BenchmarkTools.DEFAULT_PARAMETERS.seconds
                 min(mklb, @belapsed mklmul!($C4, $A, $B))
             else
-                min(mklb, @elapsed mklmul!($C4, $A, $B))
+                min(mklb, @elapsed mklmul!(C4, A, B))
             end
             @assert C1 ≈ C4
             res = (matrix_size=sz, MaBLAS_16x12=lvb, MaBLAS_40x5=mab, OpenBLAS=opb, PaddedMatrices = pmb, MKL = mklb)
@@ -172,7 +172,7 @@ function plot(tf, ::Type{T} = Float64, PICTURES = "/home/chriselrod/Pictures") w
         :line, color = :Library,
        x = {:Size, scale={type=:log}}, y = {:GFLOPS},#, scale={type=:log}},
         # x = {:Size}, y = {:GFLOPS},#, scale={type=:log}},
-        width = 1800, height = 600
+        width = 2400, height = 600
     )
     save(joinpath(PICTURES, "gemm$(string(T)).png"), plt)
 end
