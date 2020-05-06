@@ -5,20 +5,24 @@ using MaBLAS, PaddedMatrices, StructArrays, LinearAlgebra, BenchmarkTools
 using PaddedMatrices: jmul!
 BLAS.set_num_threads(1); Base.Threads.nthreads()
 
-function check_if_should_pack(C, A, mc)
-    M = size(A,1)
-    M > 72 && !((2M ≤ 5mc) & iszero(stride(A,2) % MaBLAS.VectorizationBase.pick_vector_width(eltype(C))))
+function check_if_should_pack(C, A, cache_params)
+    M, K = size(A)
+    N = size(C,2)
+    mc, kc, nc = cache_params
+    pack_a = M > 72 && !((2M ≤ 5mc) & iszero(stride(A,2) % MaBLAS.VectorizationBase.pick_vector_width(eltype(C))))
+    pack_b = K * N > kc * nc
+    pack_a, pack_b
 end
 
 function blocked_mul!(C, A, B)
-    mc = 160
-    dopack = check_if_should_pack(C, A, mc)
-    MaBLAS.mul!(C, A, B; packing=dopack, cache_params=(cache_m=mc, cache_k=400, cache_n=4080), kernel_params=(Val(16), Val(12)))
+    cache_params = (cache_m = 128, cache_k = 529, cache_n = 2454)
+    dopack = check_if_should_pack(C, A, cache_params)
+    MaBLAS.mul!(C, A, B; packing=dopack, cache_params=cache_params, kernel_params=(Val(32), Val(6)))
 end
 function blocked_mul40x5!(C, A, B)
-    mc = 120
-    dopack = check_if_should_pack(C, A, mc)
-    MaBLAS.mul!(C, A, B; packing=dopack, cache_params=(cache_m=mc, cache_k=600, cache_n=2700), kernel_params=(Val(40), Val(5)))
+    cache_params = (cache_m = 120, cache_k = 532, cache_n = 2440)
+    dopack = check_if_should_pack(C, A, cache_params)
+    MaBLAS.mul!(C, A, B; packing=dopack, cache_params=cache_params, kernel_params=(Val(40), Val(5)))
 end
 
 randa(::Type{T}, dim...) where {T} = rand(T, dim...)

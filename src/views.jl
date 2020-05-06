@@ -42,8 +42,8 @@ staticrangelength(::Type{VectorizationBase.StaticUnitRange{L,U}}) where {L,U} = 
 
 struct ViewAdjoint{SP,SV,XP,XV,SN,XN}
     offset::Int
-    size::NTuple{SN,UInt32}
-    stride::NTuple{XN,UInt32}
+    size::NTuple{SN,Int}
+    stride::NTuple{XN,Int}
 end
 
 static_type(::Type{StaticUnitRange{L,U}}) where {L,U} = (L,U)
@@ -83,10 +83,10 @@ function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Boo
             elseif inds[n] <: AbstractRange{<:Integer}
                 push!(s2, -1)
                 push!(offset_expr, :($xvn * @inbounds( first(inds[$n]) - 1 )))
-                push!(st2.args, Expr(:call, :%, Expr(:call, :length, :(@inbounds(inds[$n]))), UInt32))
+                push!(st2.args, Expr(:call, :length, :(@inbounds(inds[$n]))), Int)
             elseif inds[n] <: Base.OneTo
                 push!(s2, -1)
-                push!(st2.args, Expr(:call, :%, Expr(:call, :length, :(@inbounds(inds[$n]))), UInt32))
+                push!(st2.args, Expr(:call, :length, :(@inbounds(inds[$n]))), Int)
             else
                 throw("Indices of type $(inds[n]) not currently supported.")
             end
