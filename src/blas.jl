@@ -776,21 +776,22 @@ function packarray_B!(dest::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ},T}, src::Abst
         dest[nᵣ,k,nᵢ] = src[k,nᵣ,nᵢ]
     end
 end
-function packarray_B!(dest::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ},T}, src::AbstractStrideArray{Tuple{K,Nᵣ,Nᵢ},T}, nr) where {Nᵣ,K,Nᵢ,T}
-    @avx for nᵢ ∈ axes(src,3), k ∈ axes(dest,2), nᵣᵢ ∈ axes(dest,1)
+function packarray_B!(dest::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ},T}, src::AbstractStrideArray{Tuple{K,Nᵣ,Nᵢ},T}, nrem) where {Nᵣ,K,Nᵢ,T}
+    nᵢaxis = 1:(size(src,3) - !iszero(nrem))
+    @avx inline=true for nᵢ ∈ nᵢaxis, k ∈ axes(dest,2), nᵣᵢ ∈ axes(dest,1)
         dest[nᵣᵢ,k,nᵢ] = src[k,nᵣᵢ,nᵢ]
     end
-    if !iszero(nr)
+    if !iszero(nrem)
         nᵢ = size(dest,3)
         nᵣₛ = Static{nᵣ}()
-        # @avx for k ∈ axes(dest,2), nᵣᵢ ∈ 1:nᵣₛ
-            # dest[nᵣᵢ,k,nᵢ] = nᵣᵢ ≤ nᵣ ? src[k,nᵣᵢ,nᵢ] : zero(T)
-        # end
-        @inbounds for k ∈ axes(dest,2)
-             @simd ivdep for nᵣᵢ ∈ 1:nᵣₛ
-                 dest[nᵣᵢ,k,nᵢ] = nᵣᵢ ≤ nᵣ ? src[k,nᵣᵢ,nᵢ] : zero(T)
-             end
+        @avx inline=true for k ∈ axes(dest,2), nᵣᵢ ∈ 1:nᵣₛ
+            dest[nᵣᵢ,k,nᵢ] = nᵣᵢ ≤ nrem ? src[k,nᵣᵢ,nᵢ] : zero(T)
         end
+        # @inbounds for k ∈ axes(dest,2)
+             # @simd ivdep for nᵣᵢ ∈ 1:nᵣₛ
+                 # dest[nᵣᵢ,k,nᵢ] = nᵣᵢ ≤ nrem ? src[k,nᵣᵢ,nᵢ] : zero(T)
+             # end
+        # end
     end
 end
 
