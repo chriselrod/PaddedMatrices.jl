@@ -4,38 +4,15 @@
 using Gaius, MaBLAS, PaddedMatrices, StructArrays, LinearAlgebra, BenchmarkTools
 BLAS.set_num_threads(1); Base.Threads.nthreads()
 
-<<<<<<< HEAD
-
-function check_if_should_pack(C, A, mc, kc, nc)
-    M,K = size(A)
-    N = size(C,2)
-=======
 function check_if_should_pack(C, A, cache_params)
     M, K = size(A)
     N = size(C,2)
     mc, kc, nc = cache_params
->>>>>>> aae951576a19483229ab861c2491e6945b058b35
     pack_a = M > 72 && !((2M ≤ 5mc) & iszero(stride(A,2) % MaBLAS.VectorizationBase.pick_vector_width(eltype(C))))
     pack_b = K * N > kc * nc
     pack_a, pack_b
 end
 
-<<<<<<< HEAD
-function blocked_mul!(C, A, B)
-    mc = 160
-    kc = 400
-    nc = 4080
-    dopack = check_if_should_pack(C, A, mc, kc, nc)
-    MaBLAS.mul!(C, A, B; packing=dopack, cache_params=(cache_m=mc, cache_k=kc, cache_n=nc), kernel_params=(Val(16), Val(12)))
-end
-function blocked_mul40x5!(C, A, B)
-    mc, kc, nc = PaddedMatrices.matmul_params(Float64)
-    # mc = 120
-    # kc = 600
-    # nc = 2700
-    dopack = check_if_should_pack(C, A, mc, kc, nc)
-    MaBLAS.mul!(C, A, B; packing=dopack, cache_params=(cache_m=mc, cache_k=kc, cache_n=nc), kernel_params=(Val(40), Val(5)))
-=======
 # for 16x14m perhaps bigger k than in 256 x 263 x 4928
 function ma24x9!(C, A, B)
     cache_params = (cache_m = 192, cache_k = 353, cache_n = 7119)
@@ -51,7 +28,6 @@ function ma40x5!(C, A, B)
     cache_params = (cache_m = 120, cache_k = 532, cache_n = 2440)
     dopack = check_if_should_pack(C, A, cache_params)
     MaBLAS.mul!(C, A, B; packing=dopack, cache_params=cache_params, kernel_params=(Val(40), Val(5)))
->>>>>>> aae951576a19483229ab861c2491e6945b058b35
 end
 
 randa(::Type{T}, dim...) where {T} = rand(T, dim...)
