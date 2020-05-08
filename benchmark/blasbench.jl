@@ -1,19 +1,26 @@
 
 #using Gaius
 
-using MaBLAS, PaddedMatrices, StructArrays, LinearAlgebra, BenchmarkTools
-using PaddedMatrices: jmul!
+using Gaius, MaBLAS, PaddedMatrices, StructArrays, LinearAlgebra, BenchmarkTools
 BLAS.set_num_threads(1); Base.Threads.nthreads()
 
+<<<<<<< HEAD
 
 function check_if_should_pack(C, A, mc, kc, nc)
     M,K = size(A)
     N = size(C,2)
+=======
+function check_if_should_pack(C, A, cache_params)
+    M, K = size(A)
+    N = size(C,2)
+    mc, kc, nc = cache_params
+>>>>>>> aae951576a19483229ab861c2491e6945b058b35
     pack_a = M > 72 && !((2M ≤ 5mc) & iszero(stride(A,2) % MaBLAS.VectorizationBase.pick_vector_width(eltype(C))))
     pack_b = K * N > kc * nc
     pack_a, pack_b
 end
 
+<<<<<<< HEAD
 function blocked_mul!(C, A, B)
     mc = 160
     kc = 400
@@ -28,6 +35,23 @@ function blocked_mul40x5!(C, A, B)
     # nc = 2700
     dopack = check_if_should_pack(C, A, mc, kc, nc)
     MaBLAS.mul!(C, A, B; packing=dopack, cache_params=(cache_m=mc, cache_k=kc, cache_n=nc), kernel_params=(Val(40), Val(5)))
+=======
+# for 16x14m perhaps bigger k than in 256 x 263 x 4928
+function ma24x9!(C, A, B)
+    cache_params = (cache_m = 192, cache_k = 353, cache_n = 7119)
+    dopack = check_if_should_pack(C, A, cache_params)
+    MaBLAS.mul!(C, A, B; packing=dopack, cache_params=cache_params, kernel_params=(Val(24), Val(9)))
+end
+function ma32x6!(C, A, B)
+    cache_params = (cache_m = 128, cache_k = 529, cache_n = 2454)
+    dopack = check_if_should_pack(C, A, cache_params)
+    MaBLAS.mul!(C, A, B; packing=dopack, cache_params=cache_params, kernel_params=(Val(32), Val(6)))
+end
+function ma40x5!(C, A, B)
+    cache_params = (cache_m = 120, cache_k = 532, cache_n = 2440)
+    dopack = check_if_should_pack(C, A, cache_params)
+    MaBLAS.mul!(C, A, B; packing=dopack, cache_params=cache_params, kernel_params=(Val(40), Val(5)))
+>>>>>>> aae951576a19483229ab861c2491e6945b058b35
 end
 
 randa(::Type{T}, dim...) where {T} = rand(T, dim...)
@@ -60,61 +84,47 @@ randa(::Type{T}, dim...) where {T <: Signed} = rand(T(-100):T(200), dim...)
 # end
 # mkl_set_num_threads(1)
 
-function runbench(::Type{T}, sizes = [2:255..., ( round.(Int, range(26.15105483720698,length=201) .^ 1.6989476505010863))...]) where {T}
+
+function benchmark_fun!(f!, C, A, B, force_belapsed = false, reference = nothing)
+    tmin = @elapsed f!(C, A, B)
+    if force_belapsed || tmin < BenchmarkTools.DEFAULT_PARAMETERS.seconds
+        tmin = min(tmin, @belapsed $f!($C, $A, $B))
+    elseif tmin < 2BenchmarkTools.DEFAULT_PARAMETERS.seconds
+        tmin = min(tmin, @elapsed f!(C, A, B))
+    end
+    isnothing(reference) || @assert C ≈ reference
+    tmin
+end
+
+
+# [2:255..., ( round.(Int, range(26.15105483720698,length=201) .^ 1.6989476505010863))...]
+function runbench(::Type{T}, sizes = [2:255..., round.(Int, range(57.16281374121401, length=200) .^ 1.3705658916944428)...]) where {T}
     (StructVector ∘ map)(sizes) do sz
         n, k, m = sz, sz, sz
-        C1 = zeros(T, n, m)
-        C2 = zeros(T, n, m)
-        C3 = zeros(T, n, m)
-        C4 = zeros(T, n, m)
-        # C5 = zeros(T, n, m)
+        C1 = Matrix{T}(undef, n, m)
+        C2 = similar(C1);
+        C3 = similar(C1);
+        C4 = similar(C1);
+        C5 = similar(C1);
+        C6 = similar(C1);
         A  = randa(T, n, k)
         B  = randa(T, k, m)
         BenchmarkTools.DEFAULT_PARAMETERS.seconds = 0.05
 
-        opb = @elapsed mul!(C1, A, B)
-        opb = if 2opb < BenchmarkTools.DEFAULT_PARAMETERS.seconds
-            min(opb, @belapsed mul!($C1, $A, $B))
+        opbt = benchmark_fun!(mul!, C1, A, B, sz == first(sizes))
+        ma24 = benchmark_fun!(ma24x9!, C2, A, B, sz == first(sizes), C1)
+        ma32 = benchmark_fun!(ma32x6!, C3, A, B, sz == first(sizes), C1)
+        ma40 = benchmark_fun!(ma40x5!, C4, A, B, sz == first(sizes), C1)
+        gt = benchmark_fun!(blocked_mul!, C5, A, B, sz == first(sizes), C1)
+        jmlt = benchmark_fun!(PaddedMatrices.jmul!, C6, A, B, sz == first(sizes), C1)
+        res = if T <: Integer
+            (matrix_size=sz, OpenBLAS=opbt, MaBLAS_24x9=ma24, MaBLAS_32x6=ma32, MaBLAS_40x5=ma40, Gaius=gt, PaddedMatrices=jmlt)
         else
-            min(opb, @elapsed mul!(C1, A, B))
+            C7 = similar(C1);
+            mklb = benchmark_fun!(mklmul!, C7, A, B, sz == first(sizes), C1)
+            (matrix_size=sz, OpenBLAS=opbt, MaBLAS_24x9=ma24, MaBLAS_32x6=ma32, MaBLAS_40x5=ma40, Gaius=gt, PaddedMatrices=jmlt, MKL = mklb)
         end
-        lvb = @elapsed blocked_mul!(C2, A, B)
-        lvb = if 2lvb < BenchmarkTools.DEFAULT_PARAMETERS.seconds
-            min(lvb, @belapsed blocked_mul!($C2, $A, $B))
-        else
-            min(lvb, @elapsed blocked_mul!(C2, A, B))
-        end
-        @assert C1 ≈ C2
-        mab = @elapsed blocked_mul40x5!(C4, A, B)
-        mab = if 2mab < BenchmarkTools.DEFAULT_PARAMETERS.seconds
-            min(mab, @belapsed blocked_mul40x5!($C4, $A, $B)) #samples=100
-        else
-            min(mab, @elapsed blocked_mul40x5!(C4, A, B)) #samples=100
-        end
-        @assert C1 ≈ C4
-        pmb = @elapsed jmul!(C3, A, B)
-        pmb = if 2pmb < BenchmarkTools.DEFAULT_PARAMETERS.seconds
-            min(pmb, @belapsed jmul!($C3, $A, $B))         #samples=100
-        else
-            min(pmb, @elapsed jmul!(C3, A, B))         #samples=100
-        end
-        @assert C1 ≈ C3
-        if true#T <: Integer
-            res = (matrix_size=sz, MaBLAS_16x12=lvb, MaBLAS_40x5=mab, OpenBLAS=opb, PaddedMatrices = pmb)
-#            res = (matrix_size=sz, lvBLAS=lvb, OpenBLAS=opb, PaddedMatrices = pmb)
-            @show res
-        else
-            C4 = zeros(T, n, m)
-            mklb = @elapsed mklmul!(C4, A, B)
-            mklb = if 2mklb < BenchmarkTools.DEFAULT_PARAMETERS.seconds
-                min(mklb, @belapsed mklmul!($C4, $A, $B))
-            else
-                min(mklb, @elapsed mklmul!(C4, A, B))
-            end
-            @assert C1 ≈ C4
-            res = (matrix_size=sz, MaBLAS_16x12=lvb, MaBLAS_40x5=mab, OpenBLAS=opb, PaddedMatrices = pmb, MKL = mklb)
-            @show res
-        end
+        @show res
     end
 end
 #tf64 = runbench(Float64);
@@ -141,13 +151,15 @@ using DataFrames, VegaLite
 function create_float_df(res, nbytes)
     df = DataFrame(
         Size = res.matrix_size,
-        MaBLAS_16x12 = res.MaBLAS_16x12,
+        MaBLAS_24x9 = res.MaBLAS_24x9,
+        MaBLAS_32x6 = res.MaBLAS_32x6,
         MaBLAS_40x5 = res.MaBLAS_40x5,
+        Gaius = res.Gaius,
         PaddedMatrices = res.PaddedMatrices,
         OpenBLAS = res.OpenBLAS
     );
 #    dfs = stack(df, [:Gaius, :PaddedMatrices, :OpenBLAS, :MKL], variable_name = :Library, value_name = :Time);
-    dfs = stack(df, [:MaBLAS_16x12, :MaBLAS_40x5, :PaddedMatrices, :OpenBLAS], variable_name = :Library, value_name = :Time);
+    dfs = stack(df, [:MaBLAS_24x9, :MaBLAS_32x6, :MaBLAS_40x5, :Gaius, :PaddedMatrices, :OpenBLAS, :MKL], variable_name = :Library, value_name = :Time);
     dfs.GFLOPS = gflops.(dfs.Size, dfs.Time);
     dfs.Percent_Peak = 100 .* dfs.GFLOPS .* (8 ÷ nbytes) ./ PEAK_DGFLOPS;
     dfs
@@ -155,14 +167,14 @@ end
 function create_int_df(res, nbytes)
     df = DataFrame(
         Size = res.matrix_size,
-        MaBLAS_16x12 = res.MaBLAS_16x12,
+        MaBLAS_24x9 = res.MaBLAS_24x9,
+        MaBLAS_32x6 = res.MaBLAS_32x6,
         MaBLAS_40x5 = res.MaBLAS_40x5,
-        # Gaius = res.lvBLAS,
+        Gaius = res.Gaius,
         PaddedMatrices = res.PaddedMatrices,
         GenericMatMul = res.OpenBLAS,
     );
-    dfs = stack(df, [:MaBLAS_16x12, :MaBLAS_40x5, :PaddedMatrices, :GenericMatMul], variable_name = :Library, value_name = :Time);
-#    dfs = stack(df, [:Gaius, :PaddedMatrices, :GenericMatMul], variable_name = :Library, value_name = :Time);
+    dfs = stack(df, [:MaBLAS_24x9, :MaBLAS_32x6, :MaBLAS_40x5, :Gaius, :PaddedMatrices, :GenericMatMul], variable_name = :Library, value_name = :Time);
     dfs.GFLOPS = gflops.(dfs.Size, dfs.Time);
  #   dfs.Percent_Peak = 100 .* dfs.GFLOPS .* (FMA_RATIO * 8 ÷ nbytes) ./ PEAK_DGFLOPS;
     dfs
@@ -179,8 +191,8 @@ function plot(tf, ::Type{T} = Float64, PICTURES = "/home/chriselrod/Pictures") w
     res = create_df(tf, T)
     plt = res |> @vlplot(
         :line, color = :Library,
-       x = {:Size, scale={type=:log}}, y = {:GFLOPS},#, scale={type=:log}},
-        # x = {:Size}, y = {:GFLOPS},#, scale={type=:log}},
+       # x = {:Size, scale={type=:log}}, y = {:GFLOPS},#, scale={type=:log}},
+        x = {:Size}, y = {:GFLOPS},#, scale={type=:log}},
         width = 2400, height = 600
     )
     save(joinpath(PICTURES, "gemm$(string(T)).png"), plt)
