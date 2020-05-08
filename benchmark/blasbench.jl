@@ -5,52 +5,60 @@ using MaBLAS, PaddedMatrices, StructArrays, LinearAlgebra, BenchmarkTools
 using PaddedMatrices: jmul!
 BLAS.set_num_threads(1); Base.Threads.nthreads()
 
-function check_if_should_pack(C, A, mc)
-    M = size(A,1)
-    M > 72 && !((2M ≤ 5mc) & iszero(stride(A,2) % MaBLAS.VectorizationBase.pick_vector_width(eltype(C))))
+
+function check_if_should_pack(C, A, mc, kc, nc)
+    M,K = size(A)
+    N = size(C,2)
+    pack_a = M > 72 && !((2M ≤ 5mc) & iszero(stride(A,2) % MaBLAS.VectorizationBase.pick_vector_width(eltype(C))))
+    pack_b = K * N > kc * nc
+    pack_a, pack_b
 end
 
 function blocked_mul!(C, A, B)
     mc = 160
-    dopack = check_if_should_pack(C, A, mc)
-    MaBLAS.mul!(C, A, B; packing=dopack, cache_params=(cache_m=mc, cache_k=400, cache_n=4080), kernel_params=(Val(16), Val(12)))
+    kc = 400
+    nc = 4080
+    dopack = check_if_should_pack(C, A, mc, kc, nc)
+    MaBLAS.mul!(C, A, B; packing=dopack, cache_params=(cache_m=mc, cache_k=kc, cache_n=nc), kernel_params=(Val(16), Val(12)))
 end
 function blocked_mul40x5!(C, A, B)
-    mc = 120
-    dopack = check_if_should_pack(C, A, mc)
-    MaBLAS.mul!(C, A, B; packing=dopack, cache_params=(cache_m=mc, cache_k=600, cache_n=2700), kernel_params=(Val(40), Val(5)))
+    mc, kc, nc = PaddedMatrices.matmul_params(Float64)
+    # mc = 120
+    # kc = 600
+    # nc = 2700
+    dopack = check_if_should_pack(C, A, mc, kc, nc)
+    MaBLAS.mul!(C, A, B; packing=dopack, cache_params=(cache_m=mc, cache_k=kc, cache_n=nc), kernel_params=(Val(40), Val(5)))
 end
 
 randa(::Type{T}, dim...) where {T} = rand(T, dim...)
 randa(::Type{T}, dim...) where {T <: Signed} = rand(T(-100):T(200), dim...)
 
-const LIBDIRECTCALLJIT = "/home/chriselrod/.julia/dev/LoopVectorization/benchmark/libdcjtest.so"
-istransposed(x) = false
-istransposed(x::Adjoint) = true
-istransposed(x::Transpose) = true
-mkl_set_num_threads(N::Integer) = ccall((:set_num_threads, LIBDIRECTCALLJIT), Cvoid, (Ref{UInt32},), Ref(N % UInt32))
-function mklmul!(C::AbstractVecOrMat{Float32}, A::AbstractVecOrMat{Float32}, B::AbstractVecOrMat{Float32})
-    M, N = size(C); K = size(B, 1)
-    ccall(
-        (:sgemmjit, LIBDIRECTCALLJIT), Cvoid,
-        (Ptr{Float32},Ptr{Float32},Ptr{Float32},Ref{UInt32},Ref{UInt32},Ref{UInt32},Ref{Bool},Ref{Bool}),
-        parent(C), parent(A), parent(B),
-        Ref(M % UInt32), Ref(K % UInt32), Ref(N % UInt32),
-        Ref(istransposed(A)), Ref(istransposed(B))
-    )
-end
-function mklmul!(C::AbstractVecOrMat{Float64}, A::AbstractVecOrMat{Float64}, B::AbstractVecOrMat{Float64})
-    M, N = size(C); K = size(B, 1)
-    ccall(
-        (:dgemmjit, LIBDIRECTCALLJIT), Cvoid,
-        (Ptr{Float64},Ptr{Float64},Ptr{Float64},Ref{UInt32},Ref{UInt32},Ref{UInt32},Ref{Bool},Ref{Bool}),
-        parent(C), parent(A), parent(B),
-        Ref(M % UInt32), Ref(K % UInt32), Ref(N % UInt32),
-        Ref(istransposed(A)), Ref(istransposed(B))
-    )
-end
-
-mkl_set_num_threads(1)
+# const LIBDIRECTCALLJIT= "/home/chriselrod/.julia/dev/LoopVectorization/benchmark/libdcjtest.so"
+# istransposed(x) = false
+# istransposed(x::Adjoint) = true
+# istransposed(x::Transpose) = true
+# mkl_set_num_threads(N::Integer) = ccall((:set_num_threads, LIBDIRECTCALLJIT), Cvoid, (Ref{UInt32},), Ref(N % UInt32))
+# function mklmul!(C::AbstractVecOrMat{Float32}, A::AbstractVecOrMat{Float32}, B::AbstractVecOrMat{Float32})
+#     M, N = size(C); K = size(B, 1)
+#     ccall(
+#         (:sgemmjit, LIBDIRECTCALLJIT), Cvoid,
+#         (Ptr{Float32},Ptr{Float32},Ptr{Float32},Ref{UInt32},Ref{UInt32},Ref{UInt32},Ref{Bool},Ref{Bool}),
+#         parent(C), parent(A), parent(B),
+#         Ref(M % UInt32), Ref(K % UInt32), Ref(N % UInt32),
+#         Ref(istransposed(A)), Ref(istransposed(B))
+#     )
+# end
+# function mklmul!(C::AbstractVecOrMat{Float64}, A::AbstractVecOrMat{Float64}, B::AbstractVecOrMat{Float64})
+#     M, N = size(C); K = size(B, 1)
+#     ccall(
+#         (:dgemmjit, LIBDIRECTCALLJIT), Cvoid,
+#         (Ptr{Float64},Ptr{Float64},Ptr{Float64},Ref{UInt32},Ref{UInt32},Ref{UInt32},Ref{Bool},Ref{Bool}),
+#         parent(C), parent(A), parent(B),
+#         Ref(M % UInt32), Ref(K % UInt32), Ref(N % UInt32),
+#         Ref(istransposed(A)), Ref(istransposed(B))
+#     )
+# end
+# mkl_set_num_threads(1)
 
 function runbench(::Type{T}, sizes = [2:255..., ( round.(Int, range(26.15105483720698,length=201) .^ 1.6989476505010863))...]) where {T}
     (StructVector ∘ map)(sizes) do sz
@@ -59,7 +67,7 @@ function runbench(::Type{T}, sizes = [2:255..., ( round.(Int, range(26.151054837
         C2 = zeros(T, n, m)
         C3 = zeros(T, n, m)
         C4 = zeros(T, n, m)
-        C5 = zeros(T, n, m)
+        # C5 = zeros(T, n, m)
         A  = randa(T, n, k)
         B  = randa(T, k, m)
         BenchmarkTools.DEFAULT_PARAMETERS.seconds = 0.05
@@ -77,13 +85,13 @@ function runbench(::Type{T}, sizes = [2:255..., ( round.(Int, range(26.151054837
             min(lvb, @elapsed blocked_mul!(C2, A, B))
         end
         @assert C1 ≈ C2
-        mab = @elapsed blocked_mul40x5!(C2, A, B)
+        mab = @elapsed blocked_mul40x5!(C4, A, B)
         mab = if 2mab < BenchmarkTools.DEFAULT_PARAMETERS.seconds
-            min(mab, @belapsed blocked_mul40x5!($C2, $A, $B)) #samples=100
+            min(mab, @belapsed blocked_mul40x5!($C4, $A, $B)) #samples=100
         else
-            min(mab, @elapsed blocked_mul40x5!(C2, A, B)) #samples=100
+            min(mab, @elapsed blocked_mul40x5!(C4, A, B)) #samples=100
         end
-        @assert C1 ≈ C2
+        @assert C1 ≈ C4
         pmb = @elapsed jmul!(C3, A, B)
         pmb = if 2pmb < BenchmarkTools.DEFAULT_PARAMETERS.seconds
             min(pmb, @belapsed jmul!($C3, $A, $B))         #samples=100
@@ -91,10 +99,12 @@ function runbench(::Type{T}, sizes = [2:255..., ( round.(Int, range(26.151054837
             min(pmb, @elapsed jmul!(C3, A, B))         #samples=100
         end
         @assert C1 ≈ C3
-        if T <: Integer
-            res = (matrix_size=sz, lvBLAS=lvb, OpenBLAS=opb, PaddedMatrices = pmb)
+        if true#T <: Integer
+            res = (matrix_size=sz, MaBLAS_16x12=lvb, MaBLAS_40x5=mab, OpenBLAS=opb, PaddedMatrices = pmb)
+#            res = (matrix_size=sz, lvBLAS=lvb, OpenBLAS=opb, PaddedMatrices = pmb)
             @show res
         else
+            C4 = zeros(T, n, m)
             mklb = @elapsed mklmul!(C4, A, B)
             mklb = if 2mklb < BenchmarkTools.DEFAULT_PARAMETERS.seconds
                 min(mklb, @belapsed mklmul!($C4, $A, $B))
@@ -134,11 +144,10 @@ function create_float_df(res, nbytes)
         MaBLAS_16x12 = res.MaBLAS_16x12,
         MaBLAS_40x5 = res.MaBLAS_40x5,
         PaddedMatrices = res.PaddedMatrices,
-        OpenBLAS = res.OpenBLAS,
-        MKL = res.MKL
+        OpenBLAS = res.OpenBLAS
     );
 #    dfs = stack(df, [:Gaius, :PaddedMatrices, :OpenBLAS, :MKL], variable_name = :Library, value_name = :Time);
-    dfs = stack(df, [:MaBLAS_16x12, :MaBLAS_40x5, :PaddedMatrices, :OpenBLAS, :MKL], variable_name = :Library, value_name = :Time);
+    dfs = stack(df, [:MaBLAS_16x12, :MaBLAS_40x5, :PaddedMatrices, :OpenBLAS], variable_name = :Library, value_name = :Time);
     dfs.GFLOPS = gflops.(dfs.Size, dfs.Time);
     dfs.Percent_Peak = 100 .* dfs.GFLOPS .* (8 ÷ nbytes) ./ PEAK_DGFLOPS;
     dfs
