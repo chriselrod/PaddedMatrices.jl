@@ -45,7 +45,7 @@ function tup_sv_rev_quote(T::Core.SimpleVector, s, trunc = 0)
     for n ∈ 1:N-trunc
         Tₙ = (T[n])::Int
         if Tₙ == -1
-            i += 0
+            i += 1
             pushfirst!(t.args, Expr(:ref, Expr(:(.), :A, QuoteNode(s)), i))
         else
             pushfirst!(t.args, Tₙ)
@@ -71,7 +71,7 @@ end
 @generated Base.size(A::AbstractStrideArray{S}) where {S} = tup_sv_quote(S.parameters, :size)
 @generated Base.strides(A::AbstractStrideArray{S,T,N,X}) where {S,T,N,X} = tup_sv_quote(X.parameters, :stride)
 @generated tailstrides(A::AbstractStrideArray{S,T,N,X}) where {S,T,N,X<:Tuple{1,Vararg}} = tup_sv_quote(X.parameters, :stride, 2)
-@generated revtailstrides(A::AbstractStrideArray{S,T,N,X}) where {S,T,N,X<:Tuple{1,Vararg}} = tup_sv_rev_quote(X.parameters, :stride, 1)
+@generated revtailstrides(A::AbstractStrideArray{S,T,N,X}) where {S,T,N,X<:Tuple{Vararg}} = tup_sv_rev_quote(X.parameters, :stride, 1)
 
 
 @inline LinearAlgebra.stride1(::AbstractStrideArray{S,T,N,<:Tuple{X,Vararg}}) where {S,T,N,X} = X

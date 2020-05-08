@@ -26,7 +26,7 @@ end
 @generated function VectorizationBase.stridedpointer(A::AbstractStrideArray{S,T,N,X}) where {S,T,N,X}
     Xv = tointvec(X.parameters)
     ret = if last(Xv) == 1
-        :(VectorizationBase.RowMajorStridedPointer{$T,$N}(pointer(A), revtailstrides(A)))
+        :(VectorizationBase.RowMajorStridedPointer{$T,$(N-1)}(pointer(A), revtailstrides(A)))
     # elseif first(Xv) == 1
         # :(VectorizationBase.PackedStridedPointer{$T,$N}(pointer(A), tailstrides(A)))
     else

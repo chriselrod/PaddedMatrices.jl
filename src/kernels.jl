@@ -60,6 +60,303 @@ function loopmul!(C, A, B, α, β, (M, K, N) = matmul_sizes(C, A, B))
     nothing
 end
 
+function loopmul!(
+    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ,Nᵢ}},
+    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
+    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
+    ::Val{1}, ::Val{0},
+) where {Mᵣ,Mᵢ,K,Nᵣ,Nᵢ}
+    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
+    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
+    @avx for nᵢ ∈ axes(C,4), mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ 1:Nᵣs
+         Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k,nᵢ]
+        end
+        C[mᵣ,mᵢ,nᵣ,nᵢ] = Cₘₙ
+    end
+    nothing
+end
+function loopmul!(
+    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ,Nᵢ}},
+    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
+    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
+    ::Val{1}, ::Val{1}
+) where {Mᵣ,Mᵢ,K,Nᵣ,Nᵢ}
+    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
+    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
+    @avx for nᵢ ∈ axes(C,4), mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ 1:Nᵣs
+         Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k,nᵢ]
+        end
+        C[mᵣ,mᵢ,nᵣ,nᵢ] += Cₘₙ
+    end
+    nothing
+end
+function loopmul!(
+    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ,Nᵢ}},
+    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
+    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
+    ::Val{1}, β
+) where {Mᵣ,Mᵢ,K,Nᵣ,Nᵢ}
+    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
+    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
+    @avx for nᵢ ∈ axes(C,4), mᵢ ∈ 1:Mᵢs, mᵣ ∈ 1:Mᵣs, nᵣ ∈ 1:Nᵣs
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k,nᵢ]
+        end
+        C[mᵣ,mᵢ,nᵣ,nᵢ] = Cₘₙ + β * C[mᵣ,mᵢ,nᵣ,nᵢ]
+    end
+    nothing
+end
+function loopmul!(
+    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ,Nᵢ}},
+    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
+    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
+    α, ::Val{0}
+) where {Mᵣ,Mᵢ,K,Nᵣ,Nᵢ}
+    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
+    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
+    @avx for nᵢ ∈ axes(C,4), mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ 1:Nᵣs
+         Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k,nᵢ]
+        end
+        C[mᵣ,mᵢ,nᵣ,nᵢ] = α * Cₘₙ
+    end
+    nothing
+end
+function loopmul!(
+    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ,Nᵢ}},
+    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
+    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
+    α, ::Val{1}
+) where {Mᵣ,Mᵢ,K,Nᵣ,Nᵢ}
+    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
+    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
+    @avx for nᵢ ∈ axes(C,4), mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ 1:Nᵣs
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k,nᵢ]
+        end
+        C[mᵣ,mᵢ,nᵣ,nᵢ] += α * Cₘₙ
+    end
+    nothing
+end
+function loopmul!(
+    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ,Nᵢ}},
+    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
+    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
+    α, β
+) where {Mᵣ,Mᵢ,K,Nᵣ,Nᵢ}
+    Mᵣs = Static{Mᵣ}(); #Mᵢs = Static{Mᵢ}()
+    Nᵣs = Static{Nᵣ}(); #Nᵢs = Static{Nᵢ}()
+    @avx for nᵢ ∈ axes(C,4), mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ 1:Nᵣs
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k,nᵢ]
+        end
+        C[mᵣ,mᵢ,nᵣ,nᵢ] = α * Cₘₙ + β * C[mᵣ,mᵢ,nᵣ,nᵢ]
+    end
+    nothing
+end
+
+function loopmul!(
+    C::AbstractStrideArray{Tuple{M,Nᵣ,Nᵢ}},
+    A::AbstractStrideArray{Tuple{M,K}},
+    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
+    ::Val{1}, ::Val{0}
+) where {M,K,Nᵣ,Nᵢ}
+    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
+    @avx for nᵢ ∈ axes(C,3), m ∈ axes(A,1), nᵣ ∈ 1:Nᵣs
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[m,k] * B[nᵣ,k,nᵢ]
+        end
+        C[m,nᵣ,nᵢ] = Cₘₙ
+    end
+    nothing
+end
+function loopmul!(
+    C::AbstractStrideArray{Tuple{M,Nᵣ,Nᵢ}},
+    A::AbstractStrideArray{Tuple{M,K}},
+    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
+    ::Val{1}, ::Val{1}
+) where {M,K,Nᵣ,Nᵢ}
+    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
+    @avx for nᵢ ∈ axes(C,3), m ∈ axes(A,1), nᵣ ∈ 1:Nᵣs
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[m,k] * B[nᵣ,k,nᵢ]
+        end
+        C[m,nᵣ,nᵢ] += Cₘₙ
+    end
+    nothing
+end
+function loopmul!(
+    C::AbstractStrideArray{Tuple{M,Nᵣ,Nᵢ}},
+    A::AbstractStrideArray{Tuple{M,K}},
+    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
+    ::Val{1}, β
+) where {M,K,Nᵣ,Nᵢ}
+    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
+    @avx for nᵢ ∈ axes(C,3), m ∈ axes(A,1), nᵣ ∈ 1:Nᵣs
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[m,k] * B[nᵣ,k,nᵢ]
+        end
+        C[m,nᵣ,nᵢ] = Cₘₙ + β * C[m,nᵣ,nᵢ]
+    end
+    nothing
+end
+function loopmul!(
+    C::AbstractStrideArray{Tuple{M,Nᵣ,Nᵢ}},
+    A::AbstractStrideArray{Tuple{M,K}},
+    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
+    α, ::Val{0}
+) where {M,K,Nᵣ,Nᵢ}
+    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
+    @avx for nᵢ ∈ axes(C,3), m ∈ axes(A,1), nᵣ ∈ 1:Nᵣs
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[m,k] * B[nᵣ,k,nᵢ]
+        end
+        C[m,nᵣ,nᵢ] = α * Cₘₙ
+    end
+    nothing
+end
+function loopmul!(
+    C::AbstractStrideArray{Tuple{M,Nᵣ,Nᵢ}},
+    A::AbstractStrideArray{Tuple{M,K}},
+    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
+    α, ::Val{1}
+) where {M,K,Nᵣ,Nᵢ}
+    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
+    @avx for nᵢ ∈ axes(C,3), m ∈ axes(A,1), nᵣ ∈ 1:Nᵣs
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[m,k] * B[nᵣ,k,nᵢ]
+        end
+        C[m,nᵣ,nᵢ] += α * Cₘₙ
+    end
+    nothing
+end
+function loopmul!(
+    C::AbstractStrideArray{Tuple{M,Nᵣ,Nᵢ}},
+    A::AbstractStrideArray{Tuple{M,K}},
+    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
+    α, β
+) where {M,K,Nᵣ,Nᵢ}
+    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
+    @avx for nᵢ ∈ axes(C,3), m ∈ axes(A,1), nᵣ ∈ 1:Nᵣs
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[m,k] * B[nᵣ,k,nᵢ]
+        end
+        C[m,nᵣ,nᵢ] = α * Cₘₙ + β * C[m,nᵣ,nᵢ]
+    end
+    nothing
+end
+
+
+function loopmul!(
+    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ}},
+    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
+    B::AbstractStrideArray{Tuple{Nᵣ,K}},
+    ::Val{1}, ::Val{0}
+) where {Mᵣ,Mᵢ,K,Nᵣ}
+    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
+    @avx for mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ axes(C,3)
+         Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k]
+        end
+        C[mᵣ,mᵢ,nᵣ] = Cₘₙ
+    end
+    nothing
+end
+function loopmul!(
+    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ}},
+    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
+    B::AbstractStrideArray{Tuple{Nᵣ,K}},
+    ::Val{1}, ::Val{1}
+) where {Mᵣ,Mᵢ,K,Nᵣ}
+    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
+    @avx for mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ axes(C,3)
+         Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k]
+        end
+        C[mᵣ,mᵢ,nᵣ] += Cₘₙ
+    end
+    nothing
+end
+function loopmul!(
+    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ}},
+    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
+    B::AbstractStrideArray{Tuple{Nᵣ,K}},
+    ::Val{1}, β
+) where {Mᵣ,Mᵢ,K,Nᵣ}
+    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
+    @avx for mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ axes(C,3)
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k]
+        end
+        C[mᵣ,mᵢ,nᵣ] = Cₘₙ + β * C[mᵣ,mᵢ,nᵣ]
+    end
+    nothing
+end
+function loopmul!(
+    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ}},
+    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
+    B::AbstractStrideArray{Tuple{Nᵣ,K}},
+    α, ::Val{0}
+) where {Mᵣ,Mᵢ,K,Nᵣ}
+    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
+    @avx for mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ axes(C,3)
+         Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k]
+        end
+        C[mᵣ,mᵢ,nᵣ] = α * Cₘₙ
+    end
+    nothing
+end
+function loopmul!(
+    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ}},
+    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
+    B::AbstractStrideArray{Tuple{Nᵣ,K}},
+    α, ::Val{1}
+) where {Mᵣ,Mᵢ,K,Nᵣ}
+    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
+    @avx for mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ axes(C,3)
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k]
+        end
+        C[mᵣ,mᵢ,nᵣ] += α * Cₘₙ
+    end
+    nothing
+end
+function loopmul!(
+    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ}},
+    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
+    B::AbstractStrideArray{Tuple{Nᵣ,K}},
+    α, β
+) where {Mᵣ,Mᵢ,K,Nᵣ}
+    Mᵣs = Static{Mᵣ}(); #Mᵢs = Static{Mᵢ}()
+    @avx for mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ axes(C,3)
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k]
+        end
+        C[mᵣ,mᵢ,nᵣ] = α * Cₘₙ + β * C[mᵣ,mᵢ,nᵣ]
+    end
+    nothing
+end
 const loopmulprefetch! = loopmul!
 
 @inline function inlineloopmul!(C, A, B, ::Val{1}, ::Val{0})

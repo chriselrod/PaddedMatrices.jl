@@ -83,10 +83,10 @@ function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Boo
             elseif inds[n] <: AbstractRange{<:Integer}
                 push!(s2, -1)
                 push!(offset_expr, :($xvn * @inbounds( first(inds[$n]) - 1 )))
-                push!(st2.args, Expr(:call, :length, :(@inbounds(inds[$n]))), Int)
+                push!(st2.args, Expr(:call, :length, :(@inbounds(inds[$n]))))
             elseif inds[n] <: Base.OneTo
                 push!(s2, -1)
-                push!(st2.args, Expr(:call, :length, :(@inbounds(inds[$n]))), Int)
+                push!(st2.args, Expr(:call, :length, :(@inbounds(inds[$n]))))
             else
                 throw("Indices of type $(inds[n]) not currently supported.")
             end
@@ -130,16 +130,20 @@ end
 Note that the stride will currently only be correct when N <= 2.
 Perhaps R should be made into a stride-tuple?
 """
-@generated function Base.getindex(A::AbstractPtrStrideArray{S,T,N,X,SN,XN,V}, inds::Vararg{<:Any,N}) where {S,T,N,X,SN,XN,V}
+@generated function Base.getindex(A::AbstractPtrStrideArray{S,T,N,X,0,0,V}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}
     @assert length(inds) == N
     generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, false)
 end
 Base.@propagate_inbounds function Base.getindex(A::AbstractStrideArray{S,T,N}, inds::Vararg{<:Any,N}) where {S,T,N}
     view(A, inds...)
 end
-@generated function Base.view(A::AbstractPtrStrideArray{S,T,N,X,SN,XN,V}, inds...) where {S,T,N,X,SN,XN,V}
+@generated function Base.view(
+    A::AbstractPtrStrideArray{S,T,N,X,0,0,V}, inds...
+# ) where {S,T,N,X,SN,XN,V}
+) where {V,S,T,N,X}
     @assert length(inds) == N
     generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, true)
+    # @show generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, true)
 end
 
 

@@ -169,8 +169,8 @@ function plot(tf, ::Type{T} = Float64, PICTURES = "/home/chriselrod/Pictures") w
     res = create_df(tf, T)
     plt = res |> @vlplot(
         :line, color = :Library,
-       x = {:Size, scale={type=:log}}, y = {:GFLOPS},#, scale={type=:log}},
-        # x = {:Size}, y = {:GFLOPS},#, scale={type=:log}},
+       # x = {:Size, scale={type=:log}}, y = {:GFLOPS},#, scale={type=:log}},
+        x = {:Size}, y = {:GFLOPS},#, scale={type=:log}},
         width = 2400, height = 600
     )
     save(joinpath(PICTURES, "gemm$(string(T)).png"), plt)

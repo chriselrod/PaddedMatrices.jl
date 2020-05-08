@@ -48,32 +48,32 @@ end
 
 
 
-function pack_B_krem(Bptr, ::Val{kc}, ::Val{nc}, ::Type{Tb}, Krem, no::Int) where {nc, Tb, kc}
-    Bpacked_krem = PtrMatrix(threadlocal_L3CACHE_pointer(Tb), Krem, nc, VectorizationBase.align(Krem, Tb))
-    Bpmat_krem = PtrMatrix(gesp(Bptr, (0, no*nc)), Krem, nc)
-    copyto!(Bpacked_krem, Bpmat_krem)
-    Bpacked_krem
-end
-function pack_B(Bptr, ::Val{kc}, ::Val{nc}, ::Type{Tb}, k::Int, no::Int) where {nc, Tb, kc}
-    Bpacked = PtrMatrix(threadlocal_L3CACHE_pointer(Tb), kc, nc, kc)
-    Bpmat = PtrMatrix(gesp(Bptr, (k, no*nc)), kc, nc)
-    copyto!(Bpacked, Bpmat)
-    Bpacked
-end
-function pack_B_krem_nrem(
-    Bptr, ::Val{kc}, ::Val{nc}, ::Type{Tb}, Krem, Nrem, Niter
-) where {nc, Tb, kc}
-    Bpacked_krem_nrem = PtrMatrix(threadlocal_L3CACHE_pointer(Tb), Krem, Nrem, VectorizationBase.align(Krem, Tb))
-    Bpmat_krem_nrem = PtrMatrix(gesp(Bptr, (0, Niter*nc)), Krem, Nrem)
-    copyto!(Bpacked_krem_nrem, Bpmat_krem_nrem)
-    Bpacked_krem_nrem
-end
-function pack_B_nrem(Bptr, ::Val{kc}, ::Val{nc}, ::Type{Tb}, k::Int, Nrem, Niter) where {nc, Tb, kc}
-    Bpacked_nrem = PtrMatrix(threadlocal_L3CACHE_pointer(Tb), kc, Nrem, kc)
-    Bpmat_nrem = PtrMatrix(gesp(Bptr, (k, Niter*nc)), kc, Nrem)
-    copyto!(Bpacked_nrem, Bpmat_nrem)
-    Bpacked_nrem
-end
+# function pack_B_krem(Bptr, ::Val{kc}, ::Val{nc}, ::Type{Tb}, Krem, no::Int) where {nc, Tb, kc}
+#     Bpacked_krem = PtrMatrix(threadlocal_L3CACHE_pointer(Tb), Krem, nc, VectorizationBase.align(Krem, Tb))
+#     Bpmat_krem = PtrMatrix(gesp(Bptr, (0, no*nc)), Krem, nc)
+#     copyto!(Bpacked_krem, Bpmat_krem)
+#     Bpacked_krem
+# end
+# function pack_B(Bptr, ::Val{kc}, ::Val{nc}, ::Type{Tb}, k::Int, no::Int) where {nc, Tb, kc}
+#     Bpacked = PtrMatrix(threadlocal_L3CACHE_pointer(Tb), kc, nc, kc)
+#     Bpmat = PtrMatrix(gesp(Bptr, (k, no*nc)), kc, nc)
+#     copyto!(Bpacked, Bpmat)
+#     Bpacked
+# end
+# function pack_B_krem_nrem(
+#     Bptr, ::Val{kc}, ::Val{nc}, ::Type{Tb}, Krem, Nrem, Niter
+# ) where {nc, Tb, kc}
+#     Bpacked_krem_nrem = PtrMatrix(threadlocal_L3CACHE_pointer(Tb), Krem, Nrem, VectorizationBase.align(Krem, Tb))
+#     Bpmat_krem_nrem = PtrMatrix(gesp(Bptr, (0, Niter*nc)), Krem, Nrem)
+#     copyto!(Bpacked_krem_nrem, Bpmat_krem_nrem)
+#     Bpacked_krem_nrem
+# end
+# function pack_B_nrem(Bptr, ::Val{kc}, ::Val{nc}, ::Type{Tb}, k::Int, Nrem, Niter) where {nc, Tb, kc}
+#     Bpacked_nrem = PtrMatrix(threadlocal_L3CACHE_pointer(Tb), kc, Nrem, kc)
+#     Bpmat_nrem = PtrMatrix(gesp(Bptr, (k, Niter*nc)), kc, Nrem)
+#     copyto!(Bpacked_nrem, Bpmat_nrem)
+#     Bpacked_nrem
+# end
 function pack_A_krem(Aptr, ::Val{mc}, ::Type{Ta}, mo::Int, Krem) where {mc, Ta}
     Apacked_krem = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), mc, Krem, mc)
     Apmat_krem = PtrMatrix(gesp(Aptr, (mo*mc, 0)), mc, Krem)
@@ -206,102 +206,6 @@ function jmul!(
     else
         return jmulh!(C, A, B, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
     end
-    
-    # if N ≤ nc
-    #     W = VectorizationBase.pick_vector_width(Tc)
-    #     if isone(LinearAlgebra.stride1(A)) && ( (M ≤ 72)  || ((2M ≤ 5mc) && iszero(stride(A,2) % W)))
-    #         loopmul!(C, A, B, α, β); return C
-    #     elseif K ≤ 4kc
-    #         return jmulpackAonly!(C, A, B, α, β, Val{mc}(), Val{kc}(), Val{nc}())
-    #     end
-    # else#if N > 4nc
-    #     return jmulh!(C, A, B, α, β)
-    # end
-    # Niter, Nrem = divrem(N, Static{nc}())
-    # Miter, Mrem = divrem(M, Static{mc}())
-    # Km1 = VectorizationBase.staticm1(K)
-    # Kiter, _Krem = divrem(Km1, Static{kc}())
-    # Krem = VectorizationBase.staticp1(_Krem)
-    # # fill!(C, zero(Tc))
-    # # Cptr = stridedpointer(C)
-    # Aptr = stridedpointer(A)
-    # Bptr = stridedpointer(B)
-    # Cptr = stridedpointer(C)
-    # GC.@preserve C A B LCACHEARRAY begin
-    #     for no in 0:Niter - 1
-    #         # Krem
-    #         # pack kc x nc block of B
-    #         Bpacked_krem = pack_B_krem(Bptr, Val{kc}(), Val{nc}(), Tb, Krem, no)
-    #         # Bpacked_krem = PtrMatrix{-1,nc}(gesp(Bptr, (Kiter*kc, no*nc)), Krem)
-    #         for mo in 0:Miter - 1
-    #             # pack mc x kc block of A
-    #             Apacked_krem = pack_A_krem(Aptr, Val{mc}(), Ta, mo, Krem)
-    #             Cpmat = PtrMatrix(gesp(Cptr, (mo*mc, no*nc)), mc, nc)
-    #             loopmulprefetch!(Cpmat, Apacked_krem, Bpacked_krem, α, β)
-    #         end
-    #         # Mrem
-    #         if Mrem > 0
-    #             Apacked_mrem_krem = pack_A_mrem_krem(Aptr, Val{mc}(), Ta, Mrem, Krem, Miter)
-    #             Cpmat_mrem = PtrMatrix(gesp(Cptr, (Miter*mc, no*nc)), Mrem, nc)
-    #             loopmulprefetch!(Cpmat_mrem, Apacked_mrem_krem, Bpacked_krem, α, β)
-    #         end
-    #         k = VectorizationBase.unwrap(Krem)
-    #         for ko in 1:Kiter
-    #             # pack kc x nc block of B
-    #             Bpacked = pack_B(Bptr, Val{kc}(), Val{nc}(), Tb, k, no)
-    #             for mo in 0:Miter-1
-    #                 # pack mc x kc block of A
-    #                 Apacked = pack_A(Aptr, Val{mc}(), Val{kc}(), Ta, mo, k)
-    #                 Cpmat = PtrMatrix(gesp(Cptr, (mo*mc, no*nc)), mc, nc)
-    #                 loopmulprefetch!(Cpmat, Apacked, Bpacked, α, Val{1}())
-    #             end
-    #             # Mrem
-    #             if Mrem > 0
-    #                 Apacked_mrem = pack_A_mrem(Aptr, Val{mc}(), Val{kc}(), Ta, Mrem, k, Miter)
-    #                 Cpmat_mrem = PtrMatrix(gesp(Cptr, (Miter*mc, no*nc)), Mrem, nc)
-    #                 loopmulprefetch!(Cpmat_mrem, Apacked_mrem, Bpacked, α, Val{1}())
-    #             end
-    #             k += kc
-    #         end
-    #     end
-    #     # Nrem
-    #     if Nrem > 0
-    #         # Krem
-    #         # pack kc x nc block of B
-    #         Bpacked_krem_nrem = pack_B_krem_nrem(Bptr, Val{kc}(), Val{nc}(), Tb, Krem, Nrem, Niter)
-    #         for mo in 0:Miter-1
-    #             # pack mc x kc block of A
-    #             Apacked_krem = pack_A_krem(Aptr, Val{mc}(), Ta, mo, Krem)
-    #             Cpmat_nrem = PtrMatrix(gesp(Cptr, (mo*mc, Niter*nc)), mc, Nrem)
-    #             loopmulprefetch!(Cpmat_nrem, Apacked_krem, Bpacked_krem_nrem, α, β)
-    #         end
-    #         # Mrem
-    #         if Mrem > 0
-    #             Apacked_mrem_krem = pack_A_mrem_krem(Aptr, Val{mc}(), Ta, Mrem, Krem, Miter)
-    #             Cpmat_mrem_nrem = PtrMatrix(gesp(Cptr, (Miter*mc, Niter*nc)), Mrem, Nrem)
-    #             loopmulprefetch!(Cpmat_mrem_nrem, Apacked_mrem_krem, Bpacked_krem_nrem, α, β)
-    #         end
-    #         k = VectorizationBase.unwrap(Krem)
-    #         for ko in 1:Kiter
-    #             # pack kc x nc block of B
-    #             Bpacked_nrem = pack_B_nrem(Bptr, Val{kc}(), Val{nc}(), Tb, k, Nrem, Niter)
-    #             for mo in 0:Miter-1
-    #                 # pack mc x kc block of A
-    #                 Apacked = pack_A(Aptr, Val{mc}(), Val{kc}(), Ta, mo, k)
-    #                 Cpmat_nrem = PtrMatrix(gesp(Cptr, (mo*mc, Niter*nc)), mc, Nrem)
-    #                 loopmulprefetch!(Cpmat_nrem, Apacked, Bpacked_nrem, α, Val{1}())
-    #             end
-    #             # Mrem
-    #             if Mrem > 0
-    #                 Apacked_mrem = pack_A_mrem(Aptr, Val{mc}(), Val{kc}(), Ta, Mrem, k, Miter)
-    #                 Cpmat_mrem_nrem = PtrMatrix(gesp(Cptr, (Miter*mc, Niter*nc)), Mrem, Nrem)
-    #                 loopmulprefetch!(Cpmat_mrem_nrem, Apacked_mrem, Bpacked_nrem, α, Val{1}())
-    #             end
-    #             k += kc
-    #         end
-    #     end
-    # end # GC.@preserve
-    C
 end # function
 
 
@@ -467,303 +371,6 @@ end
 
 
 
-function loopmul!(
-    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ,Nᵢ}},
-    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
-    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
-    ::Val{1}, ::Val{0},
-) where {Mᵣ,Mᵢ,K,Nᵣ,Nᵢ}
-    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
-    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
-    @avx for nᵢ ∈ axes(C,4), mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ 1:Nᵣs
-         Cₘₙ = zero(eltype(C))
-        for k ∈ axes(A,2)
-            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k,nᵢ]
-        end
-        C[mᵣ,mᵢ,nᵣ,nᵢ] = Cₘₙ
-    end
-    nothing
-end
-function loopmul!(
-    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ,Nᵢ}},
-    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
-    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
-    ::Val{1}, ::Val{1}
-) where {Mᵣ,Mᵢ,K,Nᵣ,Nᵢ}
-    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
-    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
-    @avx for nᵢ ∈ axes(C,4), mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ 1:Nᵣs
-         Cₘₙ = zero(eltype(C))
-        for k ∈ axes(A,2)
-            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k,nᵢ]
-        end
-        C[mᵣ,mᵢ,nᵣ,nᵢ] += Cₘₙ
-    end
-    nothing
-end
-function loopmul!(
-    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ,Nᵢ}},
-    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
-    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
-    ::Val{1}, β
-) where {Mᵣ,Mᵢ,K,Nᵣ,Nᵢ}
-    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
-    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
-    @avx for nᵢ ∈ axes(C,4), mᵢ ∈ 1:Mᵢs, mᵣ ∈ 1:Mᵣs, nᵣ ∈ 1:Nᵣs
-        Cₘₙ = zero(eltype(C))
-        for k ∈ axes(A,2)
-            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k,nᵢ]
-        end
-        C[mᵣ,mᵢ,nᵣ,nᵢ] = Cₘₙ + β * C[mᵣ,mᵢ,nᵣ,nᵢ]
-    end
-    nothing
-end
-function loopmul!(
-    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ,Nᵢ}},
-    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
-    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
-    α, ::Val{0}
-) where {Mᵣ,Mᵢ,K,Nᵣ,Nᵢ}
-    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
-    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
-    @avx for nᵢ ∈ axes(C,4), mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ 1:Nᵣs
-         Cₘₙ = zero(eltype(C))
-        for k ∈ axes(A,2)
-            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k,nᵢ]
-        end
-        C[mᵣ,mᵢ,nᵣ,nᵢ] = α * Cₘₙ
-    end
-    nothing
-end
-function loopmul!(
-    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ,Nᵢ}},
-    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
-    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
-    α, ::Val{1}
-) where {Mᵣ,Mᵢ,K,Nᵣ,Nᵢ}
-    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
-    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
-    @avx for nᵢ ∈ axes(C,4), mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ 1:Nᵣs
-        Cₘₙ = zero(eltype(C))
-        for k ∈ axes(A,2)
-            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k,nᵢ]
-        end
-        C[mᵣ,mᵢ,nᵣ,nᵢ] += α * Cₘₙ
-    end
-    nothing
-end
-function loopmul!(
-    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ,Nᵢ}},
-    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
-    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
-    α, β
-) where {Mᵣ,Mᵢ,K,Nᵣ,Nᵢ}
-    Mᵣs = Static{Mᵣ}(); #Mᵢs = Static{Mᵢ}()
-    Nᵣs = Static{Nᵣ}(); #Nᵢs = Static{Nᵢ}()
-    @avx for nᵢ ∈ axes(C,4), mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ 1:Nᵣs
-        Cₘₙ = zero(eltype(C))
-        for k ∈ axes(A,2)
-            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k,nᵢ]
-        end
-        C[mᵣ,mᵢ,nᵣ,nᵢ] = α * Cₘₙ + β * C[mᵣ,mᵢ,nᵣ,nᵢ]
-    end
-    nothing
-end
-
-function loopmul!(
-    C::AbstractStrideArray{Tuple{M,Nᵣ,Nᵢ}},
-    A::AbstractStrideArray{Tuple{M,K}},
-    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
-    ::Val{1}, ::Val{0}
-) where {M,K,Nᵣ,Nᵢ}
-    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
-    @avx for nᵢ ∈ axes(C,3), m ∈ axes(A,1), nᵣ ∈ 1:Nᵣs
-        Cₘₙ = zero(eltype(C))
-        for k ∈ axes(A,2)
-            Cₘₙ += A[m,k] * B[nᵣ,k,nᵢ]
-        end
-        C[m,nᵣ,nᵢ] = Cₘₙ
-    end
-    nothing
-end
-function loopmul!(
-    C::AbstractStrideArray{Tuple{M,Nᵣ,Nᵢ}},
-    A::AbstractStrideArray{Tuple{M,K}},
-    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
-    ::Val{1}, ::Val{1}
-) where {M,K,Nᵣ,Nᵢ}
-    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
-    @avx for nᵢ ∈ axes(C,3), m ∈ axes(A,1), nᵣ ∈ 1:Nᵣs
-        Cₘₙ = zero(eltype(C))
-        for k ∈ axes(A,2)
-            Cₘₙ += A[m,k] * B[nᵣ,k,nᵢ]
-        end
-        C[m,nᵣ,nᵢ] += Cₘₙ
-    end
-    nothing
-end
-function loopmul!(
-    C::AbstractStrideArray{Tuple{M,Nᵣ,Nᵢ}},
-    A::AbstractStrideArray{Tuple{M,K}},
-    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
-    ::Val{1}, β
-) where {M,K,Nᵣ,Nᵢ}
-    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
-    @avx for nᵢ ∈ axes(C,3), m ∈ axes(A,1), nᵣ ∈ 1:Nᵣs
-        Cₘₙ = zero(eltype(C))
-        for k ∈ axes(A,2)
-            Cₘₙ += A[m,k] * B[nᵣ,k,nᵢ]
-        end
-        C[m,nᵣ,nᵢ] = Cₘₙ + β * C[m,nᵣ,nᵢ]
-    end
-    nothing
-end
-function loopmul!(
-    C::AbstractStrideArray{Tuple{M,Nᵣ,Nᵢ}},
-    A::AbstractStrideArray{Tuple{M,K}},
-    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
-    α, ::Val{0}
-) where {M,K,Nᵣ,Nᵢ}
-    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
-    @avx for nᵢ ∈ axes(C,3), m ∈ axes(A,1), nᵣ ∈ 1:Nᵣs
-        Cₘₙ = zero(eltype(C))
-        for k ∈ axes(A,2)
-            Cₘₙ += A[m,k] * B[nᵣ,k,nᵢ]
-        end
-        C[m,nᵣ,nᵢ] = α * Cₘₙ
-    end
-    nothing
-end
-function loopmul!(
-    C::AbstractStrideArray{Tuple{M,Nᵣ,Nᵢ}},
-    A::AbstractStrideArray{Tuple{M,K}},
-    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
-    α, ::Val{1}
-) where {M,K,Nᵣ,Nᵢ}
-    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
-    @avx for nᵢ ∈ axes(C,3), m ∈ axes(A,1), nᵣ ∈ 1:Nᵣs
-        Cₘₙ = zero(eltype(C))
-        for k ∈ axes(A,2)
-            Cₘₙ += A[m,k] * B[nᵣ,k,nᵢ]
-        end
-        C[m,nᵣ,nᵢ] += α * Cₘₙ
-    end
-    nothing
-end
-function loopmul!(
-    C::AbstractStrideArray{Tuple{M,Nᵣ,Nᵢ}},
-    A::AbstractStrideArray{Tuple{M,K}},
-    B::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ}},
-    α, β
-) where {M,K,Nᵣ,Nᵢ}
-    Nᵣs = Static{Nᵣ}();# Nᵢs = Static{Nᵢ}()
-    @avx for nᵢ ∈ axes(C,3), m ∈ axes(A,1), nᵣ ∈ 1:Nᵣs
-        Cₘₙ = zero(eltype(C))
-        for k ∈ axes(A,2)
-            Cₘₙ += A[m,k] * B[nᵣ,k,nᵢ]
-        end
-        C[m,nᵣ,nᵢ] = α * Cₘₙ + β * C[m,nᵣ,nᵢ]
-    end
-    nothing
-end
-
-
-function loopmul!(
-    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ}},
-    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
-    B::AbstractStrideArray{Tuple{Nᵣ,K}},
-    ::Val{1}, ::Val{0}
-) where {Mᵣ,Mᵢ,K,Nᵣ}
-    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
-    @avx for mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ axes(C,3)
-         Cₘₙ = zero(eltype(C))
-        for k ∈ axes(A,2)
-            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k]
-        end
-        C[mᵣ,mᵢ,nᵣ] = Cₘₙ
-    end
-    nothing
-end
-function loopmul!(
-    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ}},
-    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
-    B::AbstractStrideArray{Tuple{Nᵣ,K}},
-    ::Val{1}, ::Val{1}
-) where {Mᵣ,Mᵢ,K,Nᵣ}
-    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
-    @avx for mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ axes(C,3)
-         Cₘₙ = zero(eltype(C))
-        for k ∈ axes(A,2)
-            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k]
-        end
-        C[mᵣ,mᵢ,nᵣ] += Cₘₙ
-    end
-    nothing
-end
-function loopmul!(
-    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ}},
-    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
-    B::AbstractStrideArray{Tuple{Nᵣ,K}},
-    ::Val{1}, β
-) where {Mᵣ,Mᵢ,K,Nᵣ}
-    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
-    @avx for mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ axes(C,3)
-        Cₘₙ = zero(eltype(C))
-        for k ∈ axes(A,2)
-            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k]
-        end
-        C[mᵣ,mᵢ,nᵣ] = Cₘₙ + β * C[mᵣ,mᵢ,nᵣ]
-    end
-    nothing
-end
-function loopmul!(
-    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ}},
-    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
-    B::AbstractStrideArray{Tuple{Nᵣ,K}},
-    α, ::Val{0}
-) where {Mᵣ,Mᵢ,K,Nᵣ}
-    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
-    @avx for mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ axes(C,3)
-         Cₘₙ = zero(eltype(C))
-        for k ∈ axes(A,2)
-            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k]
-        end
-        C[mᵣ,mᵢ,nᵣ] = α * Cₘₙ
-    end
-    nothing
-end
-function loopmul!(
-    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ}},
-    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
-    B::AbstractStrideArray{Tuple{Nᵣ,K}},
-    α, ::Val{1}
-) where {Mᵣ,Mᵢ,K,Nᵣ}
-    Mᵣs = Static{Mᵣ}();# Mᵢs = Static{Mᵢ}()
-    @avx for mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ axes(C,3)
-        Cₘₙ = zero(eltype(C))
-        for k ∈ axes(A,2)
-            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k]
-        end
-        C[mᵣ,mᵢ,nᵣ] += α * Cₘₙ
-    end
-    nothing
-end
-function loopmul!(
-    C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ}},
-    A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
-    B::AbstractStrideArray{Tuple{Nᵣ,K}},
-    α, β
-) where {Mᵣ,Mᵢ,K,Nᵣ}
-    Mᵣs = Static{Mᵣ}(); #Mᵢs = Static{Mᵢ}()
-    @avx for mᵢ ∈ axes(A,3), mᵣ ∈ 1:Mᵣs, nᵣ ∈ axes(C,3)
-        Cₘₙ = zero(eltype(C))
-        for k ∈ axes(A,2)
-            Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k]
-        end
-        C[mᵣ,mᵢ,nᵣ] = α * Cₘₙ + β * C[mᵣ,mᵢ,nᵣ]
-    end
-    nothing
-end
 
 function packarray_A!(dest::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}}, src::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,K}}) where {Mᵣ,K,Mᵢ}
     # @inbounds for mᵢ ∈ axes(dest,3), k ∈ axes(dest,2), mᵣ ∈ axes(dest,1)
@@ -949,7 +556,7 @@ function jmulh!(
             for mo in 0:Miter-1
                 # pack mc x kc block of A
                 Apacked_krem = PtrArray{Tuple{mᵣW,-1,-1},Tc,3,Tuple{1,mᵣW,-1},2,1,false}(ptrL2, (Krem,mcrepetitions), (Krem*mᵣW,))
-                Apmat_krem = PtrArray{Tuple{mᵣW,-1,-1},Ta,3,Tuple{1,mᵣW,-1},2,1,false}(gep(Aptr, (mo*mreps_per_iter, 0)), (mcrepetitions,Krem), Aptr.strides)
+                Apmat_krem = PtrArray{Tuple{mᵣW,-1,-1},Ta,3}(gesp(Aptr, (mo*mreps_per_iter, 0)), (mcrepetitions,Krem))
                 packarray_A!(Apacked_krem, Apmat_krem)
                 Cptr_off = gep(Cptr, (mo*mreps_per_iter, Noff))
                 Cx = first(Cptr.strides)
@@ -973,8 +580,7 @@ function jmulh!(
                 for mo in 0:Miter-1
                     # pack mc x kc block of A
                     Apacked = PtrArray{Tuple{mᵣW,-1,-1},Tc,3,Tuple{1,mᵣW,-1},2,1,false}(ptrL2, (Krepetitions,mcrepetitions), ((mᵣW*kc),))
-                    Aptr_off = gep(Aptr, (mo*mreps_per_iter, k))
-                    Apmat = PtrArray{Tuple{mᵣW,-1,-1},Ta,3,Tuple{1,mᵣW,-1},2,1,false}(Aptr_off, (mcrepetitions,Krepetitions), Aptr.strides)
+                    Apmat = PtrArray{Tuple{mᵣW,-1,-1},Ta,3}(gesp(Aptr, (mo*mreps_per_iter, k)), (mcrepetitions,Krepetitions))
                     packarray_A!(Apacked, Apmat)
                     Cptr_off = gep(Cptr, (mo*mreps_per_iter, Noff))
                     Cx = first(Cptr.strides)
@@ -1009,7 +615,7 @@ function jmulh!(
             for mo in 0:Miter-1
                 # pack mc x kc block of A
                 Apacked_krem = PtrArray{Tuple{mᵣW,-1,-1},Tc,3,Tuple{1,mᵣW,-1},2,1,false}(ptrL2, (Krem,mcrepetitions), (Krem*mᵣW,))
-                Apmat_krem = PtrArray{Tuple{mᵣW,-1,-1},Ta,3,Tuple{1,mᵣW,-1},2,1,false}(gep(Aptr, (mo*mreps_per_iter, 0)), (mcrepetitions,Krem), Aptr.strides)
+                Apmat_krem = PtrArray{Tuple{mᵣW,-1,-1},Ta,3}(gesp(Aptr, (mo*mreps_per_iter, 0)), (mcrepetitions,Krem))
                 packarray_A!(Apacked_krem, Apmat_krem)
                 Cptr_off = gep(Cptr, (mo*mreps_per_iter, Noff))
                 Cx = first(Cptr.strides)
@@ -1049,8 +655,7 @@ function jmulh!(
                 for mo in 0:Miter-1
                     # pack mc x kc block of A
                     Apacked = PtrArray{Tuple{mᵣW,-1,-1},Tc,3,Tuple{1,(mᵣ*W),-1},2,1,false}(ptrL2, (Krepetitions,mcrepetitions), ((mᵣW*kc),))
-                    Aptr_off = gep(Aptr, (mo*mreps_per_iter, k))
-                    Apmat = PtrArray{Tuple{mᵣW,-1,-1},Ta,3,Tuple{1,mᵣW,-1},2,1,false}(Aptr_off, (mcrepetitions,Krepetitions), Aptr.strides)
+                    Apmat = PtrArray{Tuple{mᵣW,-1,-1},Ta,3}(gesp(Aptr, (mo*mreps_per_iter, k)), (mcrepetitions,Krepetitions))
                     packarray_A!(Apacked, Apmat)
                     Cptr_off = gep(Cptr, (mo*mreps_per_iter, Noff))
                     Cx = first(Cptr.strides)
