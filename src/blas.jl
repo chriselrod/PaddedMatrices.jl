@@ -139,8 +139,8 @@ function jmulpackAonly!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::Abstrac
     
     #(iszero(Miter) && iszero(Niter)) && return loopmul!(C, A, B)
     num_k_iter = cld(K, kc)
-    Krepetitions, Krem = divrem(K, num_k_iter)
-    Krem += Krepetitions
+    Krepetitions = ((K ÷ num_k_iter) + 3) & -4
+    Krem = K - (num_k_iter - 1) * Krepetitions
     Kiter = num_k_iter - 1
 
     Aptr = stridedpointer(A)
@@ -529,10 +529,9 @@ function jmulh!(
     Miter = num_m_iter - 1
     Mrem = M - Miter * mreps_per_iter
     
-    #(iszero(Miter) && iszero(Niter)) && return loopmul!(C, A, B)
     num_k_iter = cld(K, kc)
-    Krepetitions, Krem = divrem(K, num_k_iter)
-    Krem += Krepetitions
+    Krepetitions = ((K ÷ num_k_iter) + 3) & -4
+    Krem = K - (num_k_iter - 1) * Krepetitions
     Kiter = num_k_iter - 1
 
     # @show mreps_per_iter, Krepetitions, nreps_per_iter

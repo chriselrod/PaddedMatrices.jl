@@ -9,7 +9,8 @@ function matmul_sizes(C, A, B)
 end
 
 function loopmul!(C, A, B, ::Val{1}, ::Val{0}, (M, K, N) = matmul_sizes(C, A, B))
-    @avx for n ∈ 1:N, m ∈ 1:M
+    # @avx for n ∈ 1:N, m ∈ 1:M
+    @avx for m ∈ 1:M, n ∈ 1:N
         Cₘₙ = zero(eltype(C))
         for k ∈ 1:K
             Cₘₙ += A[m,k] * B[k,n]
@@ -19,7 +20,8 @@ function loopmul!(C, A, B, ::Val{1}, ::Val{0}, (M, K, N) = matmul_sizes(C, A, B)
     nothing
 end
 function loopmul!(C, A, B, ::Val{1}, ::Val{1}, (M, K, N) = matmul_sizes(C, A, B))
-    @avx for n ∈ 1:N, m ∈ 1:M
+    # @avx for n ∈ 1:N, m ∈ 1:M
+    @avx for m ∈ 1:M, n ∈ 1:N
         Cₘₙ = zero(eltype(C))
         for k ∈ 1:K
             Cₘₙ += A[m,k] * B[k,n]
@@ -28,8 +30,20 @@ function loopmul!(C, A, B, ::Val{1}, ::Val{1}, (M, K, N) = matmul_sizes(C, A, B)
     end
     nothing
 end
+function loopmul!(C, A, B, ::Val{1}, β, (M, K, N) = matmul_sizes(C, A, B))
+    # @avx for n ∈ 1:N, m ∈ 1:M
+    @avx for m ∈ 1:M, n ∈ 1:N
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ += A[m,k] * B[k,n]
+        end
+        C[m,n] = Cₘₙ + β * C[m,n]
+    end
+    nothing
+end
 function loopmul!(C, A, B, α, ::Val{0}, (M, K, N) = matmul_sizes(C, A, B))
-    @avx for n ∈ 1:N, m ∈ 1:M
+    # @avx for n ∈ 1:N, m ∈ 1:M
+    @avx for m ∈ 1:M, n ∈ 1:N
         Cₘₙ = zero(eltype(C))
         for k ∈ 1:K
             Cₘₙ += A[m,k] * B[k,n]
@@ -40,7 +54,8 @@ function loopmul!(C, A, B, α, ::Val{0}, (M, K, N) = matmul_sizes(C, A, B))
 end
 
 function loopmul!(C, A, B, α, ::Val{1}, (M, K, N) = matmul_sizes(C, A, B))
-    @avx for n ∈ 1:N, m ∈ 1:M
+    # @avx for n ∈ 1:N, m ∈ 1:M
+    @avx for m ∈ 1:M, n ∈ 1:N
         Cₘₙ = zero(eltype(C))
         for k ∈ 1:K
             Cₘₙ += A[m,k] * B[k,n]
@@ -50,7 +65,8 @@ function loopmul!(C, A, B, α, ::Val{1}, (M, K, N) = matmul_sizes(C, A, B))
     nothing
 end
 function loopmul!(C, A, B, α, β, (M, K, N) = matmul_sizes(C, A, B))
-    @avx for n ∈ 1:N, m ∈ 1:M
+    # @avx for n ∈ 1:N, m ∈ 1:M
+    @avx for m ∈ 1:M, n ∈ 1:N
         Cₘₙ = zero(eltype(C))
         for k ∈ 1:K
             Cₘₙ += A[m,k] * B[k,n]
@@ -59,6 +75,143 @@ function loopmul!(C, A, B, α, β, (M, K, N) = matmul_sizes(C, A, B))
     end
     nothing
 end
+
+
+
+function packaloopmul!(C, Ãₚ, A, B, ::Val{1}, ::Val{0}, (M, K, N) = matmul_sizes(C, A, B))
+    Nᵣ = VectorizationBase.StaticUnitRange{1,nᵣ}()
+    # @avx for n ∈ 1:N, m ∈ 1:M
+    @avx for m ∈ 1:M, n ∈ Nᵣ
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Aₘₖ = A[m,k]
+            Cₘₙ += Aₘₖ * B[k,n]
+            Ãₚ[m,k] = Aₘₖ 
+        end
+        C[m,n] = Cₘₙ
+    end
+    Nrange = VectorizationBase.StaticLowerUnitRange{1+nᵣ}(N)
+    @avx for m ∈ 1:M, n ∈ Nrange
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ += Ãₚ[m,k] * B[k,n]
+        end
+        C[m,n] = Cₘₙ
+    end    
+    nothing
+end
+function packaloopmul!(C, Ãₚ, A, B, ::Val{1}, ::Val{1}, (M, K, N) = matmul_sizes(C, A, B))
+    Nᵣ = VectorizationBase.StaticUnitRange{1,nᵣ}()
+    # @avx for n ∈ 1:N, m ∈ 1:M
+    @avx for m ∈ 1:M, n ∈ Nᵣ
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Aₘₖ = A[m,k]
+            Cₘₙ += Aₘₖ * B[k,n]
+            Ãₚ[m,k] = Aₘₖ
+        end
+        C[m,n] += Cₘₙ
+    end
+    Nrange = VectorizationBase.StaticLowerUnitRange{1+nᵣ}(N)
+    @avx for m ∈ 1:M, n ∈ Nrange
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ += Ãₚ[m,k] * B[k,n]
+        end
+        C[m,n] += Cₘₙ
+    end    
+    nothing
+end
+function packaloopmul!(C, Ãₚ, A, B, ::Val{1}, β, (M, K, N) = matmul_sizes(C, A, B))
+    Nᵣ = VectorizationBase.StaticUnitRange{1,nᵣ}()
+    # @avx for n ∈ 1:N, m ∈ 1:M
+    @avx for m ∈ 1:M, n ∈ Nᵣ
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Aₘₖ = A[m,k]
+            Cₘₙ += Aₘₖ * B[k,n]
+            Ãₚ[m,k] = Aₘₖ 
+        end
+        C[m,n] = Cₘₙ + β * C[m,n]
+    end
+    Nrange = VectorizationBase.StaticLowerUnitRange{1+nᵣ}(N)
+    @avx for m ∈ 1:M, n ∈ Nrange
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ += Ãₚ[m,k] * B[k,n]
+        end
+        C[m,n] = Cₘₙ + β * C[m,n]
+    end    
+    nothing
+end
+function packaloopmul!(C, Ãₚ, A, B, α, ::Val{0}, (M, K, N) = matmul_sizes(C, A, B))
+    Nᵣ = VectorizationBase.StaticUnitRange{1,nᵣ}()
+    # @avx for n ∈ 1:N, m ∈ 1:M
+    @avx for m ∈ 1:M, n ∈ Nᵣ
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Aₘₖ = A[m,k]
+            Cₘₙ += Aₘₖ * B[k,n]
+            Ãₚ[m,k] = Aₘₖ 
+        end
+        C[m,n] = α * Cₘₙ
+    end
+    Nrange = VectorizationBase.StaticLowerUnitRange{1+nᵣ}(N)
+    @avx for m ∈ 1:M, n ∈ Nrange
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ += Ãₚ[m,k] * B[k,n]
+        end
+        C[m,n] = α * Cₘₙ
+    end    
+    nothing
+end
+
+function packaloopmul!(C, Ãₚ, A, B, α, ::Val{1}, (M, K, N) = matmul_sizes(C, A, B))
+    Nᵣ = VectorizationBase.StaticUnitRange{1,nᵣ}()
+    # @avx for n ∈ 1:N, m ∈ 1:M
+    @avx for m ∈ 1:M, n ∈ Nᵣ
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Aₘₖ = A[m,k]
+            Cₘₙ += Aₘₖ * B[k,n]
+            Ãₚ[m,k] = Aₘₖ 
+        end
+        C[m,n] += α * Cₘₙ
+    end
+    Nrange = VectorizationBase.StaticLowerUnitRange{1+nᵣ}(N)
+    @avx for m ∈ 1:M, n ∈ Nrange
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ += Ãₚ[m,k] * B[k,n]
+        end
+        C[m,n] += α * Cₘₙ
+    end    
+    nothing
+end
+function packaloopmul!(C, Ãₚ, A, B, α, β, (M, K, N) = matmul_sizes(C, A, B))
+    Nᵣ = VectorizationBase.StaticUnitRange{1,nᵣ}()
+    # @avx for n ∈ 1:N, m ∈ 1:M
+    @avx for m ∈ 1:M, n ∈ Nᵣ
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Aₘₖ = A[m,k]
+            Cₘₙ += Aₘₖ * B[k,n]
+            Ãₚ[m,k] = Aₘₖ 
+        end
+        C[m,n] = α * Cₘₙ + β * C[m,n]
+    end
+    Nrange = VectorizationBase.StaticLowerUnitRange{1+nᵣ}(N)
+    @avx for m ∈ 1:M, n ∈ Nrange
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ += Ãₚ[m,k] * B[k,n]
+        end
+        C[m,n] = α * Cₘₙ + β * C[m,n]
+    end    
+    nothing
+end
+
 
 function loopmul!(
     C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ,Nᵢ}},
@@ -361,7 +514,8 @@ const loopmulprefetch! = loopmul!
 
 @inline function inlineloopmul!(C, A, B, ::Val{1}, ::Val{0})
     M, K, N = matmul_sizes(C, A, B)
-    @avx for n ∈ 1:N, m ∈ 1:M
+    # @avx inline=true for n ∈ 1:N, m ∈ 1:M
+    @avx inline=true for m ∈ 1:M, n ∈ 1:N
         Cₘₙ = zero(eltype(C))
         for k ∈ 1:K
             Cₘₙ += A[m,k] * B[k,n]
@@ -370,9 +524,34 @@ const loopmulprefetch! = loopmul!
     end
     C
 end
+@inline function inlineloopmul!(C, A, B, ::Val{1}, ::Val{1})
+    M, K, N = matmul_sizes(C, A, B)
+    # @avx inline=true for n ∈ 1:N, m ∈ 1:M
+    @avx inline=true for m ∈ 1:M, n ∈ 1:N
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ += A[m,k] * B[k,n]
+        end
+        C[m,n] += Cₘₙ
+    end
+    C
+end
+@inline function inlineloopmul!(C, A, B, ::Val{1}, β)
+    M, K, N = matmul_sizes(C, A, B)
+    # @avx inline=true for n ∈ 1:N, m ∈ 1:M
+    @avx inline=true for m ∈ 1:M, n ∈ 1:N
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ += A[m,k] * B[k,n]
+        end
+        C[m,n] = Cₘₙ + β * C[m,n]
+    end
+    C
+end
 @inline function inlineloopmul!(C, A, B, α, ::Val{0})
     M, K, N = matmul_sizes(C, A, B)
-    @avx for n ∈ 1:N, m ∈ 1:M
+    # @avx inline=true for n ∈ 1:N, m ∈ 1:M
+    @avx inline=true for m ∈ 1:M, n ∈ 1:N
         Cₘₙ = zero(eltype(C))
         for k ∈ 1:K
             Cₘₙ += A[m,k] * B[k,n]
@@ -381,14 +560,27 @@ end
     end
     C
 end
-@inline function inlineloopmul!(C, A, B, α, β)
+@inline function inlineloopmul!(C, A, B, α, ::Val{1})
     M, K, N = matmul_sizes(C, A, B)
-    @avx for n ∈ 1:N, m ∈ 1:M
+    # @avx inline=true for n ∈ 1:N, m ∈ 1:M
+    @avx inline=true for m ∈ 1:M, n ∈ 1:N
         Cₘₙ = zero(eltype(C))
         for k ∈ 1:K
             Cₘₙ += A[m,k] * B[k,n]
         end
-        C[m,n]  = β * C[m,n] + α * Cₘₙ
+        C[m,n] += α * Cₘₙ
+    end
+    C
+end
+@inline function inlineloopmul!(C, A, B, α, β)
+    M, K, N = matmul_sizes(C, A, B)
+    # @avx inline=true for n ∈ 1:N, m ∈ 1:M
+    @avx inline=true for m ∈ 1:M, n ∈ 1:N
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ += A[m,k] * B[k,n]
+        end
+        C[m,n]  = α * Cₘₙ + β * C[m,n]
     end
     C
 end

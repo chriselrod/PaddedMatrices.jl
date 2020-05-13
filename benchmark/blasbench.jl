@@ -167,13 +167,14 @@ PICTURES = "/home/chriselrod/Pictures"
 
 function plot(tf, ::Type{T} = Float64, PICTURES = "/home/chriselrod/Pictures") where {T}
     res = create_df(tf, T)
+    l, u = extrema(tf.matrix_size)
     plt = res |> @vlplot(
         :line, color = :Library,
        # x = {:Size, scale={type=:log}}, y = {:GFLOPS},#, scale={type=:log}},
         x = {:Size}, y = {:GFLOPS},#, scale={type=:log}},
         width = 2400, height = 600
     )
-    save(joinpath(PICTURES, "gemm$(string(T)).png"), plt)
+    save(joinpath(PICTURES, "gemm$(string(T))_$(l)_$(u).png"), plt)
 end
 
 
