@@ -77,52 +77,52 @@ end
 function pack_A_krem(Aptr, ::Val{mc}, ::Type{Ta}, mo::Int, Krem) where {mc, Ta}
     Apacked_krem = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), mc, Krem, mc)
     Apmat_krem = PtrMatrix(gesp(Aptr, (mo*mc, 0)), mc, Krem)
-    copyto!(Apacked_krem, Apmat_krem)
-    Apacked_krem
+    # copyto!(Apacked_krem, Apmat_krem)
+    Apacked_krem, Apmat_krem
 end
 function pack_A_krem(Aptr, mc, ::Type{Ta}, mo::Int, Krem) where {Ta}
     Apacked_krem = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), mc, Krem, mc)# assumed aligned
     Apmat_krem = PtrMatrix(gesp(Aptr, (mo*mc, 0)), mc, Krem)
-    copyto!(Apacked_krem, Apmat_krem)
-    Apacked_krem
+    # copyto!(Apacked_krem, Apmat_krem)
+    Apacked_krem, Apmat_krem
 end
 function pack_A_mrem(Aptr, ::Val{mc}, ::Val{kc}, ::Type{Ta}, Mrem, k::Int, Miter) where {mc, kc, Ta}
     Apacked_mrem = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), Mrem, kc, VectorizationBase.align(Mrem, Ta))
     Apmat_mrem = PtrMatrix(gesp(Aptr, (Miter*mc, k)), Mrem, kc)
-    copyto!(Apacked_mrem, Apmat_mrem)
-    Apacked_mrem
+    # copyto!(Apacked_mrem, Apmat_mrem)
+    Apacked_mrem, Apmat_mrem
 end
 function pack_A_mrem(Aptr, mc, kc, ::Type{Ta}, Mrem, k::Int, Miter) where {Ta}
     Apacked_mrem = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), Mrem, kc, VectorizationBase.align(Mrem, Ta))
     Apmat_mrem = PtrMatrix(gesp(Aptr, (Miter*mc, k)), Mrem, kc)
-    copyto!(Apacked_mrem, Apmat_mrem)
-    Apacked_mrem
+    # copyto!(Apacked_mrem, Apmat_mrem)
+    Apacked_mrem, Apmat_mrem
 end
 function pack_A_mrem_krem(Aptr, ::Val{mc}, ::Type{Ta}, Mrem, Krem, Miter) where {mc, Ta}
     Apacked_mrem_krem = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), Mrem, Krem, VectorizationBase.align(Mrem, Ta))
     Apmat_mrem_krem = PtrMatrix(gesp(Aptr, (Miter*mc, 0)), Mrem, Krem)
-    copyto!(Apacked_mrem_krem, Apmat_mrem_krem)
-    Apacked_mrem_krem
+    # copyto!(Apacked_mrem_krem, Apmat_mrem_krem)
+    Apacked_mrem_krem, Apmat_mrem_krem
 end
 function pack_A_mrem_krem(Aptr, mc, ::Type{Ta}, Mrem, Krem, Miter) where {Ta}
     Apacked_mrem_krem = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), Mrem, Krem, VectorizationBase.align(Mrem, Ta))
     Apmat_mrem_krem = PtrMatrix(gesp(Aptr, (Miter*mc, 0)), Mrem, Krem)
-    copyto!(Apacked_mrem_krem, Apmat_mrem_krem)
-    Apacked_mrem_krem
+    # copyto!(Apacked_mrem_krem, Apmat_mrem_krem)
+    Apacked_mrem_krem, Apmat_mrem_krem
 end
 function pack_A(Aptr, ::Val{mc}, ::Val{kc}, ::Type{Ta}, mo::Int, k::Int) where {mc, kc, Ta}
     Apacked = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), mc, kc, mc)
     Apmat = PtrMatrix(gesp(Aptr, (mo*mc, k)), mc, kc)
     # @show (reinterpret(Int, pointer(Apmat)) - reinterpret(Int,pointer(Aptr))) >>> 3
-    copyto!(Apacked, Apmat)
-    Apacked
+    # copyto!(Apacked, Apmat)
+    Apacked, Apmat
 end
 function pack_A(Aptr, mc, kc, ::Type{Ta}, mo::Int, k::Int) where {Ta}
     Apacked = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), mc, kc, mc)
     Apmat = PtrMatrix(gesp(Aptr, (mo*mc, k)), mc, kc)
     # @show (reinterpret(Int, pointer(Apmat)) - reinterpret(Int,pointer(Aptr))) >>> 3
-    copyto!(Apacked, Apmat)
-    Apacked
+    # copyto!(Apacked, Apmat)
+    Apacked, Apmat
 end
 
 function jmulpackAonly!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}, (M, K, N) = matmul_sizes(C, A, B)) where {Tc, Ta, Tb, mc, kc, nc}
@@ -139,8 +139,8 @@ function jmulpackAonly!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::Abstrac
     
     #(iszero(Miter) && iszero(Niter)) && return loopmul!(C, A, B)
     num_k_iter = cld(K, kc)
-    Krepetitions, Krem = divrem(K, num_k_iter)
-    Krem += Krepetitions
+    Krepetitions = ((K ÷ num_k_iter) + 3) & -4
+    Krem = K - (num_k_iter - 1) * Krepetitions
     Kiter = num_k_iter - 1
 
     Aptr = stridedpointer(A)
@@ -152,15 +152,15 @@ function jmulpackAonly!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::Abstrac
         Bpacked_krem_nrem = PtrMatrix(Bptr, Krem, N)
         for mo in 0:Miter-1
             # pack mreps_per_iter x Krepetitions block of A
-            Apacked_krem = pack_A_krem(Aptr, mreps_per_iter, Tc, mo, Krem)
+            Apacked_krem, Asubset_krem = pack_A_krem(Aptr, mreps_per_iter, Tc, mo, Krem)
             Cpmat_nrem = PtrMatrix(gesp(Cptr, (mo*mreps_per_iter, 0)), mreps_per_iter, N)
-            loopmul!(Cpmat_nrem, Apacked_krem, Bpacked_krem_nrem, α, β, (mreps_per_iter, Krem, N))
+            packaloopmul!(Cpmat_nrem, Apacked_krem, Asubset_krem, Bpacked_krem_nrem, α, β, (mreps_per_iter, Krem, N))
         end
         # Mrem
         if Mrem > 0
-            Apacked_mrem_krem = pack_A_mrem_krem(Aptr, mreps_per_iter, Tc, Mrem, Krem, Miter)
+            Apacked_mrem_krem, Asubset_mrem_krem = pack_A_mrem_krem(Aptr, mreps_per_iter, Tc, Mrem, Krem, Miter)
             Cpmat_mrem_nrem = PtrMatrix(gesp(Cptr, (Miter*mreps_per_iter, 0)), Mrem, N)
-            loopmul!(Cpmat_mrem_nrem, Apacked_mrem_krem, Bpacked_krem_nrem, α, β, (Mrem, Krem, N))
+            packaloopmul!(Cpmat_mrem_nrem, Apacked_mrem_krem, Asubset_mrem_krem, Bpacked_krem_nrem, α, β, (Mrem, Krem, N))
         end
         k = Krem
         for ko in 1:Kiter
@@ -168,15 +168,15 @@ function jmulpackAonly!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::Abstrac
             Bpacked_nrem = PtrMatrix(gesp(Bptr, (k, 0)), Krepetitions, N)
             for mo in 0:Miter-1
                 # pack mreps_per_iter x Krepetitions block of A
-                Apacked = pack_A(Aptr, mreps_per_iter, Krepetitions, Tc, mo, k)
+                Apacked, Asubset = pack_A(Aptr, mreps_per_iter, Krepetitions, Tc, mo, k)
                 Cpmat_nrem = PtrMatrix(gesp(Cptr, (mo*mreps_per_iter, 0)), mreps_per_iter, N)
-                loopmul!(Cpmat_nrem, Apacked, Bpacked_nrem, α, Val{1}(), (mreps_per_iter, Krepetitions, N))
+                packaloopmul!(Cpmat_nrem, Apacked, Asubset, Bpacked_nrem, α, Val{1}(), (mreps_per_iter, Krepetitions, N))
             end
             # Mrem
             if Mrem > 0
-                Apacked_mrem = pack_A_mrem(Aptr, mreps_per_iter, Krepetitions, Tc, Mrem, k, Miter)
+                Apacked_mrem, Asubset_mrem = pack_A_mrem(Aptr, mreps_per_iter, Krepetitions, Tc, Mrem, k, Miter)
                 Cpmat_mrem_nrem = PtrMatrix(gesp(Cptr, (Miter*mreps_per_iter, 0)), Mrem, N)
-                loopmul!(Cpmat_mrem_nrem, Apacked_mrem, Bpacked_nrem, α, Val{1}(), (Mrem, Krepetitions, N))
+                packaloopmul!(Cpmat_mrem_nrem, Apacked_mrem, Asubset_mrem, Bpacked_nrem, α, Val{1}(), (Mrem, Krepetitions, N))
             end
             k += Krepetitions
         end
@@ -209,138 +209,138 @@ function jmul!(
 end # function
 
 
-function jmult!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}) where {Tc, Ta, Tb, mc, kc, nc, log2kc}
-    M, K, N = matmul_sizes(C, A, B)
-    Niter, Nrem = divrem(N, Static{nc}())
-    Miter, Mrem = divrem(M, Static{mc}())
-    if iszero(Niter) & iszero(Miter)
-        if Mrem*sizeof(Ta) > 255
-            loopmulprefetch!(C, A, B, α, β); return C
-        else
-            loopmul!(C, A, B, α, β); return C
-        end
-    end
-    Km1 = VectorizationBase.staticm1(K)
-    Kiter, _Krem = divrem(Km1, Static{kc}())
-    Krem = VectorizationBase.staticp1(_Krem)
-    Aptr = stridedpointer(A)
-    Bptr = stridedpointer(B)
-    Cptr = stridedpointer(C)
-    Base.Threads.@sync GC.@preserve C A B LCACHEARRAY begin
-        for no in 0:Niter-1
-            # Krem
-            # pack kc x nc block of B
-            # Base.Threads.@spawn begin
-            begin
-                Bpacked_krem = pack_B_krem(Bptr, Val{kc}(), Val{nc}(), Tb, Krem, no)
-                Base.Threads.@sync begin
-                    for mo in 0:Miter-1
-                        # pack mc x kc block of A
-                        Base.Threads.@spawn begin
-                            # begin
-                            Apacked_krem = pack_A_krem(Aptr, Val{mc}(), Ta, mo, Krem)
-                            Cpmat = PtrMatrix(gesp(Cptr, (mo*mc, no*nc)), mc, nc)
-                            loopmulprefetch!(Cpmat, Apacked_krem, Bpacked_krem, α, β)
-                        end
-                    end
-                    # Mrem
-                    if Mrem > 0
-                        Base.Threads.@spawn begin
-                            # begin
-                            Apacked_mrem_krem = pack_A_mrem_krem(Aptr, Val{mc}(), Ta, Mrem, Krem, Miter)
-                            Cpmat_mrem = PtrMatrix(gesp(Cptr, (Miter*mc, no*nc)), Mrem, nc)
-                            loopmulprefetch!(Cpmat_mrem, Apacked_mrem_krem, Bpacked_krem, α, β)
-                        end
-                    end
-                end # sync
-                k = VectorizationBase.unwrap(Krem)
-                for ko in 1:Kiter
-                    # pack kc x nc block of B
-                    Bpacked = pack_B(Bptr, Val{kc}(), Val{nc}(), Tb, k, no)
-                    # Bprefetch = PtrMatrix{kc,nc}(gesp(Bptr, ((ko+1)*kc, no*nc)))
-                    # copyto!(Bpacked, Bpmat, Bprefetch)
-                    Base.Threads.@sync begin
-                        for mo in 0:Miter-1
-                            Base.Threads.@spawn begin
-                                # begin
-                                Apacked = pack_A(Aptr, Val{mc}(), Val{kc}(), Ta, mo, k)
-                                Cpmat = PtrMatrix(gesp(Cptr, (mo*mc, no*nc)), mc, nc)
-                                loopmulprefetch!(Cpmat, Apacked, Bpacked, α, Val{1}())
-                            end
-                        end
-                        # Mrem
-                        if Mrem > 0
-                            Base.Threads.@spawn begin
-                                # begin
-                                Apacked_mrem = pack_A_mrem(Aptr, Val{mc}(), Val{kc}(), Ta, Mrem, k, Miter)
-                                Cpmat_mrem = PtrMatrix(gesp(Cptr, (Miter*mc, no*nc)), Mrem, nc)
-                                loopmulprefetch!(Cpmat_mrem, Apacked_mrem, Bpacked, α, Val{1}())
-                            end
-                        end
-                    end # sync
-                    k += kc
-                end
-            end # spawnp
-        end # nloop
-        # Nrem
-        if Nrem > 0
-            # Base.Threads.@spawn begin
-            begin
-                # Krem
-                # pack kc x nc block of B
-                Bpacked_krem_nrem = pack_B_krem_nrem(Bptr, Val{kc}(), Val{nc}(), Tb, Krem, Nrem, Niter)
-                # Bpacked_krem_nrem = PtrMatrix{-1,-1}(gesp(Bptr, (Kiter*kc, Niter*nc)), Krem, Nrem)
-                Base.Threads.@sync begin
-                    for mo in 0:Miter-1
-                        Base.Threads.@spawn begin
-                            # begin
-                            # pack mc x kc block of A
-                            Apacked_krem = pack_A_krem(Aptr, Val{mc}(), Ta, mo, Krem)
-                            Cpmat_nrem = PtrMatrix(gesp(Cptr, (mo*mc, Niter*nc)), mc, Nrem)
-                            loopmulprefetch!(Cpmat_nrem, Apacked_krem, Bpacked_krem_nrem, α, β)
-                        end
-                    end
-                    # Mrem
-                    if Mrem > 0
-                        Base.Threads.@spawn begin
-                            # begin
-                            Apacked_mrem_krem = pack_A_mrem_krem(Aptr, Val{mc}(), Ta, Mrem, Krem, Miter)
-                            Cpmat_mrem_nrem = PtrMatrix(gesp(Cptr, (Miter*mc, Niter*nc)), Mrem, Nrem)
-                            loopmulprefetch!(Cpmat_mrem_nrem, Apacked_mrem_krem, Bpacked_krem_nrem, α, β)
-                        end
-                    end
-                end # sync
-                k = VectorizationBase.unwrap(Krem)
-                for ko in 1:Kiter
-                    # pack kc x nc block of B
-                    Bpacked_nrem = pack_B_nrem(Bptr, Val{kc}(), Val{nc}(), Tb, k, Nrem, Niter)
-                    Base.Threads.@sync begin
-                        for mo in 0:Miter-1
-                            Base.Threads.@spawn begin
-                                # begin
-                                # pack mc x kc block of A
-                                Apacked = pack_A(Aptr, Val{mc}(), Val{kc}(), Ta, mo, k)
-                                Cpmat_nrem = PtrMatrix(gesp(Cptr, (mo*mc, Niter*nc)), mc, Nrem)
-                                loopmulprefetch!(Cpmat_nrem, Apacked, Bpacked_nrem, α, Val{1}())
-                            end
-                        end
-                        # Mrem
-                        if Mrem > 0
-                            Base.Threads.@spawn begin
-                                # begin
-                                Apacked_mrem = pack_A_mrem(Aptr, Val{mc}(), Val{kc}(), Ta, Mrem, k, Miter)
-                                Cpmat_mrem_nrem = PtrMatrix(gesp(Cptr, (Miter*mc, Niter*nc)), Mrem, Nrem)
-                                loopmulprefetch!(Cpmat_mrem_nrem, Apacked_mrem, Bpacked_nrem, α, Val{1}())
-                            end
-                        end
-                    end # sync
-                    k += kc
-                end
-            end
-        end
-    end # GC.@preserve, sync
-    C
-end
+# function jmult!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}) where {Tc, Ta, Tb, mc, kc, nc, log2kc}
+#     M, K, N = matmul_sizes(C, A, B)
+#     Niter, Nrem = divrem(N, Static{nc}())
+#     Miter, Mrem = divrem(M, Static{mc}())
+#     if iszero(Niter) & iszero(Miter)
+#         if Mrem*sizeof(Ta) > 255
+#             loopmulprefetch!(C, A, B, α, β); return C
+#         else
+#             loopmul!(C, A, B, α, β); return C
+#         end
+#     end
+#     Km1 = VectorizationBase.staticm1(K)
+#     Kiter, _Krem = divrem(Km1, Static{kc}())
+#     Krem = VectorizationBase.staticp1(_Krem)
+#     Aptr = stridedpointer(A)
+#     Bptr = stridedpointer(B)
+#     Cptr = stridedpointer(C)
+#     Base.Threads.@sync GC.@preserve C A B LCACHEARRAY begin
+#         for no in 0:Niter-1
+#             # Krem
+#             # pack kc x nc block of B
+#             # Base.Threads.@spawn begin
+#             begin
+#                 Bpacked_krem = pack_B_krem(Bptr, Val{kc}(), Val{nc}(), Tb, Krem, no)
+#                 Base.Threads.@sync begin
+#                     for mo in 0:Miter-1
+#                         # pack mc x kc block of A
+#                         Base.Threads.@spawn begin
+#                             # begin
+#                             Apacked_krem = pack_A_krem(Aptr, Val{mc}(), Ta, mo, Krem)
+#                             Cpmat = PtrMatrix(gesp(Cptr, (mo*mc, no*nc)), mc, nc)
+#                             loopmulprefetch!(Cpmat, Apacked_krem, Bpacked_krem, α, β)
+#                         end
+#                     end
+#                     # Mrem
+#                     if Mrem > 0
+#                         Base.Threads.@spawn begin
+#                             # begin
+#                             Apacked_mrem_krem = pack_A_mrem_krem(Aptr, Val{mc}(), Ta, Mrem, Krem, Miter)
+#                             Cpmat_mrem = PtrMatrix(gesp(Cptr, (Miter*mc, no*nc)), Mrem, nc)
+#                             loopmulprefetch!(Cpmat_mrem, Apacked_mrem_krem, Bpacked_krem, α, β)
+#                         end
+#                     end
+#                 end # sync
+#                 k = VectorizationBase.unwrap(Krem)
+#                 for ko in 1:Kiter
+#                     # pack kc x nc block of B
+#                     Bpacked = pack_B(Bptr, Val{kc}(), Val{nc}(), Tb, k, no)
+#                     # Bprefetch = PtrMatrix{kc,nc}(gesp(Bptr, ((ko+1)*kc, no*nc)))
+#                     # copyto!(Bpacked, Bpmat, Bprefetch)
+#                     Base.Threads.@sync begin
+#                         for mo in 0:Miter-1
+#                             Base.Threads.@spawn begin
+#                                 # begin
+#                                 Apacked = pack_A(Aptr, Val{mc}(), Val{kc}(), Ta, mo, k)
+#                                 Cpmat = PtrMatrix(gesp(Cptr, (mo*mc, no*nc)), mc, nc)
+#                                 loopmulprefetch!(Cpmat, Apacked, Bpacked, α, Val{1}())
+#                             end
+#                         end
+#                         # Mrem
+#                         if Mrem > 0
+#                             Base.Threads.@spawn begin
+#                                 # begin
+#                                 Apacked_mrem = pack_A_mrem(Aptr, Val{mc}(), Val{kc}(), Ta, Mrem, k, Miter)
+#                                 Cpmat_mrem = PtrMatrix(gesp(Cptr, (Miter*mc, no*nc)), Mrem, nc)
+#                                 loopmulprefetch!(Cpmat_mrem, Apacked_mrem, Bpacked, α, Val{1}())
+#                             end
+#                         end
+#                     end # sync
+#                     k += kc
+#                 end
+#             end # spawnp
+#         end # nloop
+#         # Nrem
+#         if Nrem > 0
+#             # Base.Threads.@spawn begin
+#             begin
+#                 # Krem
+#                 # pack kc x nc block of B
+#                 Bpacked_krem_nrem = pack_B_krem_nrem(Bptr, Val{kc}(), Val{nc}(), Tb, Krem, Nrem, Niter)
+#                 # Bpacked_krem_nrem = PtrMatrix{-1,-1}(gesp(Bptr, (Kiter*kc, Niter*nc)), Krem, Nrem)
+#                 Base.Threads.@sync begin
+#                     for mo in 0:Miter-1
+#                         Base.Threads.@spawn begin
+#                             # begin
+#                             # pack mc x kc block of A
+#                             Apacked_krem = pack_A_krem(Aptr, Val{mc}(), Ta, mo, Krem)
+#                             Cpmat_nrem = PtrMatrix(gesp(Cptr, (mo*mc, Niter*nc)), mc, Nrem)
+#                             loopmulprefetch!(Cpmat_nrem, Apacked_krem, Bpacked_krem_nrem, α, β)
+#                         end
+#                     end
+#                     # Mrem
+#                     if Mrem > 0
+#                         Base.Threads.@spawn begin
+#                             # begin
+#                             Apacked_mrem_krem = pack_A_mrem_krem(Aptr, Val{mc}(), Ta, Mrem, Krem, Miter)
+#                             Cpmat_mrem_nrem = PtrMatrix(gesp(Cptr, (Miter*mc, Niter*nc)), Mrem, Nrem)
+#                             loopmulprefetch!(Cpmat_mrem_nrem, Apacked_mrem_krem, Bpacked_krem_nrem, α, β)
+#                         end
+#                     end
+#                 end # sync
+#                 k = VectorizationBase.unwrap(Krem)
+#                 for ko in 1:Kiter
+#                     # pack kc x nc block of B
+#                     Bpacked_nrem = pack_B_nrem(Bptr, Val{kc}(), Val{nc}(), Tb, k, Nrem, Niter)
+#                     Base.Threads.@sync begin
+#                         for mo in 0:Miter-1
+#                             Base.Threads.@spawn begin
+#                                 # begin
+#                                 # pack mc x kc block of A
+#                                 Apacked = pack_A(Aptr, Val{mc}(), Val{kc}(), Ta, mo, k)
+#                                 Cpmat_nrem = PtrMatrix(gesp(Cptr, (mo*mc, Niter*nc)), mc, Nrem)
+#                                 loopmulprefetch!(Cpmat_nrem, Apacked, Bpacked_nrem, α, Val{1}())
+#                             end
+#                         end
+#                         # Mrem
+#                         if Mrem > 0
+#                             Base.Threads.@spawn begin
+#                                 # begin
+#                                 Apacked_mrem = pack_A_mrem(Aptr, Val{mc}(), Val{kc}(), Ta, Mrem, k, Miter)
+#                                 Cpmat_mrem_nrem = PtrMatrix(gesp(Cptr, (Miter*mc, Niter*nc)), Mrem, Nrem)
+#                                 loopmulprefetch!(Cpmat_mrem_nrem, Apacked_mrem, Bpacked_nrem, α, Val{1}())
+#                             end
+#                         end
+#                     end # sync
+#                     k += kc
+#                 end
+#             end
+#         end
+#     end # GC.@preserve, sync
+#     C
+# end
 
 maybeinline(::Any) = false
 @generated function maybeinline(::AbstractFixedSizeMatrix{M,N,T}) where {M,N,T}
@@ -372,12 +372,12 @@ end
 
 
 
-function packarray_A!(dest::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}}, src::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,K}}) where {Mᵣ,K,Mᵢ}
-    # @inbounds for mᵢ ∈ axes(dest,3), k ∈ axes(dest,2), mᵣ ∈ axes(dest,1)
-    @avx for mᵢ ∈ axes(dest,3), k ∈ axes(dest,2), mᵣ ∈ axes(dest,1)
-        dest[mᵣ,k,mᵢ] = src[mᵣ,mᵢ,k]
-    end
-end
+# function packarray_A!(dest::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}}, src::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,K}}) where {Mᵣ,K,Mᵢ}
+#     # @inbounds for mᵢ ∈ axes(dest,3), k ∈ axes(dest,2), mᵣ ∈ axes(dest,1)
+#     @avx for mᵢ ∈ axes(dest,3), k ∈ axes(dest,2), mᵣ ∈ axes(dest,1)
+#         dest[mᵣ,k,mᵢ] = src[mᵣ,mᵢ,k]
+#     end
+# end
 function packarray_B!(dest::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ},T}, src::AbstractStrideArray{Tuple{K,Nᵣ,Nᵢ},T}) where {Nᵣ,K,Nᵢ,T}
     @avx for k ∈ axes(dest,2), nᵢ ∈ axes(dest,3), nᵣ ∈ axes(dest,1)
         dest[nᵣ,k,nᵢ] = src[k,nᵣ,nᵢ]
@@ -494,8 +494,22 @@ function jmulh!(
 end
 =#
 
+# function Apack_krem(Aptr::AbstractStridedPointer{Ta}, ptrL2, ::Val{mᵣW}, ::Type{Tc}, mcrepetitions, Krem, mo, mreps_per_iter) where {mᵣW, Ta, Tc}
+#     Apacked_krem = PtrArray{Tuple{mᵣW,-1,-1},Tc,3,Tuple{1,mᵣW,-1},2,1,false}(ptrL2, (Krem,mcrepetitions), (Krem*mᵣW,))
+#     Apmat_krem = PtrArray{Tuple{mᵣW,-1,-1},Ta,3}(gesp(Aptr, (mo*mreps_per_iter, 0)), (mcrepetitions,Krem))
+#     Apacked_krem, Apmat_krem
+# end
+function Apack(
+    Aptr::AbstractStridedPointer{Ta}, ptrL2, ::Val{mᵣW}, ::Type{Tc}, Msub, Ksub, m, k
+) where {mᵣW, Ta, Tc}
+    mreps_per_iter = mᵣW * Msub
+    # Apacked = PtrArray{Tuple{mᵣW,-1,-1},Tc,3,Tuple{1,mᵣW,-1},2,1,false}(ptrL2, (Krepetitions,mcrepetitions), ((mᵣW*kc),))
+    # Apmat = PtrArray{Tuple{mᵣW,-1,-1},Ta,3}(gesp(Aptr, (mo*mreps_per_iter, k)), (mcrepetitions,Krepetitions))
+    Apacked = PtrArray{Tuple{mᵣW,-1,-1},Tc,3,Tuple{1,mᵣW,-1},2,1,false}(ptrL2, (Ksub,Msub), ((mᵣW*Ksub),))
+    Apmat = PtrArray{Tuple{mᵣW,-1,-1},Ta,3}(gesp(Aptr, (m*mreps_per_iter, k)), (Msub,Ksub))
+    Apacked, Apmat
+end
 
-    ri(x) = reinterpret(Int, x)
 
 roundupnᵣ(x) = (xnr = x + nᵣ; xnr - (xnr % nᵣ))
 
@@ -529,10 +543,9 @@ function jmulh!(
     Miter = num_m_iter - 1
     Mrem = M - Miter * mreps_per_iter
     
-    #(iszero(Miter) && iszero(Niter)) && return loopmul!(C, A, B)
     num_k_iter = cld(K, kc)
-    Krepetitions, Krem = divrem(K, num_k_iter)
-    Krem += Krepetitions
+    Krepetitions = ((K ÷ num_k_iter) + 3) & -4
+    Krem = K - (num_k_iter - 1) * Krepetitions
     Kiter = num_k_iter - 1
 
     # @show mreps_per_iter, Krepetitions, nreps_per_iter
@@ -555,21 +568,22 @@ function jmulh!(
             packarray_B!(Bpacked_krem, Bpmat_krem)
             for mo in 0:Miter-1
                 # pack mc x kc block of A
-                Apacked_krem = PtrArray{Tuple{mᵣW,-1,-1},Tc,3,Tuple{1,mᵣW,-1},2,1,false}(ptrL2, (Krem,mcrepetitions), (Krem*mᵣW,))
-                Apmat_krem = PtrArray{Tuple{mᵣW,-1,-1},Ta,3}(gesp(Aptr, (mo*mreps_per_iter, 0)), (mcrepetitions,Krem))
-                packarray_A!(Apacked_krem, Apmat_krem)
+                # Apacked_krem = PtrArray{Tuple{mᵣW,-1,-1},Tc,3,Tuple{1,mᵣW,-1},2,1,false}(ptrL2, (Krem,mcrepetitions), (Krem*mᵣW,))
+                # Apmat_krem = PtrArray{Tuple{mᵣW,-1,-1},Ta,3}(gesp(Aptr, (mo*mreps_per_iter, 0)), (mcrepetitions,Krem))
+                Apacked_krem, Apmat_krem = Apack(Aptr, ptrL2, Val(mᵣW), Tc, mcrepetitions, Krem, mo, 0)
+                # packarray_A!(Apacked_krem, Apmat_krem)
                 Cptr_off = gep(Cptr, (mo*mreps_per_iter, Noff))
                 Cx = first(Cptr.strides)
                 Cpmat = PtrArray{Tuple{mᵣW,-1,nᵣ,-1},Tc,4,Tuple{1,mᵣW,-1,-1},2,2,false}(Cptr_off, (mcrepetitions,ncrepetitions), (Cx,Cx*nᵣ))
-                loopmul!(Cpmat, Apacked_krem, Bpacked_krem, α, β)
+                packaloopmul!(Cpmat, Apacked_krem, Apmat_krem, Bpacked_krem, α, β)
             end
             # Mrem
             if Mrem > 0
                 Apacked_mrem_krem = PtrMatrix(ptrL2, Mrem, Krem, VectorizationBase.align(Mrem, Tc))
                 Apmat_mrem_krem = PtrMatrix(gesp(Aptr, (Miter*mreps_per_iter, 0)), Mrem, Krem)
-                copyto!(Apacked_mrem_krem, Apmat_mrem_krem)
+                # copyto!(Apacked_mrem_krem, Apmat_mrem_krem)
                 Cpmat_mrem = PtrArray{Tuple{-1,nᵣ,-1},Tc,3}(gesp(Cptr, (Miter*mreps_per_iter, Noff)), (Mrem, ncrepetitions))
-                loopmul!(Cpmat_mrem, Apacked_mrem_krem, Bpacked_krem, α, β)
+                packaloopmul!(Cpmat_mrem, Apacked_mrem_krem, Apmat_mrem_krem, Bpacked_krem, α, β)
             end
             k = Krem
             for ko in 1:Kiter
@@ -579,21 +593,19 @@ function jmulh!(
                 packarray_B!(Bpacked, Bpmat)
                 for mo in 0:Miter-1
                     # pack mc x kc block of A
-                    Apacked = PtrArray{Tuple{mᵣW,-1,-1},Tc,3,Tuple{1,mᵣW,-1},2,1,false}(ptrL2, (Krepetitions,mcrepetitions), ((mᵣW*kc),))
-                    Apmat = PtrArray{Tuple{mᵣW,-1,-1},Ta,3}(gesp(Aptr, (mo*mreps_per_iter, k)), (mcrepetitions,Krepetitions))
-                    packarray_A!(Apacked, Apmat)
+                    Apacked, Apmat = Apack(Aptr, ptrL2, Val(mᵣW), Tc, mcrepetitions, Krepetitions, mo, k)
                     Cptr_off = gep(Cptr, (mo*mreps_per_iter, Noff))
                     Cx = first(Cptr.strides)
                     Cpmat = PtrArray{Tuple{mᵣW,-1,nᵣ,-1},Tc,4,Tuple{1,mᵣW,-1,-1},2,2,false}(Cptr_off, (mcrepetitions,ncrepetitions), (Cx,Cx*nᵣ))
-                    loopmul!(Cpmat, Apacked, Bpacked, α, Val(1))
+                    packaloopmul!(Cpmat, Apacked, Apmat, Bpacked, α, Val(1))
                 end
                 # Mrem
                 if Mrem > 0
                     Apacked_mrem = PtrMatrix(ptrL2, Mrem, Krepetitions, VectorizationBase.align(Mrem,Tc))
                     Apmat_mrem = PtrMatrix(gesp(Aptr, (Miter*mreps_per_iter, k)), Mrem, Krepetitions)
-                    copyto!(Apacked_mrem, Apmat_mrem)
+                    # copyto!(Apacked_mrem, Apmat_mrem)
                     Cpmat_mrem = PtrArray{Tuple{-1,nᵣ,-1},Tc,3}(gesp(Cptr, (Miter*mreps_per_iter, Noff)), (Mrem, ncrepetitions))
-                    loopmul!(Cpmat_mrem, Apacked_mrem, Bpacked, α, Val(1))
+                    packaloopmul!(Cpmat_mrem, Apacked_mrem, Apmat_mrem, Bpacked, α, Val(1))
                 end
                 k += Krepetitions
             end
@@ -614,14 +626,12 @@ function jmulh!(
             Bpacked_krem_nrem = PtrMatrix{-1,-1,Tc,1,nᵣ,2,0,false}(gep(ptrL3, lastBstride * ncreprem), (ncrepremrem,Krem), tuple())
             for mo in 0:Miter-1
                 # pack mc x kc block of A
-                Apacked_krem = PtrArray{Tuple{mᵣW,-1,-1},Tc,3,Tuple{1,mᵣW,-1},2,1,false}(ptrL2, (Krem,mcrepetitions), (Krem*mᵣW,))
-                Apmat_krem = PtrArray{Tuple{mᵣW,-1,-1},Ta,3}(gesp(Aptr, (mo*mreps_per_iter, 0)), (mcrepetitions,Krem))
-                packarray_A!(Apacked_krem, Apmat_krem)
+                Apacked_krem, Apmat_krem = Apack(Aptr, ptrL2, Val(mᵣW), Tc, mcrepetitions, Krem, mo, 0)
                 Cptr_off = gep(Cptr, (mo*mreps_per_iter, Noff))
                 Cx = first(Cptr.strides)
                 Cpmat = PtrArray{Tuple{mᵣW,-1,nᵣ,-1},Tc,4,Tuple{1,mᵣW,-1,-1},2,2,false}(Cptr_off, (mcrepetitions,ncreprem), (Cx,Cx*nᵣ))
-                loopmul!(Cpmat, Apacked_krem, Bpacked_krem, α, β)
-
+                packaloopmul!(Cpmat, Apacked_krem, Apmat_krem, Bpacked_krem, α, β)
+                # @show Apacked_krem
                 if ncrepremrem > 0
                     # if calcnrrem && ncrepremrem > 0
                     Cptr_off = gep(Cptr, (mo*mreps_per_iter, Noffrem))
@@ -633,9 +643,8 @@ function jmulh!(
             if Mrem > 0
                 Apacked_mrem_krem = PtrMatrix(ptrL2, Mrem, Krem, VectorizationBase.align(Mrem, Tc))
                 Apmat_mrem_krem = PtrMatrix(gesp(Aptr, (Miter*mreps_per_iter, 0)), Mrem, Krem)
-                copyto!(Apacked_mrem_krem, Apmat_mrem_krem)
                 Cpmat_mrem = PtrArray{Tuple{-1,nᵣ,-1},Tc,3}(gesp(Cptr, (Miter*mreps_per_iter, Noff)), (Mrem, ncreprem))
-                loopmul!(Cpmat_mrem, Apacked_mrem_krem, Bpacked_krem, α, β)
+                packaloopmul!(Cpmat_mrem, Apacked_mrem_krem, Apmat_mrem_krem, Bpacked_krem, α, β)
 
                 if ncrepremrem > 0
                     # if calcnrrem && ncrepremrem > 0
@@ -654,13 +663,11 @@ function jmulh!(
                 Bpacked_nrem = PtrMatrix{-1,-1,Tc,1,nᵣ,2,0,false}(gep(ptrL3, lastBstride * ncreprem), (ncrepremrem,Krepetitions), tuple())
                 for mo in 0:Miter-1
                     # pack mc x kc block of A
-                    Apacked = PtrArray{Tuple{mᵣW,-1,-1},Tc,3,Tuple{1,(mᵣ*W),-1},2,1,false}(ptrL2, (Krepetitions,mcrepetitions), ((mᵣW*kc),))
-                    Apmat = PtrArray{Tuple{mᵣW,-1,-1},Ta,3}(gesp(Aptr, (mo*mreps_per_iter, k)), (mcrepetitions,Krepetitions))
-                    packarray_A!(Apacked, Apmat)
+                    Apacked, Apmat = Apack(Aptr, ptrL2, Val(mᵣW), Tc, mcrepetitions, Krepetitions, mo, k)
                     Cptr_off = gep(Cptr, (mo*mreps_per_iter, Noff))
                     Cx = first(Cptr.strides)
                     Cpmat = PtrArray{Tuple{mᵣW,-1,nᵣ,-1},Tc,4,Tuple{1,mᵣW,-1,-1},2,2,false}(Cptr_off, (mcrepetitions,ncreprem), (Cx,Cx*nᵣ))
-                    loopmul!(Cpmat, Apacked, Bpacked, α, Val(1))
+                    packaloopmul!(Cpmat, Apacked, Apmat, Bpacked, α, Val(1))
                     # if calcnrrem && ncrepremrem > 0
                     if ncrepremrem > 0
                         Cptr_off = gep(Cptr, (mo*mreps_per_iter, Noffrem))
@@ -673,9 +680,8 @@ function jmulh!(
                 if Mrem > 0
                     Apacked_mrem = PtrMatrix(ptrL2, Mrem, Krepetitions, VectorizationBase.align(Mrem,Tc))
                     Apmat_mrem = PtrMatrix(gesp(Aptr, (Miter*mreps_per_iter, k)), Mrem, Krepetitions)
-                    copyto!(Apacked_mrem, Apmat_mrem)
                     Cpmat_mrem = PtrArray{Tuple{-1,nᵣ,-1},Tc,3}(gesp(Cptr, (Miter*mreps_per_iter, Noff)), (Mrem, ncreprem))
-                    loopmul!(Cpmat_mrem, Apacked_mrem, Bpacked, α, Val(1))
+                    packaloopmul!(Cpmat_mrem, Apacked_mrem, Apmat_mrem, Bpacked, α, Val(1))
 
                     # if calcnrrem && ncrepremrem > 0
                     if ncrepremrem > 0
