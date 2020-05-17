@@ -66,8 +66,12 @@ function benchmark_fun!(f!, C, A, B, force_belapsed = false, reference = nothing
     tmin = @elapsed f!(C, A, B)
     if force_belapsed || tmin < BenchmarkTools.DEFAULT_PARAMETERS.seconds
         tmin = min(tmin, @belapsed $f!($C, $A, $B))
-    elseif tmin < 2BenchmarkTools.DEFAULT_PARAMETERS.seconds
+        tmin = min(tmin, @belapsed $f!($C, $A, $B))
+    elseif tmin < BenchmarkTools.DEFAULT_PARAMETERS.seconds
         tmin = min(tmin, @elapsed f!(C, A, B))
+        if tmin < 2BenchmarkTools.DEFAULT_PARAMETERS.seconds
+            tmin = min(tmin, @elapsed f!(C, A, B))
+        end
     end
     isnothing(reference) || @assert C ≈ reference
     tmin
@@ -86,7 +90,7 @@ function runbench(::Type{T}, sizes = [2:255..., round.(Int, range(57.16281374121
         C6 = similar(C1);
         A  = randa(T, n, k)
         B  = randa(T, k, m)
-        BenchmarkTools.DEFAULT_PARAMETERS.seconds = 0.05
+        # BenchmarkTools.DEFAULT_PARAMETERS.seconds = 0.05
 
         opbt = benchmark_fun!(mul!, C1, A, B, sz == first(sizes))
         ma24 = benchmark_fun!(ma24x9!, C2, A, B, sz == first(sizes), C1)

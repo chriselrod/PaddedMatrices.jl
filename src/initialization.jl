@@ -267,6 +267,9 @@ end
 function PtrMatrix(A::RowMajorStridedPointer{T,1}, nrows::Integer, ncols::Integer) where {T}
     PtrArray{Tuple{-1, -1}, T, 2, Tuple{-1,1}, 2, 1, false}(pointer(A), (nrows,ncols), A.strides)
 end
+function PtrArray(A::RowMajorStridedPointer{T,1}, (nrows, ncols)) where {T}
+    PtrArray{Tuple{-1, -1}, T, 2, Tuple{-1,1}, 2, 1, false}(pointer(A), (nrows,ncols), A.strides)
+end
 function PtrMatrix(A::RowMajorStridedPointer{T,1}, ::Static{M}, ncols::Integer) where {T, M}
     PtrArray{Tuple{M, -1}, T, 2, Tuple{-1,1}, 1, 1, false}(pointer(A), (ncols,), A.strides)
 end
