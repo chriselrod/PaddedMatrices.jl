@@ -34,10 +34,11 @@ function partially_sized(sv, ::Type{T}) where {T}
         xv[n] = L
         if L == -1
             xn = Symbol(:stride_,n)
-            calcstride = Expr(:call, :*, Expr(:ref,:s,n-1), Symbol(:stride_, n-1))
+            calcstride = Expr(:call, :vmul, Expr(:ref,:s,n-1), Symbol(:stride_, n-1))
             if n == 2
                 calcstride = Expr(:call, :calc_padding, calcstride, T)
             end
+            calcstride = Expr(:call, :vmul, sizeof(T), calcstride)
             push!(q.args, Expr(:(=), xn, calcstride))
             push!(xt.args, xn)
         end

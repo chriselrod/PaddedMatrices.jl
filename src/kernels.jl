@@ -753,7 +753,7 @@ end
 function two_cols_per_vector_add_kn_block!(q::Expr, Kunroll, Nunroll, Koffset, Noffset, Ashuffle, Bshuffle, MindA, MindC)
     for kk ∈ 0:Kunroll-1
         kt = kk + Koffset
-        push!(q.args, Expr(:(=), Symbol(:A_,kk), Expr(:call, :shufflevector, Expr(:call, :vload, :ptrA, Expr(:tuple, MindA, kt)), Ashuffle)))
+        push!(q.args, Expr(:(=), Symbol(:A_,kk), Expr(:call, :shufflevector, Expr(:call, :extract_data, Expr(:call, :vload, :ptrA, Expr(:tuple, MindA, kt))), Ashuffle)))
     end
     for kk ∈ 0:Kunroll-1, nn ∈ 0:Nunroll-1
         kt = kk + Koffset
@@ -762,9 +762,12 @@ function two_cols_per_vector_add_kn_block!(q::Expr, Kunroll, Nunroll, Koffset, N
         Bsym = Symbol(:B_,kk,:_,nn)
         Csym = Symbol(:C_, nn)
         # push!(q.args, Expr(:(=), Bsym, Expr(:call, :shufflevector, Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt)), Bshuffle)))
-        push!(q.args, Expr(:(=), Bsym, Expr(:call, :shufflevector, Expr(:tuple,
-                                                                        Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt1))),
-                                                                        Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt2)))), Bshuffle)))
+        shuffle = Expr(
+            :tuple,
+            Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt1))),
+            Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt2)))
+        )
+        push!(q.args, Expr(:(=), Bsym, Expr(:call, :shufflevector, shuffle, Bshuffle)))
         if iszero(Koffset | kk)
             push!(q.args, Expr(:(=), Csym, Expr(:call, :vmul, Symbol(:A_, kk), Bsym)))
         else
@@ -801,7 +804,7 @@ function two_cols_per_vector_quote!(q, K, N, W, Wshift, Noffbase = 0)
     Kloop = LoopVectorization.Loop(:k, 1, K, Symbol(""), Symbol(""), true, true)
     Nloop = LoopVectorization.Loop(:n, 1, Ndoublereps, Symbol(""), Symbol(""), true, true)
     cost_vec     = Float64[ 64.0, 32.0, 8.0, 0.0 ] # Values chosen to hopefully produce desired behavior... TODO: do this better?
-    reg_pressure = Float64[ 1.0, 1.0, 1.0, 0.0 ]
+    reg_pressure = Float64[ 1.0, 1.0, 1.0, 0.0, 0.0 ]
     Kunroll, Nunroll, cost = LoopVectorization.solve_unroll(
         :k, :n, cost_vec, reg_pressure, W, :m, Kloop, Nloop
     )
@@ -834,7 +837,7 @@ function two_cols_per_vector_quote!(q, K, N, W, Wshift, Noffbase = 0)
         for k ∈ 0:K-1
             Asym = Symbol(:A_,k)
             Bsym = Symbol(:B_,k)
-            push!(q.args, Expr(:(=), Asym, Expr(:call, :vload, :ptrA, Expr(:tuple, MindA, k))))
+            push!(q.args, Expr(:(=), Asym, Expr(:call, :extract_data, Expr(:call, :vload, :ptrA, Expr(:tuple, MindA, k)))))
             push!(q.args, Expr(:(=), Bsym, Expr(:call, :vload, :ptrB, Expr(:tuple, k, N-1))))
             if iszero(k)
                 push!(q.args, Expr(:(=), Csym, Expr(:call, :vmul, Asym, Bsym)))
@@ -870,7 +873,7 @@ end
 function four_cols_per_vector_add_kn_block!(q::Expr, Kunroll, Nunroll, Koffset, Noffset, Ashuffle, Bshuffle, MindA, MindC)
     for kk ∈ 0:Kunroll-1
         kt = kk + Koffset
-        push!(q.args, Expr(:(=), Symbol(:A_,kk), Expr(:call, :shufflevector, Expr(:call, :vload, :ptrA, Expr(:tuple, MindA, kt)), Ashuffle)))
+        push!(q.args, Expr(:(=), Symbol(:A_,kk), Expr(:call, :shufflevector, Expr(:call, :extract_data, Expr(:call, :vload, :ptrA, Expr(:tuple, MindA, kt))), Ashuffle)))
     end
     for kk ∈ 0:Kunroll-1, nn ∈ 0:Nunroll-1
         kt = kk + Koffset
@@ -879,11 +882,14 @@ function four_cols_per_vector_add_kn_block!(q::Expr, Kunroll, Nunroll, Koffset, 
         Bsym = Symbol(:B_,kk,:_,nn)
         Csym = Symbol(:C_, nn)
         # push!(q.args, Expr(:(=), Bsym, Expr(:call, :shufflevector, Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt)), Bshuffle)))
-        push!(q.args, Expr(:(=), Bsym, Expr(:call, :shufflevector, Expr(:tuple,
-                                                                        Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt1))),
-                                                                        Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt2))),
-                                                                        Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt2+1))),
-                                                                        Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt2+2)))), Bshuffle)))
+        shuffle = Expr(
+            :tuple,
+            Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt1))),
+            Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt2))),
+            Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt2+1))),
+            Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt2+2)))
+        )
+        push!(q.args, Expr(:(=), Bsym, Expr(:call, :shufflevector, shuffle, Bshuffle)))
         if iszero(Koffset | kk)
             push!(q.args, Expr(:(=), Csym, Expr(:call, :vmul, Symbol(:A_, kk), Bsym)))
         else
@@ -906,7 +912,7 @@ function four_cols_per_vector_quote(K, N, W, Wshift)
     Kloop = LoopVectorization.Loop(:k, 1, K, Symbol(""), Symbol(""), true, true)
     Nloop = LoopVectorization.Loop(:n, 1, Nquadreps, Symbol(""), Symbol(""), true, true)
     cost_vec     = Float64[ 64.0, 32.0, 8.0, 0.0 ] # Values chosen to hopefully produce desired behavior... TODO: do this better?
-    reg_pressure = Float64[ 1.0, 1.0, 1.0, 0.0 ]
+    reg_pressure = Float64[ 1.0, 1.0, 1.0, 0.0, 0.0 ]
     Kunroll, Nunroll, cost = LoopVectorization.solve_unroll(
         :k, :n, cost_vec, reg_pressure, W, :m, Kloop, Nloop
     )

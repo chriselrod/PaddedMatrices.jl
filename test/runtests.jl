@@ -8,6 +8,7 @@ using Test
 @inferred PaddedMatrices.matmul_params_val(Int64)
 
 @testset "PaddedMatrices.jl" begin
+    @test isempty(detect_unbound_args(PaddedMatrices))
     @time include("matmul_tests.jl")
     @time include("broadcast_tests.jl")
 end

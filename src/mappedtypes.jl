@@ -34,7 +34,7 @@ SIMDPirates.promote_vtype(::Type{<:MappedPairVec{W,F}}, ::Type{<:MappedPairVec{W
 @inline VectorizationBase.extract_data(v::MappedPairVec) = v.data
 @inline MappedPairVec{F}(x::AbstractStructVec, y::AbstractStructVec) where {F} = MappedPairVec{F}(extract_data(x), extract_data(y))
 @inline mapped(::Type{F}, x::T, fx::T) where {F,T<:Number} = MappedPairElement{F,T}(x, fx)
-@inline mapped(::Type{F}, x::Vec{W,T}, fx::Vec{W,T}) where {F,W,T} = MappedPairVec{F,W,T}(x, fx)
+@inline mapped(::Type{F}, x::VectorizationBase._Vec{W,T}, fx::VectorizationBase._Vec{W,T}) where {F,W,T} = MappedPairVec{F}(x, fx)
 @inline mapped(::Type{F}, x::AbstractStructVec{W,T}, fx::AbstractStructVec{W,T}) where {F,W,T} = MappedPairVec{F,W,T}(extract_data(x), extract_data(fx))
 @inline Base.:+(x::MappedPairVec{typeof(exp)}, y::MappedPairVec{typeof(exp)}) = MappedPairVec{typeof(exp)}(vadd(x.x, y.x), vmul(x.fx, y.fx))
 @inline Base.:*(x::MappedPairVec{typeof(log),W}, y::MappedPairVec{typeof(log)}) where {W} = MappedPairVec{typeof(log)}(vmul(x.x, y.x), vadd(x.fx, y.fx))
