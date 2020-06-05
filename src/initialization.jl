@@ -34,10 +34,11 @@ function partially_sized(sv, ::Type{T}) where {T}
         xv[n] = L
         if L == -1
             xn = Symbol(:stride_,n)
-            calcstride = Expr(:call, :*, Expr(:ref,:s,n-1), Symbol(:stride_, n-1))
+            calcstride = Expr(:call, :vmul, Expr(:ref,:s,n-1), Symbol(:stride_, n-1))
             if n == 2
                 calcstride = Expr(:call, :calc_padding, calcstride, T)
             end
+            calcstride = Expr(:call, :vmul, sizeof(T), calcstride)
             push!(q.args, Expr(:(=), xn, calcstride))
             push!(xt.args, xn)
         end
@@ -265,6 +266,9 @@ function PtrMatrix{M,-1}(A::RowMajorStridedPointer{T,1}, ::Static{N}) where {M, 
     PtrArray{Tuple{M, N}, T, 2, Tuple{-1,1}, 0, 1, false}(pointer(A), tuple(), A.strides)
 end
 function PtrMatrix(A::RowMajorStridedPointer{T,1}, nrows::Integer, ncols::Integer) where {T}
+    PtrArray{Tuple{-1, -1}, T, 2, Tuple{-1,1}, 2, 1, false}(pointer(A), (nrows,ncols), A.strides)
+end
+function PtrArray(A::RowMajorStridedPointer{T,1}, (nrows, ncols)) where {T}
     PtrArray{Tuple{-1, -1}, T, 2, Tuple{-1,1}, 2, 1, false}(pointer(A), (nrows,ncols), A.strides)
 end
 function PtrMatrix(A::RowMajorStridedPointer{T,1}, ::Static{M}, ncols::Integer) where {T, M}

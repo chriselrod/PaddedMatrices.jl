@@ -8,7 +8,7 @@ using VectorizationBase, SIMDPirates,
     Random, StackPointers#,
     # SpecialFunctions # Perhaps there is a better way to support erf?
 
-using VectorizationBase: Static, StaticUnitRange, align, gep, offset, AbstractStructVec, AbstractStridedPointer, AbstractSIMDVector, vnoaliasstore!
+using VectorizationBase: Static, StaticUnitRange, align, gep, offset, AbstractStructVec, AbstractStridedPointer, AbstractSIMDVector, vnoaliasstore!, staticm1
 using LoopVectorization: maybestaticsize, mᵣ, nᵣ
 # import ReverseDiffExpressionsBase:
     # RESERVED_INCREMENT_SEED_RESERVED!, ∂getindex,

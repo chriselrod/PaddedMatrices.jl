@@ -1,7 +1,8 @@
 
 #using Gaius
 
-using Gaius, MaBLAS, PaddedMatrices, StructArrays, LinearAlgebra, BenchmarkTools
+# using Gaius, MaBLAS, PaddedMatrices, StructArrays, LinearAlgebra, BenchmarkTools
+using MaBLAS, PaddedMatrices, StructArrays, LinearAlgebra, BenchmarkTools
 BLAS.set_num_threads(1); Base.Threads.nthreads()
 
 function check_if_should_pack(C, A, cache_params)
@@ -65,8 +66,12 @@ function benchmark_fun!(f!, C, A, B, force_belapsed = false, reference = nothing
     tmin = @elapsed f!(C, A, B)
     if force_belapsed || tmin < BenchmarkTools.DEFAULT_PARAMETERS.seconds
         tmin = min(tmin, @belapsed $f!($C, $A, $B))
-    elseif tmin < 2BenchmarkTools.DEFAULT_PARAMETERS.seconds
+        tmin = min(tmin, @belapsed $f!($C, $A, $B))
+    elseif tmin < BenchmarkTools.DEFAULT_PARAMETERS.seconds
         tmin = min(tmin, @elapsed f!(C, A, B))
+        if tmin < 2BenchmarkTools.DEFAULT_PARAMETERS.seconds
+            tmin = min(tmin, @elapsed f!(C, A, B))
+        end
     end
     isnothing(reference) || @assert C ≈ reference
     tmin
@@ -85,20 +90,20 @@ function runbench(::Type{T}, sizes = [2:255..., round.(Int, range(57.16281374121
         C6 = similar(C1);
         A  = randa(T, n, k)
         B  = randa(T, k, m)
-        BenchmarkTools.DEFAULT_PARAMETERS.seconds = 0.05
+        # BenchmarkTools.DEFAULT_PARAMETERS.seconds = 0.05
 
         opbt = benchmark_fun!(mul!, C1, A, B, sz == first(sizes))
         ma24 = benchmark_fun!(ma24x9!, C2, A, B, sz == first(sizes), C1)
         ma32 = benchmark_fun!(ma32x6!, C3, A, B, sz == first(sizes), C1)
         ma40 = benchmark_fun!(ma40x5!, C4, A, B, sz == first(sizes), C1)
-        gt = benchmark_fun!(blocked_mul!, C5, A, B, sz == first(sizes), C1)
+        # gt = benchmark_fun!(blocked_mul!, C5, A, B, sz == first(sizes), C1)
         jmlt = benchmark_fun!(PaddedMatrices.jmul!, C6, A, B, sz == first(sizes), C1)
         res = if T <: Integer
-            (matrix_size=sz, OpenBLAS=opbt, MaBLAS_24x9=ma24, MaBLAS_32x6=ma32, MaBLAS_40x5=ma40, Gaius=gt, PaddedMatrices=jmlt)
+            (matrix_size=sz, OpenBLAS=opbt, MaBLAS_24x9=ma24, MaBLAS_32x6=ma32, MaBLAS_40x5=ma40, PaddedMatrices=jmlt)
         else
             C7 = similar(C1);
             mklb = benchmark_fun!(mklmul!, C7, A, B, sz == first(sizes), C1)
-            (matrix_size=sz, OpenBLAS=opbt, MaBLAS_24x9=ma24, MaBLAS_32x6=ma32, MaBLAS_40x5=ma40, Gaius=gt, PaddedMatrices=jmlt, MKL = mklb)
+            (matrix_size=sz, OpenBLAS=opbt, MaBLAS_24x9=ma24, MaBLAS_32x6=ma32, MaBLAS_40x5=ma40, PaddedMatrices=jmlt, MKL = mklb)
         end
         @show res
     end
@@ -130,12 +135,11 @@ function create_float_df(res, nbytes)
         MaBLAS_24x9 = res.MaBLAS_24x9,
         MaBLAS_32x6 = res.MaBLAS_32x6,
         MaBLAS_40x5 = res.MaBLAS_40x5,
-        Gaius = res.Gaius,
         PaddedMatrices = res.PaddedMatrices,
         OpenBLAS = res.OpenBLAS
     );
 #    dfs = stack(df, [:Gaius, :PaddedMatrices, :OpenBLAS, :MKL], variable_name = :Library, value_name = :Time);
-    dfs = stack(df, [:MaBLAS_24x9, :MaBLAS_32x6, :MaBLAS_40x5, :Gaius, :PaddedMatrices, :OpenBLAS, :MKL], variable_name = :Library, value_name = :Time);
+    dfs = stack(df, [:MaBLAS_24x9, :MaBLAS_32x6, :MaBLAS_40x5, :PaddedMatrices, :OpenBLAS, :MKL], variable_name = :Library, value_name = :Time);
     dfs.GFLOPS = gflops.(dfs.Size, dfs.Time);
     dfs.Percent_Peak = 100 .* dfs.GFLOPS .* (8 ÷ nbytes) ./ PEAK_DGFLOPS;
     dfs
@@ -146,11 +150,10 @@ function create_int_df(res, nbytes)
         MaBLAS_24x9 = res.MaBLAS_24x9,
         MaBLAS_32x6 = res.MaBLAS_32x6,
         MaBLAS_40x5 = res.MaBLAS_40x5,
-        Gaius = res.Gaius,
         PaddedMatrices = res.PaddedMatrices,
         GenericMatMul = res.OpenBLAS,
     );
-    dfs = stack(df, [:MaBLAS_24x9, :MaBLAS_32x6, :MaBLAS_40x5, :Gaius, :PaddedMatrices, :GenericMatMul], variable_name = :Library, value_name = :Time);
+    dfs = stack(df, [:MaBLAS_24x9, :MaBLAS_32x6, :MaBLAS_40x5, :PaddedMatrices, :GenericMatMul], variable_name = :Library, value_name = :Time);
     dfs.GFLOPS = gflops.(dfs.Size, dfs.Time);
  #   dfs.Percent_Peak = 100 .* dfs.GFLOPS .* (FMA_RATIO * 8 ÷ nbytes) ./ PEAK_DGFLOPS;
     dfs

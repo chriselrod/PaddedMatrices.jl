@@ -751,27 +751,31 @@ end
 end
 
 function two_cols_per_vector_add_kn_block!(q::Expr, Kunroll, Nunroll, Koffset, Noffset, Ashuffle, Bshuffle, MindA, MindC)
-    for kk ∈ 1:Kunroll
+    for kk ∈ 0:Kunroll-1
         kt = kk + Koffset
-        push!(q.args, Expr(:(=), Symbol(:A_,kk), Expr(:call, :shufflevector, Expr(:call, :vload, :ptrA, Expr(:tuple, MindA, kt)), Ashuffle)))
+        push!(q.args, Expr(:(=), Symbol(:A_,kk), Expr(:call, :shufflevector, Expr(:call, :extract_data, Expr(:call, :vload, :ptrA, Expr(:tuple, MindA, kt))), Ashuffle)))
     end
-    for kk ∈ 1:Kunroll, nn ∈ 1:Nunroll
+    for kk ∈ 0:Kunroll-1, nn ∈ 0:Nunroll-1
         kt = kk + Koffset
-        nt2 = 2(nn + Noffset); nt1 = nt2 - 1
+        nt1 = 2(nn + Noffset)
+        nt2 = nt1 + 1
         Bsym = Symbol(:B_,kk,:_,nn)
         Csym = Symbol(:C_, nn)
         # push!(q.args, Expr(:(=), Bsym, Expr(:call, :shufflevector, Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt)), Bshuffle)))
-        push!(q.args, Expr(:(=), Bsym, Expr(:call, :shufflevector, Expr(:tuple,
-                                                                        Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt1))),
-                                                                        Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt2)))), Bshuffle)))
-        if iszero(Koffset) & isone(kk)
+        shuffle = Expr(
+            :tuple,
+            Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt1))),
+            Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt2)))
+        )
+        push!(q.args, Expr(:(=), Bsym, Expr(:call, :shufflevector, shuffle, Bshuffle)))
+        if iszero(Koffset | kk)
             push!(q.args, Expr(:(=), Csym, Expr(:call, :vmul, Symbol(:A_, kk), Bsym)))
         else
             push!(q.args, Expr(:(=), Csym, Expr(:call, :vfmadd_fast, Symbol(:A_, kk), Bsym, Csym)))
         end
     end
-    for nn ∈ 1:Nunroll
-        push!(q.args, Expr(:call, :vnoaliasstore!, :ptrC, Symbol(:C_, nn), Expr(:tuple, MindC, 2(nn + Noffset) - 1)))
+    for nn ∈ 0:Nunroll-1
+        push!(q.args, Expr(:call, :vnoaliasstore!, :ptrC, Symbol(:C_, nn), Expr(:tuple, MindC, 2(nn + Noffset))))
     end
 end
 
@@ -800,7 +804,7 @@ function two_cols_per_vector_quote!(q, K, N, W, Wshift, Noffbase = 0)
     Kloop = LoopVectorization.Loop(:k, 1, K, Symbol(""), Symbol(""), true, true)
     Nloop = LoopVectorization.Loop(:n, 1, Ndoublereps, Symbol(""), Symbol(""), true, true)
     cost_vec     = Float64[ 64.0, 32.0, 8.0, 0.0 ] # Values chosen to hopefully produce desired behavior... TODO: do this better?
-    reg_pressure = Float64[ 1.0, 1.0, 1.0, 0.0 ]
+    reg_pressure = Float64[ 1.0, 1.0, 1.0, 0.0, 0.0 ]
     Kunroll, Nunroll, cost = LoopVectorization.solve_unroll(
         :k, :n, cost_vec, reg_pressure, W, :m, Kloop, Nloop
     )
@@ -810,8 +814,8 @@ function two_cols_per_vector_quote!(q, K, N, W, Wshift, Noffbase = 0)
     Krep, Krem = divrem(K, Kunroll)
     Ashuffle = Expr(:call, Expr(:curly, :Val, Expr(:tuple, (0:Wh-1)..., (0:Wh-1)...)))
     Bshuffle = Expr(:call, Expr(:curly, :Val, Expr(:tuple, (0 for _ ∈ 1:Wh)..., (1 for _ ∈ 1:Wh)...)))
-    MindA = Expr(:call, Expr(:curly, :_MM, Wh), 1)
-    MindC = Expr(:call, Expr(:curly, :_MM, W), 1)
+    MindA = Expr(:call, Expr(:curly, :_MM, Wh), 0)
+    MindC = Expr(:call, Expr(:curly, :_MM, W), 0)
     for n ∈ 0:Nrep-1
         for k ∈ 0:Krep-1
             two_cols_per_vector_add_kn_block!(q, Kunroll, Nunroll, Kunroll*k, Nunroll*n + Noffbase, Ashuffle, Bshuffle, MindA, MindC)
@@ -829,23 +833,24 @@ function two_cols_per_vector_quote!(q, K, N, W, Wshift, Noffbase = 0)
         end        
     end
     if isodd(N)
-        Csym = Symbol(:C_,1)
-        for k ∈ 1:K
+        Csym = Symbol(:C_,0)
+        for k ∈ 0:K-1
             Asym = Symbol(:A_,k)
             Bsym = Symbol(:B_,k)
-            push!(q.args, Expr(:(=), Asym, Expr(:call, :vload, :ptrA, Expr(:tuple, MindA, k))))
-            push!(q.args, Expr(:(=), Bsym, Expr(:call, :vload, :ptrB, Expr(:tuple, k, N))))
-            if k == 1
+            push!(q.args, Expr(:(=), Asym, Expr(:call, :extract_data, Expr(:call, :vload, :ptrA, Expr(:tuple, MindA, k)))))
+            push!(q.args, Expr(:(=), Bsym, Expr(:call, :vload, :ptrB, Expr(:tuple, k, N-1))))
+            if iszero(k)
                 push!(q.args, Expr(:(=), Csym, Expr(:call, :vmul, Asym, Bsym)))
             else
                 push!(q.args, Expr(:(=), Csym, Expr(:call, :vfmadd_fast, Asym, Bsym, Csym)))
             end
         end
-        push!(q.args, Expr(:call, :vnoaliasstore!, :ptrC, Csym, Expr(:tuple, MindA, N))) #MindA, because we want half-vector
+        push!(q.args, Expr(:call, :vnoaliasstore!, :ptrC, Csym, Expr(:tuple, MindA, N-1))) #MindA, because we want half-vector
     end
     q
 end
 
+# function LinearAlgebra.mul!(
 @generated function LinearAlgebra.mul!(
     C::AbstractMutableFixedSizeMatrix{M,N,T,1,4,false},
     A::AbstractMutableFixedSizeMatrix{M,K,T,1,XA},
@@ -866,29 +871,33 @@ end
 
 
 function four_cols_per_vector_add_kn_block!(q::Expr, Kunroll, Nunroll, Koffset, Noffset, Ashuffle, Bshuffle, MindA, MindC)
-    for kk ∈ 1:Kunroll
+    for kk ∈ 0:Kunroll-1
         kt = kk + Koffset
-        push!(q.args, Expr(:(=), Symbol(:A_,kk), Expr(:call, :shufflevector, Expr(:call, :vload, :ptrA, Expr(:tuple, MindA, kt)), Ashuffle)))
+        push!(q.args, Expr(:(=), Symbol(:A_,kk), Expr(:call, :shufflevector, Expr(:call, :extract_data, Expr(:call, :vload, :ptrA, Expr(:tuple, MindA, kt))), Ashuffle)))
     end
-    for kk ∈ 1:Kunroll, nn ∈ 1:Nunroll
+    for kk ∈ 0:Kunroll-1, nn ∈ 0:Nunroll-1
         kt = kk + Koffset
-        nt2 = 4(nn + Noffset); nt1 = nt2 - 1
+        nt1 = 4(nn + Noffset)
+        nt2 = nt1 + 1
         Bsym = Symbol(:B_,kk,:_,nn)
         Csym = Symbol(:C_, nn)
         # push!(q.args, Expr(:(=), Bsym, Expr(:call, :shufflevector, Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt)), Bshuffle)))
-        push!(q.args, Expr(:(=), Bsym, Expr(:call, :shufflevector, Expr(:tuple,
-                                                                        Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt1))),
-                                                                        Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt2))),
-                                                                        Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt2+1))),
-                                                                        Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt2+2)))), Bshuffle)))
-        if iszero(Koffset) & isone(kk)
+        shuffle = Expr(
+            :tuple,
+            Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt1))),
+            Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt2))),
+            Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt2+1))),
+            Expr(:call, :(Core.VecElement), Expr(:call, :vload, :ptrB, Expr(:tuple, kt, nt2+2)))
+        )
+        push!(q.args, Expr(:(=), Bsym, Expr(:call, :shufflevector, shuffle, Bshuffle)))
+        if iszero(Koffset | kk)
             push!(q.args, Expr(:(=), Csym, Expr(:call, :vmul, Symbol(:A_, kk), Bsym)))
         else
             push!(q.args, Expr(:(=), Csym, Expr(:call, :vfmadd_fast, Symbol(:A_, kk), Bsym, Csym)))
         end
     end
-    for nn ∈ 1:Nunroll
-        push!(q.args, Expr(:call, :vnoaliasstore!, :ptrC, Symbol(:C_, nn), Expr(:tuple, MindC, 4(nn + Noffset) - 1)))
+    for nn ∈ 0:Nunroll-1
+        push!(q.args, Expr(:call, :vnoaliasstore!, :ptrC, Symbol(:C_, nn), Expr(:tuple, MindC, 4(nn + Noffset) )))
     end
 end
 function four_cols_per_vector_quote(K, N, W, Wshift)
@@ -903,7 +912,7 @@ function four_cols_per_vector_quote(K, N, W, Wshift)
     Kloop = LoopVectorization.Loop(:k, 1, K, Symbol(""), Symbol(""), true, true)
     Nloop = LoopVectorization.Loop(:n, 1, Nquadreps, Symbol(""), Symbol(""), true, true)
     cost_vec     = Float64[ 64.0, 32.0, 8.0, 0.0 ] # Values chosen to hopefully produce desired behavior... TODO: do this better?
-    reg_pressure = Float64[ 1.0, 1.0, 1.0, 0.0 ]
+    reg_pressure = Float64[ 1.0, 1.0, 1.0, 0.0, 0.0 ]
     Kunroll, Nunroll, cost = LoopVectorization.solve_unroll(
         :k, :n, cost_vec, reg_pressure, W, :m, Kloop, Nloop
     )
@@ -913,8 +922,8 @@ function four_cols_per_vector_quote(K, N, W, Wshift)
     Krep, Krem = divrem(K, Kunroll)
     Ashuffle = Expr(:call, Expr(:curly, :Val, Expr(:tuple, (0:Wq-1)..., (0:Wq-1)..., (0:Wq-1)..., (0:Wq-1)...)))
     Bshuffle = Expr(:call, Expr(:curly, :Val, Expr(:tuple, (0 for _ ∈ 1:Wq)..., (1 for _ ∈ 1:Wq)..., (0 for _ ∈ 1:Wq)..., (1 for _ ∈ 1:Wq)...)))
-    MindA = Expr(:call, Expr(:curly, :_MM, Wq), 1)
-    MindC = Expr(:call, Expr(:curly, :_MM, W), 1)
+    MindA = Expr(:call, Expr(:curly, :_MM, Wq), 0)
+    MindC = Expr(:call, Expr(:curly, :_MM, W), 0)
     for n ∈ 0:Nrep-1
         for k ∈ 0:Krep-1
             four_cols_per_vector_add_kn_block!(q, Kunroll, Nunroll, Kunroll*k, Nunroll*n, Ashuffle, Bshuffle, MindA, MindC)
@@ -938,6 +947,7 @@ function four_cols_per_vector_quote(K, N, W, Wshift)
     q
 end
 
+# function LinearAlgebra.mul!(
 @generated function LinearAlgebra.mul!(
     C::AbstractMutableFixedSizeMatrix{M,N,T,1,2,false},
     A::AbstractMutableFixedSizeMatrix{M,K,T,1,XA},
@@ -945,14 +955,14 @@ end
 ) where {M,K,N,XA,T}
 # ) where {M,K,N,T,XA}
     W, Wshift = VectorizationBase.pick_vector_width_shift(2N, T)
-    nvectors_per_col = W >> 2
+    nvectors_per_col = W >> 1
     if nvectors_per_col ≤ 1 || (K * N > 4VectorizationBase.REGISTER_COUNT) || XA < 2
     # if nvectors_per_col != 2 || (K * N > 4VectorizationBase.REGISTER_COUNT) || XA < 4
         return Expr(:block, Expr(:meta,:inline), Expr(:call, :jmul!, :C, :A, :B))
     elseif nvectors_per_col == 2
         return two_cols_per_vector_quote(K, N, W, Wshift)
-    elseif nvectors_per_col == 4
-        return four_cols_per_vector_quote(K, N, W, Wshift)
+    # elseif nvectors_per_col == 4
+        # return four_cols_per_vector_quote(K, N, W, Wshift)
     else
         return Expr(:block, Expr(:meta,:inline), Expr(:call, :jmul!, :C, :A, :B))
     end

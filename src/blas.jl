@@ -1,4 +1,13 @@
-    
+
+
+
+@inline function divrem_fast(x::I, y::I) where {I <: Integer}
+    x32 = x % UInt32; y32 = y % UInt32
+    d = Base.sdiv_int(x32, y32)
+    r = x32 - d * y32
+    d % I, r % I
+end
+@inline div_fast(x::I, y::I) where {I <: Integer} = Base.sdiv_int(x % UInt32, y % UInt32) % I
 
 function Base.copyto!(B::AbstractStrideArray{S,T,N}, A::AbstractStrideArray{S,T,N}) where {S,T,N}
     @avx for I ∈ eachindex(A, B)
@@ -74,51 +83,56 @@ end
 #     copyto!(Bpacked_nrem, Bpmat_nrem)
 #     Bpacked_nrem
 # end
+@generated Wmᵣcalc(::Val{W}) where {W} = Val{W*mᵣ}()
 function pack_A_krem(Aptr, ::Val{mc}, ::Type{Ta}, mo::Int, Krem) where {mc, Ta}
-    Apacked_krem = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), mc, Krem, mc)
+    # Apacked_krem = PtrArray{Tuple{mᵣW,-1,-1},Ta,3,Tuple{1,mᵣW,-1},2,1,false}(threadlocal_L2CACHE_pointer(Ta), (Krem,mcreps), ((mᵣW*Krem),))
+    Apacked_krem = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), mc, Krem, mc*sizeof(Ta))
     Apmat_krem = PtrMatrix(gesp(Aptr, (mo*mc, 0)), mc, Krem)
     # copyto!(Apacked_krem, Apmat_krem)
     Apacked_krem, Apmat_krem
 end
 function pack_A_krem(Aptr, mc, ::Type{Ta}, mo::Int, Krem) where {Ta}
-    Apacked_krem = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), mc, Krem, mc)# assumed aligned
+    # Apacked_krem = PtrArray{Tuple{mᵣW,-1,-1},Ta,3,Tuple{1,mᵣW,-1},2,1,false}(threadlocal_L2CACHE_pointer(Ta), (Krem,mcreps), ((mᵣW*Krem),))
+    Apacked_krem = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), mc, Krem, mc*sizeof(Ta))
     Apmat_krem = PtrMatrix(gesp(Aptr, (mo*mc, 0)), mc, Krem)
     # copyto!(Apacked_krem, Apmat_krem)
     Apacked_krem, Apmat_krem
 end
 function pack_A_mrem(Aptr, ::Val{mc}, ::Val{kc}, ::Type{Ta}, Mrem, k::Int, Miter) where {mc, kc, Ta}
-    Apacked_mrem = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), Mrem, kc, VectorizationBase.align(Mrem, Ta))
+    Apacked_mrem = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), Mrem, kc, VectorizationBase.align(Mrem, Ta)*sizeof(Ta))
     Apmat_mrem = PtrMatrix(gesp(Aptr, (Miter*mc, k)), Mrem, kc)
     # copyto!(Apacked_mrem, Apmat_mrem)
     Apacked_mrem, Apmat_mrem
 end
 function pack_A_mrem(Aptr, mc, kc, ::Type{Ta}, Mrem, k::Int, Miter) where {Ta}
-    Apacked_mrem = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), Mrem, kc, VectorizationBase.align(Mrem, Ta))
+    Apacked_mrem = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), Mrem, kc, VectorizationBase.align(Mrem, Ta)*sizeof(Ta))
     Apmat_mrem = PtrMatrix(gesp(Aptr, (Miter*mc, k)), Mrem, kc)
     # copyto!(Apacked_mrem, Apmat_mrem)
     Apacked_mrem, Apmat_mrem
 end
 function pack_A_mrem_krem(Aptr, ::Val{mc}, ::Type{Ta}, Mrem, Krem, Miter) where {mc, Ta}
-    Apacked_mrem_krem = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), Mrem, Krem, VectorizationBase.align(Mrem, Ta))
+    Apacked_mrem_krem = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), Mrem, Krem, VectorizationBase.align(Mrem, Ta)*sizeof(Ta))
     Apmat_mrem_krem = PtrMatrix(gesp(Aptr, (Miter*mc, 0)), Mrem, Krem)
     # copyto!(Apacked_mrem_krem, Apmat_mrem_krem)
     Apacked_mrem_krem, Apmat_mrem_krem
 end
 function pack_A_mrem_krem(Aptr, mc, ::Type{Ta}, Mrem, Krem, Miter) where {Ta}
-    Apacked_mrem_krem = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), Mrem, Krem, VectorizationBase.align(Mrem, Ta))
+    Apacked_mrem_krem = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), Mrem, Krem, VectorizationBase.align(Mrem, Ta)*sizeof(Ta))
     Apmat_mrem_krem = PtrMatrix(gesp(Aptr, (Miter*mc, 0)), Mrem, Krem)
     # copyto!(Apacked_mrem_krem, Apmat_mrem_krem)
     Apacked_mrem_krem, Apmat_mrem_krem
 end
 function pack_A(Aptr, ::Val{mc}, ::Val{kc}, ::Type{Ta}, mo::Int, k::Int) where {mc, kc, Ta}
-    Apacked = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), mc, kc, mc)
+    # Apacked = PtrArray{Tuple{mᵣW,-1,-1},Ta,3,Tuple{1,mᵣW,-1},2,1,false}(threadlocal_L2CACHE_pointer(Ta), (kc,mcreps), ((mᵣW*kc),))
+    Apacked = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), mc, kc, mc*sizeof(Ta))
     Apmat = PtrMatrix(gesp(Aptr, (mo*mc, k)), mc, kc)
     # @show (reinterpret(Int, pointer(Apmat)) - reinterpret(Int,pointer(Aptr))) >>> 3
     # copyto!(Apacked, Apmat)
     Apacked, Apmat
 end
 function pack_A(Aptr, mc, kc, ::Type{Ta}, mo::Int, k::Int) where {Ta}
-    Apacked = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), mc, kc, mc)
+    # Apacked = PtrArray{Tuple{mᵣW,-1,-1},Ta,3,Tuple{1,mᵣW,-1},2,1,false}(threadlocal_L2CACHE_pointer(Ta), (kc,mcreps), ((mᵣW*kc),))
+    Apacked = PtrMatrix(threadlocal_L2CACHE_pointer(Ta), mc, kc, mc*sizeof(Ta))
     Apmat = PtrMatrix(gesp(Aptr, (mo*mc, k)), mc, kc)
     # @show (reinterpret(Int, pointer(Apmat)) - reinterpret(Int,pointer(Aptr))) >>> 3
     # copyto!(Apacked, Apmat)
@@ -130,7 +144,7 @@ function jmulpackAonly!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::Abstrac
     mᵣW = mᵣ * W
 
     num_m_iter = cld(M, mc)
-    mreps_per_iter = M ÷ num_m_iter
+    mreps_per_iter = div_fast(M, num_m_iter)
     mreps_per_iter += mᵣW - 1
     mcrepetitions = mreps_per_iter ÷ mᵣW
     mreps_per_iter = mᵣW * mcrepetitions
@@ -139,7 +153,7 @@ function jmulpackAonly!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::Abstrac
     
     #(iszero(Miter) && iszero(Niter)) && return loopmul!(C, A, B)
     num_k_iter = cld(K, kc)
-    Krepetitions = ((K ÷ num_k_iter) + 3) & -4
+    Krepetitions = ((div_fast(K, num_k_iter)) + 3) & -4
     Krem = K - (num_k_iter - 1) * Krepetitions
     Kiter = num_k_iter - 1
 
@@ -161,6 +175,9 @@ function jmulpackAonly!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::Abstrac
             Apacked_mrem_krem, Asubset_mrem_krem = pack_A_mrem_krem(Aptr, mreps_per_iter, Tc, Mrem, Krem, Miter)
             Cpmat_mrem_nrem = PtrMatrix(gesp(Cptr, (Miter*mreps_per_iter, 0)), Mrem, N)
             packaloopmul!(Cpmat_mrem_nrem, Apacked_mrem_krem, Asubset_mrem_krem, Bpacked_krem_nrem, α, β, (Mrem, Krem, N))
+            # copyto!(Apacked_mrem_krem, Asubset_mrem_krem)
+            # loopmul!(Cpmat_mrem_nrem, Apacked_mrem_krem, Bpacked_krem_nrem, α, β, (Mrem, Krem, N))
+            # loopmul!(Cpmat_mrem_nrem, Asubset_mrem_krem, Bpacked_krem_nrem, α, β, (Mrem, Krem, N))
         end
         k = Krem
         for ko in 1:Kiter
@@ -195,17 +212,18 @@ contiguousstride1(::SubArray{T,N,P,S}) where {T,N,P,S<:Tuple{Int,Vararg}} = fals
 function jmul!(
     C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}, (M, K, N) = matmul_sizes(C, A, B)
 ) where {Tc, Ta, Tb, mc, kc, nc}
-    if K * N ≤ kc * nc#L₃ * VectorizationBase.NUM_CORES
-        W = VectorizationBase.pick_vector_width(Tc)
-        if contiguousstride1(A) && ( (M ≤ 72)  || ((2M ≤ 5mc) && iszero(stride(A,2) % W)))
+    # if K * N ≤ kc * nc#L₃ * VectorizationBase.NUM_CORES
+        # W = VectorizationBase.pick_vector_width(Tc)
+        # if contiguousstride1(A) && ( (M ≤ 72)  || ((2M ≤ 5mc) && iszero(stride(A,2) % W)))
+        if mc * kc ≥ M * K
             loopmul!(C, A, B, α, β, (M,K,N))
             return C
         else
             return jmulpackAonly!(C, A, B, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
         end
-    else
-        return jmulh!(C, A, B, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
-    end
+    # else
+    #     return jmulh!(C, A, B, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
+    # end
 end # function
 
 
@@ -528,23 +546,23 @@ function jmulh!(
     mᵣW = mᵣ * W
 
     num_n_iter = cld(N, nc)
-    nreps_per_iter = N ÷ num_n_iter
+    nreps_per_iter = div_fast(N, num_n_iter)
     nreps_per_iter += nᵣ - 1
-    ncrepetitions = nreps_per_iter ÷ nᵣ
+    ncrepetitions = div_fast(nreps_per_iter, nᵣ)
     nreps_per_iter = nᵣ * ncrepetitions
     Niter = num_n_iter - 1
     Nrem = N - Niter * nreps_per_iter
 
     num_m_iter = cld(M, mc)
-    mreps_per_iter = M ÷ num_m_iter
+    mreps_per_iter = div_fast(M, num_m_iter)
     mreps_per_iter += mᵣW - 1
-    mcrepetitions = mreps_per_iter ÷ mᵣW
+    mcrepetitions = div_fast(mreps_per_iter, mᵣW)
     mreps_per_iter = mᵣW * mcrepetitions
     Miter = num_m_iter - 1
     Mrem = M - Miter * mreps_per_iter
     
     num_k_iter = cld(K, kc)
-    Krepetitions = ((K ÷ num_k_iter) + 3) & -4
+    Krepetitions = ((div_fast(K, num_k_iter)) + 3) & -4
     Krem = K - (num_k_iter - 1) * Krepetitions
     Kiter = num_k_iter - 1
 
@@ -616,7 +634,7 @@ function jmulh!(
             # calcnrrem = false
             # Krem
             # pack kc x nc block of B
-            ncreprem, ncrepremrem = divrem(Nrem, nᵣ)
+            ncreprem, ncrepremrem = divrem_fast(Nrem, nᵣ)
             ncrepremc = ncreprem + !(iszero(ncrepremrem))
             lastBstride = nᵣ * Krem
             Bpacked_krem = PtrArray{Tuple{nᵣ,-1,-1},Tc,3,Tuple{1,nᵣ,-1},2,1,false}(ptrL3, (Krem,ncrepremc), (lastBstride,))
