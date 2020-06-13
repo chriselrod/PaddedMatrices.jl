@@ -15,18 +15,18 @@ end
     Expr(
         :block,
         Expr(:meta,:inline),
-        :(StrideArray{Tuple{$L},$T,1,Tuple{1},0,0}(A.data, tuple(), tuple()))
+        :(StrideArray{Tuple{$L},$T,1,Tuple{1},0,0}(A.ptr, tuple(), tuple(), A.parent))
     )
 end
 
 @inline flatvector(A::StrideArray{S,T,1,Tuple{1},SN,XN}) where {S,T,SN,XN} = A
 @inline function flatvector(A::StrideArray{S,T,N,<:Tuple{1,Vararg},SN,XN}) where {S,T,N,SN,XN}
-    StrideArray{Tuple{-1},T,1,Tuple{1},1,0}(A.data, prod(size(A)), tuple())
+    StrideArray{Tuple{-1},T,1,Tuple{1},1,0}(A.ptr, (prod(size(A)),), tuple(), A.parent)
 end
 
 @inline flatvector(A::AbstractStrideArray{Tuple{-1},T,1,Tuple{1},1,0,false}) where {T} = A
 @inline function flatvector(A::AbstractStrideArray{S,T,N,<:Tuple{1,Vararg},SN,XN,false}) where {S,T,N,SN,XN}
-    PtrArray{Tuple{-1},T,1,Tuple{1},1,0}(pointer(A), prod(size(A)), tuple())
+    PtrArray{Tuple{-1},T,1,Tuple{1},1,0}(pointer(A), (prod(size(A)),), tuple())
 end
 
 @inline flatvector(A::ConstantArray{S,T,1,Tuple{1}}) where {S,T} = A
@@ -138,7 +138,7 @@ Base.@propagate_inbounds function Base.getindex(A::AbstractStrideArray{S,T,N}, i
     view(A, inds...)
 end
 @generated function Base.view(
-    A::AbstractPtrStrideArray{S,T,N,X,0,0,V}, inds...
+    A::AbstractPtrStrideArray{S,T,N,X,0,0,V}, inds::Vararg{<:Any,N}
 # ) where {S,T,N,X,SN,XN,V}
 ) where {V,S,T,N,X}
     @assert length(inds) == N

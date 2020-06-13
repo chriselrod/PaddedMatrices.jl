@@ -806,7 +806,7 @@ function two_cols_per_vector_quote!(q, K, N, W, Wshift, Noffbase = 0)
     cost_vec     = Float64[ 64.0, 32.0, 8.0, 0.0 ] # Values chosen to hopefully produce desired behavior... TODO: do this better?
     reg_pressure = Float64[ 1.0, 1.0, 1.0, 0.0, 0.0 ]
     Kunroll, Nunroll, cost = LoopVectorization.solve_unroll(
-        :k, :n, cost_vec, reg_pressure, W, :m, Kloop, Nloop
+        :k, :n, cost_vec, reg_pressure, W, :m, Kloop, Nloop, 1, 1
     )
     @assert isfinite(cost)
     

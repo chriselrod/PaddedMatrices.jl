@@ -5,9 +5,10 @@ abstract type AbstractPtrStrideArray{S,T,N,X,SN,XN,V} <: AbstractMutableStrideAr
 # const ALIGN_ALL_FS_ARRAYS = true
 
 struct StrideArray{S,T,N,X,SN,XN} <: AbstractMutableStrideArray{S,T,N,X,SN,XN,false}
-    data::SubArray{T,1,Vector{T},Tuple{UnitRange{Int64}},true}
+    ptr::Ptr{T}
     size::NTuple{SN,Int}
     stride::NTuple{XN,Int}
+    parent::Vector{T}
 end
 mutable struct FixedSizeArray{S,T,N,X,L} <: AbstractMutableStrideArray{S,T,N,X,0,0,false}
     data::NTuple{L,T}
@@ -60,8 +61,8 @@ const AbstractMutableFixedSizeVector{S,T,X,V} = AbstractMutableStrideArray{Tuple
 const AbstractMutableFixedSizeMatrix{M,N,T,X1,X2,V} = AbstractMutableStrideArray{Tuple{M,N},T,2,Tuple{X1,X2},0,0,V}
 
 
-@inline Base.pointer(A::StrideArray) = pointer(A.data)
-@inline Base.unsafe_convert(::Type{Ptr{T}}, A::StrideArray{S,T}) where {S,T} = pointer(A.data)
+@inline Base.pointer(A::StrideArray) = A.ptr
+@inline Base.unsafe_convert(::Type{Ptr{T}}, A::StrideArray{S,T}) where {S,T} = A.ptr
 @inline Base.pointer(A::FixedSizeArray) = A.ptr
 @inline Base.unsafe_convert(::Type{Ptr{T}}, A::FixedSizeArray{S,T}) where {S,T} = A.ptr
 # @inline Base.pointer(A::FixedSizeArray{S,T,N,X,L,Ptr{T}}) where {S,T,N,X,L} = A.ptr

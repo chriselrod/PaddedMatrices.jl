@@ -19,7 +19,10 @@ end
         L *= svₙ
     end
     W = VectorizationBase.pick_vector_width(T)
-    :(StrideArray{$S,$T,$N,$(ctuple(xv)),0,0,false}(SIMDPirates.valloc($T, $L, $W), tuple(), tuple()))
+    quote
+        parent = Vector{$T}(undef, $L + $(W-1))
+        StrideArray{$S,$T,$N,$(ctuple(xv)),0,0,false}(align(pointer(parent)), tuple(), tuple(), parent)
+    end
 end
 
 function partially_sized(sv, ::Type{T}) where {T}
@@ -77,7 +80,8 @@ end
     q, st, xt, xv, L = partially_sized(sv, T)
     SN = length(st.args); XN = length(xt.args)
     # W = VectorizationBase.pick_vector_width(T)
-    push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN}(SIMDPirates.valloc($T, $L), $st, $xt)))
+    push!(q.args, :(parent = Vector{$T}(undef, $L)))
+    push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN}(align(pointer(parent)), $st, $xt, parent)))
     q
 end
 function StrideArray(A::AbstractArray{T}, ::Type{S}) where {T,S<:Tuple}
@@ -106,7 +110,8 @@ end
     any(s -> s == -1, sv) || return :(StrideArray{$S,$T}(::UndefInitializer))
     q, st, xt, xv, L = partially_sized(sv, T)
     SN = length(st.args); XN = length(xt.args)
-    push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN}(SIMDPirates.valloc($T, $L), $st, $xt)))
+    push!(q.args, :(parent = Vector{$T}(undef, $L)))
+    push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN}(align(pointer(parent)), $st, $xt, parent)))
     q    
 end
 

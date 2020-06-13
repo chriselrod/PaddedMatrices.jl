@@ -63,7 +63,7 @@ end
         any(i .> size(A)) && ThrowBoundsError(A, i)
     end
    # vstore!(stridedpointer(A), v, i)
-    vnoaliasstore!(stridedpointer(A), v, vmul(sizeof(T), staticm1(i)))
+    vnoaliasstore!(stridedpointer(A), v, staticm1(i))
 end
 Base.@propagate_inbounds Base.setindex!(A::AbstractStrideArray, v, i::CartesianIndex) = setindex!(A, v, i.I)
 
