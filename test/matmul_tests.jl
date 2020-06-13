@@ -1,4 +1,13 @@
 
+function test_fixed_size(M, K = M, N = M)
+    A = @FixedSize rand(M,K);
+    B = @FixedSize rand(K,N);
+    Aa = Array(A); Ba = Array(B);
+    time = @elapsed(@test Aa * Ba ≈ A * B)
+    @show M, K, N, time
+    nothing
+end
+
 @testset "MatMul" begin
     @testset "jmul" begin
         for T in (Float32, Float64, Int32, Int64)
@@ -25,11 +34,13 @@
         end
     end
     @testset "FixedSize" begin
-        for s in 2:32
-            A = @FixedSize rand(s,s);
-            B = @FixedSize rand(s,s);
-            Aa = Array(A); Ba = Array(B);
-            @test Aa * Ba ≈ A * B
+        r = 2:7
+        for M ∈ r, K ∈ r, N ∈ r
+            test_fixed_size(M, K, N)
+        end
+        r = 8:33
+        for M ∈ r
+            test_fixed_size(M)
         end
     end
 end
