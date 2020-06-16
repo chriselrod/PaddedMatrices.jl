@@ -32,7 +32,7 @@ function partially_sized(sv, ::Type{T}) where {T}
     N = length(sv)
     L = 1
     Lpos = 1
-    q = Expr(:block)
+    q = Expr(:block, Expr(:meta,:inline))
     for n ∈ 1:N
         xv[n] = L
         if L == -1
@@ -188,7 +188,29 @@ end
 @generated function PtrArray{S}(ptr::Ptr{T}, s::NTuple{N,<:Integer}) where {S,T,N}
     sv = tointvec(S)
     @assert N == length(sv)
-    any(s -> s == -1, sv) || return :(PtrArray{$S}(ptr))
+    any(isequal(-1), sv) || return Expr(:block, Expr(:meta,:inline), :(PtrArray{$S}(ptr)))
+    q, st, xt, xv, L = partially_sized(sv, T)
+    SN = length(st.args); XN = length(xt.args)
+    push!(q.args, :(PtrArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false}(ptr, $st, $xt)))
+    q
+end
+function toctuple(s)
+    sv = Int[]
+    sp = s.parameters
+    for i ∈ eachindex(sp)
+        if sp[i] <: Static
+            push!(sv, sp[i].parameters[1])
+        else
+            push!(sv, -1)
+        end
+    end
+    S = Expr(:curly, :Tuple)
+    append!(S.args, sv)
+    S, sv
+end
+@generated function PtrArray(ptr::Ptr{T}, s::Tuple{Vararg{<:Any,N}}) where {T,N}
+    S, sv = toctuple(s)
+    any(isequal(-1), sv) || return Expr(:block, Expr(:meta,:inline), :(PtrArray{$S}(ptr)))
     q, st, xt, xv, L = partially_sized(sv, T)
     SN = length(st.args); XN = length(xt.args)
     push!(q.args, :(PtrArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false}(ptr, $st, $xt)))

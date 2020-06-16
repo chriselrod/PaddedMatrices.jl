@@ -715,38 +715,6 @@ function jmulh!(
     C
  end # function 
 
-
-
-@inline function LinearAlgebra.mul!(
-    c::AbstractVector{T}, A::AbstractStrideMatrix{M,N,T}, b::AbstractVector{T}
-) where {M,N,T}
-    @assert size(c,1) == size(A,1)
-    @assert size(b,1) == size(A,2)
-    @avx for m ∈ 1:size(A,1)
-        cₘ = zero(T)
-        for n ∈ 1:size(A,2)
-            cₘ += A[m,n] * b[n]
-        end
-        c[m] = cₘ
-    end
-    C
-end
-function nmul!(
-    c::AbstractVector{T}, A::AbstractStrideMatrix{M,N,T}, b::AbstractVector{T}
-) where {M,N,T}
-    @assert size(c,1) == size(A,1)
-    @assert size(b,1) == size(A,2)
-    @avx for m ∈ 1:size(A,1)
-        cₘ = zero(T)
-        for n ∈ 1:size(A,2)
-            cₘ -= A[m,n] * b[n]
-        end
-        c[m] = cₘ
-    end
-    C
-end
-
-
 LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractMatrix, B::AbstractMatrix) = jmul!(C, A, B)
 LinearAlgebra.mul!(C::AbstractMatrix, A::AbstractStrideMatrix, B::AbstractMatrix) = jmul!(C, A, B)
 LinearAlgebra.mul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractStrideMatrix) = jmul!(C, A, B)
@@ -754,21 +722,6 @@ LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractStrideMatrix, B::Abstract
 LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractMatrix, B::AbstractStrideMatrix) = jmul!(C, A, B)
 LinearAlgebra.mul!(C::AbstractMatrix, A::AbstractStrideMatrix, B::AbstractStrideMatrix) = jmul!(C, A, B)
 LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractStrideMatrix, B::AbstractStrideMatrix) = jmul!(C, A, B)
-function nmul!(
-    C::AbstractStrideMatrix{<:Any,<:Any,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
-) where {T}
-    M, K, N = matmul_sizes(C, A, B)
-    @avx for m ∈ 1:M
-        for n ∈ 1:N
-            Cₘₙ = zero(T)
-            for k ∈ 1:K
-                Cₘₙ -= A[m,k] * B[k,n]
-            end
-            C[m,n] = Cₘₙ
-        end
-    end
-    C
-end
 
 @inline function Base.:*(
     sp::StackPointer,
@@ -803,66 +756,6 @@ function Base.:*(
     mul!(StrideArray{T}(undef, (size(A,1),size(B,2))), A, B)
 end
 
-function muladd!(
-    C::AbstractStrideMatrix{<:Any,<:Any,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
-) where {T}
-    M, K, N = matmul_sizes(C, A, B)
-    @avx for m ∈ 1:M
-        for n ∈ 1:N
-            Cₘₙ = zero(T)
-            for k ∈ 1:K
-                Cₘₙ += A[m,k] * B[k,n]
-            end
-            C[m,n] += Cₘₙ
-        end
-    end
-    C
-end
-function mulsub!(
-    C::AbstractStrideMatrix{<:Any,<:Any,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
-) where {T}
-    M, K, N = matmul_sizes(C, A, B)
-    @avx for m ∈ 1:M
-        for n ∈ 1:N
-            Cₘₙ = zero(T)
-            for k ∈ 1:K
-                Cₘₙ += A[m,k] * B[k,n]
-            end
-            C[m,n] = Cₘₙ - C[m,n]
-        end
-    end
-    C
-end
-function nmuladd!(
-    C::AbstractStrideMatrix{<:Any,<:Any,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
-) where {T}
-    M, K, N = matmul_sizes(C, A, B)
-    @avx for m ∈ 1:M
-        for n ∈ 1:N
-            Cₘₙ = zero(T)
-            for k ∈ 1:K
-                Cₘₙ -= A[m,k] * B[k,n]
-            end
-            C[m,n] += Cₘₙ
-        end
-    end
-    C
-end
-function nmulsub!(
-    C::AbstractStrideMatrix{<:Any,<:Any,T}, A::AbstractMatrix{T}, B::AbstractMatrix{T}
-) where {T}
-    M, K, N = matmul_sizes(C, A, B)
-    @avx for m ∈ 1:M
-        for n ∈ 1:N
-            Cₘₙ = zero(T)
-            for k ∈ 1:K
-                Cₘₙ -= A[m,k] * B[k,n]
-            end
-            C[m,n] = Cₘₙ - C[m,n]
-        end
-    end
-    C
-end
 
 @inline extract_λ(a) = a
 @inline extract_λ(a::UniformScaling) = a.λ

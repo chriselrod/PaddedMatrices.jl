@@ -186,3 +186,8 @@ end
     end
     retexpr
 end
+
+@inline function Base.eachindex(::Base.IndexLinear, ::A) where {A <: AbstractFixedSizeArray}
+    Static{1}():Static(number_elements_val(A))
+end
+

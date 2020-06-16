@@ -41,6 +41,39 @@ function loopmul!(C, A, B, ::Val{1}, β, (M, K, N) = matmul_sizes(C, A, B))
     end
     nothing
 end
+function loopmul!(C, A, B, ::Val{-1}, ::Val{0}, (M, K, N) = matmul_sizes(C, A, B))
+    # @avx for n ∈ 1:N, m ∈ 1:M
+    @avx for m ∈ 1:M, n ∈ 1:N
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ -= A[m,k] * B[k,n]
+        end
+        C[m,n] = Cₘₙ
+    end
+    nothing
+end
+function loopmul!(C, A, B, ::Val{-1}, ::Val{1}, (M, K, N) = matmul_sizes(C, A, B))
+    # @avx for n ∈ 1:N, m ∈ 1:M
+    @avx for m ∈ 1:M, n ∈ 1:N
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ -= A[m,k] * B[k,n]
+        end
+        C[m,n] += Cₘₙ
+    end
+    nothing
+end
+function loopmul!(C, A, B, ::Val{-1}, β, (M, K, N) = matmul_sizes(C, A, B))
+    # @avx for n ∈ 1:N, m ∈ 1:M
+    @avx for m ∈ 1:M, n ∈ 1:N
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ -= A[m,k] * B[k,n]
+        end
+        C[m,n] = Cₘₙ + β * C[m,n]
+    end
+    nothing
+end
 function loopmul!(C, A, B, α, ::Val{0}, (M, K, N) = matmul_sizes(C, A, B))
     # @avx for n ∈ 1:N, m ∈ 1:M
     @avx for m ∈ 1:M, n ∈ 1:N
@@ -157,6 +190,90 @@ function packaloopmul!(
         Cₘₙ = zero(eltype(C))
         for k ∈ 1:K
             Cₘₙ += Ãₚ[m,k] * B[k,n]
+        end
+        C[m,n] = Cₘₙ + β * C[m,n]
+    end    
+    nothing
+end
+function packaloopmul!(
+    C::AbstractStrideMatrix{Mc,Nc},
+    Ãₚ::AbstractStrideMatrix{Mc,Kc},
+    A::AbstractStrideMatrix{Mc,Kc},
+    B::AbstractStrideMatrix{Kc,Nc},
+    ::Val{-1}, ::Val{0}, (M, K, N) = matmul_sizes(C, A, B)
+) where {Mc,Kc,Nc}
+    Nᵣrange = VectorizationBase.StaticUnitRange{1,nᵣ}()
+    # @avx for n ∈ 1:N, m ∈ 1:M
+    @avx for m ∈ 1:M, n ∈ Nᵣrange
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Aₘₖ = A[m,k]
+            Cₘₙ -= Aₘₖ * B[k,n]
+            Ãₚ[m,k] = Aₘₖ 
+        end
+        C[m,n] = Cₘₙ
+    end
+    Nrange = VectorizationBase.StaticLowerUnitRange{1+nᵣ}(N)
+    @avx for m ∈ 1:M, n ∈ Nrange
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ -= Ãₚ[m,k] * B[k,n]
+        end
+        C[m,n] = Cₘₙ
+    end    
+    nothing
+end
+function packaloopmul!(
+    C::AbstractStrideMatrix{Mc,Nc},
+    Ãₚ::AbstractStrideMatrix{Mc,Kc},
+    A::AbstractStrideMatrix{Mc,Kc},
+    B::AbstractStrideMatrix{Kc,Nc},
+    ::Val{-1}, ::Val{1}, (M, K, N) = matmul_sizes(C, A, B)
+) where {Mc,Kc,Nc}
+    Nᵣ = VectorizationBase.StaticUnitRange{1,nᵣ}()
+    # @avx for n ∈ 1:N, m ∈ 1:M
+    @avx for m ∈ 1:M, n ∈ Nᵣ
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Aₘₖ = A[m,k]
+            Cₘₙ -= Aₘₖ * B[k,n]
+            Ãₚ[m,k] = Aₘₖ
+        end
+        C[m,n] += Cₘₙ
+    end
+    Nrange = VectorizationBase.StaticLowerUnitRange{1+nᵣ}(N)
+    @avx for m ∈ 1:M, n ∈ Nrange
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ -= Ãₚ[m,k] * B[k,n]
+        end
+        C[m,n] += Cₘₙ
+    end    
+    nothing
+end
+function packaloopmul!(
+    C::AbstractStrideMatrix{Mc,Nc},
+    Ãₚ::AbstractStrideMatrix{Mc,Kc},
+    A::AbstractStrideMatrix{Mc,Kc},
+    B::AbstractStrideMatrix{Kc,Nc},
+    ::Val{-1}, β, (M, K, N) = matmul_sizes(C, A, B)
+) where {Mc,Kc,Nc}
+    Nᵣ = VectorizationBase.StaticUnitRange{1,nᵣ}()
+    # @avx for n ∈ 1:N, m ∈ 1:M
+    @avx for m ∈ 1:M, n ∈ Nᵣ
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Aₘₖ = A[m,k]
+            Cₘₙ -= Aₘₖ * B[k,n]
+            Ãₚ[m,k] = Aₘₖ 
+        end
+        C[m,n] = Cₘₙ + β * C[m,n]
+    end
+    Nrange = VectorizationBase.StaticLowerUnitRange{1+nᵣ}(N)
+    @avx for m ∈ 1:M, n ∈ Nrange
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ -= Ãₚ[m,k] * B[k,n]
         end
         C[m,n] = Cₘₙ + β * C[m,n]
     end    
@@ -708,6 +825,42 @@ end
         Cₘₙ = zero(eltype(C))
         for k ∈ 1:K
             Cₘₙ += A[m,k] * B[k,n]
+        end
+        C[m,n] = Cₘₙ + β * C[m,n]
+    end
+    C
+end
+@inline function inlineloopmul!(C, A, B, ::Val{-1}, ::Val{0})
+    M, K, N = matmul_sizes(C, A, B)
+    # @avx inline=true for n ∈ 1:N, m ∈ 1:M
+    @avx inline=true for m ∈ 1:M, n ∈ 1:N
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ -= A[m,k] * B[k,n]
+        end
+        C[m,n] = Cₘₙ
+    end
+    C
+end
+@inline function inlineloopmul!(C, A, B, ::Val{-1}, ::Val{1})
+    M, K, N = matmul_sizes(C, A, B)
+    # @avx inline=true for n ∈ 1:N, m ∈ 1:M
+    @avx inline=true for m ∈ 1:M, n ∈ 1:N
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ -= A[m,k] * B[k,n]
+        end
+        C[m,n] += Cₘₙ
+    end
+    C
+end
+@inline function inlineloopmul!(C, A, B, ::Val{-1}, β)
+    M, K, N = matmul_sizes(C, A, B)
+    # @avx inline=true for n ∈ 1:N, m ∈ 1:M
+    @avx inline=true for m ∈ 1:M, n ∈ 1:N
+        Cₘₙ = zero(eltype(C))
+        for k ∈ 1:K
+            Cₘₙ -= A[m,k] * B[k,n]
         end
         C[m,n] = Cₘₙ + β * C[m,n]
     end

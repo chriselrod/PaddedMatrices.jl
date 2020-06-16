@@ -42,6 +42,10 @@ end
 #        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
 end
+@inline function PtrArray(sp::StackPointer, sz::Vararg{<:Any,N}) where {N}
+    A = PtrArray(pointer(sp), az)
+    sp + align(memory_length(A)), A
+end
 
 @generated function PtrVector{P,T}(a::StackPointer) where {P,T}
     L = calc_padding(P, T)
@@ -66,5 +70,21 @@ end
 @inline function StackPointers.stack_pointer_call(::typeof(copy), sp::StackPointer, A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
     sp, B = PtrArray{S,T,N,X,L,false}(sp)
     sp, copyto!(B, A)
+end
+
+
+## Reverse diff expr support
+SIMDPirates.vfmadd!(C::AbstractArray, A, B) = mul!(C, A, B, Val{1}(), Val{1}())
+SIMDPirates.vfnmadd!(C::AbstractArray, A, B) = mul!(C, A, B, Val{-1}(), Val{1}())
+SIMDPirates.vfmadd!(C::ZeroInitializedArray, A, B) = mul!(C.data, A, B, Val{1}(), Val{0}())
+SIMDPirates.vfnmadd!(C::ZeroInitializedArray, A, B) = mul!(C.data, A, B, Val{-1}(), Val{0}())
+
+@inline function StackPointers.stack_pointer_call(::typeof(*), sp::StackPointer, A::AbstractMatrix, B::AbstractMatrix)
+    sp, C = PtrArray(sp, maybestaticsize(A, Val{1}()), maybestaticsize(B, Val{2}()))
+    sp, mul!(C, A, B)
+end
+@inline function StackPointers.stack_pointer_call(::typeof(vnmul), sp::StackPointer, A::AbstractMatrix, B::AbstractMatrix)
+    sp, C = PtrArray(sp, maybestaticsize(A, Val{1}()), maybestaticsize(B, Val{2}()))
+    sp, mul!(C, A, B, Val{-1}())
 end
 

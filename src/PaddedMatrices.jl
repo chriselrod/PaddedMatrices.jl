@@ -38,6 +38,7 @@ include("kernels.jl")
 include("blas.jl")
 include("broadcast.jl")
 
+include("zeroinitialized.jl")
 include("stack_pointers.jl")
 include("mappedtypes.jl")
 include("lazy_maps.jl")
