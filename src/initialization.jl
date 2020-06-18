@@ -130,8 +130,8 @@ function calc_NXL(SV::Core.SimpleVector, T, padded_rows::Int)
         push!(X, svn == 1 ? 0 : L)
         L *= svn
     end
-    LA = VectorizationBase.align(L,T)
-    N, Tuple{X...}, LA
+    # LA = VectorizationBase.align(L,T)
+    N, Tuple{X...}, L#A
 end
 
 function maybeincreaseL(L::Int, ::Type{T}) where {T}

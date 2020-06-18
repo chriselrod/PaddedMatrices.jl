@@ -903,10 +903,12 @@ end
     C
 end
 
-function two_cols_per_vector_add_kn_block!(q::Expr, Kunroll, Nunroll, Koffset, Noffset, Ashuffle, Bshuffle, MindA, MindC)
+function two_cols_per_vector_add_kn_block!(q::Expr, Kunroll, Nunroll, Koffset, Noffset, Ashuffle, Bshuffle, MindA, MindC, Amask)
     for kk ∈ 0:Kunroll-1
         kt = kk + Koffset
-        push!(q.args, Expr(:(=), Symbol(:A_,kk), Expr(:call, :shufflevector, Expr(:call, :extract_data, Expr(:call, :vload, :ptrA, Expr(:tuple, MindA, kt))), Ashuffle)))
+        Aload = Expr(:call, :vload, :ptrA, Expr(:tuple, MindA, kt))
+        isnothing(Amask) || push!(Aload.args, Amask)
+        push!(q.args, Expr(:(=), Symbol(:A_,kk), Expr(:call, :shufflevector, Expr(:call, :extract_data, Aload), Ashuffle)))
     end
     for kk ∈ 0:Kunroll-1, nn ∈ 0:Nunroll-1
         kt = kk + Koffset
@@ -942,14 +944,14 @@ function initmulquote()
     )
 end
 
-function two_cols_per_vector_quote(K, N, W, Wshift)
+function two_cols_per_vector_quote(K, N, W, Wshift, Amask = nothing)
     # Calculate 2 columns of C at a time
-    q = two_cols_per_vector_quote!(initmulquote(), K, N, W, Wshift)
+    q = two_cols_per_vector_quote!(initmulquote(), K, N, W, Wshift, 0, Amask)
     push!(q.args, :C)
     q
 end
 
-function two_cols_per_vector_quote!(q, K, N, W, Wshift, Noffbase = 0)
+function two_cols_per_vector_quote!(q, K, N, W, Wshift, Noffbase = 0, Amask = nothing)
     Ndoublereps = N >> 1
     Wh = W >>> 1
     Whs = Wshift - 1
@@ -971,18 +973,18 @@ function two_cols_per_vector_quote!(q, K, N, W, Wshift, Noffbase = 0)
     MindC = Expr(:call, Expr(:curly, :_MM, W), 0)
     for n ∈ 0:Nrep-1
         for k ∈ 0:Krep-1
-            two_cols_per_vector_add_kn_block!(q, Kunroll, Nunroll, Kunroll*k, Nunroll*n + Noffbase, Ashuffle, Bshuffle, MindA, MindC)
+            two_cols_per_vector_add_kn_block!(q, Kunroll, Nunroll, Kunroll*k, Nunroll*n + Noffbase, Ashuffle, Bshuffle, MindA, MindC, Amask)
         end
         if Krem > 0
-            two_cols_per_vector_add_kn_block!(q, Krem, Nunroll, Kunroll*Krep, Nunroll*n + Noffbase, Ashuffle, Bshuffle, MindA, MindC)
+            two_cols_per_vector_add_kn_block!(q, Krem, Nunroll, Kunroll*Krep, Nunroll*n + Noffbase, Ashuffle, Bshuffle, MindA, MindC, Amask)
         end
     end
     if Nrem > 0
         for k in 0:Krep-1
-            two_cols_per_vector_add_kn_block!(q, Kunroll, Nrem, Kunroll*k, Nunroll*Nrep + Noffbase, Ashuffle, Bshuffle, MindA, MindC)
+            two_cols_per_vector_add_kn_block!(q, Kunroll, Nrem, Kunroll*k, Nunroll*Nrep + Noffbase, Ashuffle, Bshuffle, MindA, MindC, Amask)
         end
         if Krem > 0
-            two_cols_per_vector_add_kn_block!(q, Krem, Nrem, Kunroll*Krep, Nunroll*Nrep + Noffbase, Ashuffle, Bshuffle, MindA, MindC)
+            two_cols_per_vector_add_kn_block!(q, Krem, Nrem, Kunroll*Krep, Nunroll*Nrep + Noffbase, Ashuffle, Bshuffle, MindA, MindC, Amask)
         end        
     end
     if isodd(N)
@@ -990,7 +992,9 @@ function two_cols_per_vector_quote!(q, K, N, W, Wshift, Noffbase = 0)
         for k ∈ 0:K-1
             Asym = Symbol(:A_,k)
             Bsym = Symbol(:B_,k)
-            push!(q.args, Expr(:(=), Asym, Expr(:call, :extract_data, Expr(:call, :vload, :ptrA, Expr(:tuple, MindA, k)))))
+            Aload = Expr(:call, :vload, :ptrA, Expr(:tuple, MindA, k))
+            isnothing(Amask) || push!(Aload.args, Amask)
+            push!(q.args, Expr(:(=), Asym, Expr(:call, :extract_data, Aload)))
             push!(q.args, Expr(:(=), Bsym, Expr(:call, :vload, :ptrB, Expr(:tuple, k, N-1))))
             if iszero(k)
                 push!(q.args, Expr(:(=), Csym, Expr(:call, :vmul, Asym, Bsym)))
@@ -1015,7 +1019,9 @@ end
     # if nvectors_per_col ≤ 1 || (K * N > 4VectorizationBase.REGISTER_COUNT) || XA < 4
     if nvectors_per_col != 2 || (K * N > 4VectorizationBase.REGISTER_COUNT) || XA < 4
         return Expr(:block, Expr(:meta,:inline), Expr(:call, :jmul!, :C, :A, :B))
-    else#if nvectors_per_col == 2
+    elseif M == 3#if nvectors_per_col == 2
+        return two_cols_per_vector_quote(K, N, W, Wshift, 0x77)
+    else
         return two_cols_per_vector_quote(K, N, W, Wshift)
     # else
         # return Expr(:block, Expr(:meta,:inline), Expr(:call, :jmul!, :C, :A, :B))
