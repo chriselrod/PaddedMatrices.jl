@@ -4,7 +4,7 @@ abstract type AbstractPtrStrideArray{S,T,N,X,SN,XN,V} <: AbstractMutableStrideAr
 
 # const ALIGN_ALL_FS_ARRAYS = true
 
-struct StrideArray{S,T,N,X,SN,XN} <: AbstractMutableStrideArray{S,T,N,X,SN,XN,false}
+struct StrideArray{S,T,N,X,SN,XN,V} <: AbstractMutableStrideArray{S,T,N,X,SN,XN,V}
     ptr::Ptr{T}
     size::NTuple{SN,Int}
     stride::NTuple{XN,Int}
@@ -45,8 +45,8 @@ end
 
 const AbstractStrideVector{M,T,X1,SN,XN,V} = AbstractStrideArray{Tuple{M},T,1,Tuple{X1},SN,XN,V}
 const AbstractStrideMatrix{M,N,T,X1,X2,SN,XN,V} = AbstractStrideArray{Tuple{M,N},T,2,Tuple{X1,X2},SN,XN,V}
-const StrideVector{M,T,X1,SN,XN} = StrideArray{Tuple{M},T,1,Tuple{X1},SN,XN}
-const StrideMatrix{M,N,T,X1,X2,SN,XN} = StrideArray{Tuple{M,N},T,2,Tuple{X1,X2},SN,XN}
+const StrideVector{M,T,X1,SN,XN,V} = StrideArray{Tuple{M},T,1,Tuple{X1},SN,XN,V}
+const StrideMatrix{M,N,T,X1,X2,SN,XN,V} = StrideArray{Tuple{M,N},T,2,Tuple{X1,X2},SN,XN,V}
 const FixedSizeVector{M,T,X1} = FixedSizeArray{Tuple{M},T,1,Tuple{X1}}
 const FixedSizeMatrix{M,N,T,X1,X2} = FixedSizeArray{Tuple{M,N},T,2,Tuple{X1,X2}}
 const ConstantVector{M,T,X1} = ConstantArray{Tuple{M},T,1,Tuple{X1}}

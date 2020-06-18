@@ -81,7 +81,7 @@ end
     SN = length(st.args); XN = length(xt.args)
     # W = VectorizationBase.pick_vector_width(T)
     push!(q.args, :(parent = Vector{$T}(undef, $L)))
-    push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN}(align(pointer(parent)), $st, $xt, parent)))
+    push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false}(align(pointer(parent)), $st, $xt, parent)))
     q
 end
 function StrideArray(A::AbstractArray{T}, ::Type{S}) where {T,S<:Tuple}
@@ -111,7 +111,7 @@ end
     q, st, xt, xv, L = partially_sized(sv, T)
     SN = length(st.args); XN = length(xt.args)
     push!(q.args, :(parent = Vector{$T}(undef, $L)))
-    push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN}(align(pointer(parent)), $st, $xt, parent)))
+    push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false}(align(pointer(parent)), $st, $xt, parent)))
     q    
 end
 

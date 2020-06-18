@@ -40,14 +40,14 @@ end
 staticrangelength(::Type{Static{R}}) where {R} = 1 + last(R) - first(R)
 staticrangelength(::Type{VectorizationBase.StaticUnitRange{L,U}}) where {L,U} = 1 + U - L
 
-struct ViewAdjoint{SP,SV,XP,XV,SN,XN}
-    offset::Int
-    size::NTuple{SN,Int}
-    stride::NTuple{XN,Int}
-end
+# struct ViewAdjoint{SP,SV,XP,XV,SN,XN}
+#     offset::Int
+#     size::NTuple{SN,Int}
+#     stride::NTuple{XN,Int}
+# end
 
 static_type(::Type{StaticUnitRange{L,U}}) where {L,U} = (L,U)
-function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Bool, scalarview::Bool)
+function generalized_getindex_quote(SV, XV, @nospecialize(inds))
     N = length(SV)
     s2 = Int[]
     x2 = Int[]
@@ -113,36 +113,50 @@ function generalized_getindex_quote(SV, XV, T, @nospecialize(inds), partial::Boo
     end
     SN > 0 && push!(q.args, Expr(:(=), :Asize, Expr(:(.), :A, QuoteNode(:size))))
     XN > 0 && push!(q.args, Expr(:(=), :Astride, Expr(:(.), :A, QuoteNode(:stride))))
-    arraydef = if length(s2) == 0
-        scalarview ? :(VectorizationBase.Pointer) : :(VectorizationBase.load)
-    else
-        :(PtrArray{$S2,$T,$(length(s2)),$X2,$SN,$XN,true})
-    end
-    if partial
-        partial_expr = :(ViewAdjoint{$(Tuple{SV...}),$S2,$(Tuple{XV...}),$X2,$SN,$XN}(_offset, $st2, $xt2))
-        push!(q.args, :(@inbounds $arraydef( _offset, $st2, $xt2), $partial))
-    else
-        push!(q.args, :(@inbounds $arraydef( _offset, $st2, $xt2)))
-    end
-    q
+    # arraydef = if length(s2) == 0
+    #     scalarview ? :(VectorizationBase.Pointer) : :(VectorizationBase.load)
+    # else
+    #     :(PtrArray{$S2,$T,$(length(s2)),$X2,$SN,$XN,true})
+    # end
+    q, S2, length(s2), X2, SN, XN, st2, xt2
+    # partial_expr = :(ViewAdjoint{$(Tuple{SV...}),$S2,$(Tuple{XV...}),$X2,$SN,$XN}(_offset, $st2, $xt2))
+    # push!(q.args, :(@inbounds $arraydef( _offset, $st2, $xt2), $partial))
+    # push!(q.args, :(@inbounds $arraydef( _offset, $st2, $xt2)))
+    # q
 end
 """
 Note that the stride will currently only be correct when N <= 2.
 Perhaps R should be made into a stride-tuple?
 """
-@generated function Base.getindex(A::AbstractPtrStrideArray{S,T,N,X,0,0,V}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}
+@generated function Base.getindex(A::AbstractPtrStrideArray{S,T,N,X}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}
     @assert length(inds) == N
-    generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, false)
+    q, S2, Nsub, X2, SN, XN, st2, xt2 = generalized_getindex_quote(S.parameters, X.parameters, T, inds, false)
+    arraydef = if iszero(Nsub)
+        :(VectorizationBase.vload)
+    else
+        :(PtrArray{$S2,$T,$Nsub,$X2,$SN,$XN,true})
+    end
+    push!(q.args, :(@inbounds $arraydef( _offset, $st2, $xt2 )))
+    q
+end
+Base.@propagate_inbounds function Base.getindex(A::StrideArray{S,T,N}, inds::Vararg{<:Any,N}) where {S,T,N}
+    q, S2, Nsub, X2, SN, XN, st2, xt2 = generalized_getindex_quote(S.parameters, X.parameters, T, inds, false)
+    if iszero(Nsub)
+        push!(q.args, :(@inbounds GC.@preserve A vload( _offset, $st2, $xt2, parent(A) )))
+    else
+        push!(q.args, :(@inbounds StrideArray{$S2,$T,$Nsub,$X2,$SN,$XN,true}( _offset, $st2, $xt2, parent(A) )))
+    end
+    q
 end
 Base.@propagate_inbounds function Base.getindex(A::AbstractStrideArray{S,T,N}, inds::Vararg{<:Any,N}) where {S,T,N}
     view(A, inds...)
 end
 @generated function Base.view(
-    A::AbstractPtrStrideArray{S,T,N,X,0,0,V}, inds::Vararg{<:Any,N}
+    A::AbstractPtrStrideArray{S,T,N,X}, inds::Vararg{<:Any,N}
 # ) where {S,T,N,X,SN,XN,V}
 ) where {V,S,T,N,X}
     @assert length(inds) == N
-    generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, true)
+    generalized_getindex_quote(S.parameters, X.parameters, T, inds, true)
     # @show generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, true)
 end
 
