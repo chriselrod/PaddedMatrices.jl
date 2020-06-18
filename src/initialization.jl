@@ -181,6 +181,13 @@ end
     :(FixedSizeArray{Tuple{$M,$N},$T,2,Tuple{1,$X},$L}(undef))
 end
 
+@generated function isfixed(::Type{T}) where {T<:Tuple}
+    for i ∈ eachindex(T.parameters)
+        T.parameters[i] === -1 && return false
+    end
+    true
+end
+
 @generated function PtrArray{S}(ptr::Ptr{T}) where {S,T}
     N, X, L = calc_NPL(S.parameters, T)
     :(PtrArray{$S,$T,$N,$X,0,0,false}(ptr))

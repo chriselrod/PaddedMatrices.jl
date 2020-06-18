@@ -98,9 +98,13 @@ end
     # ::Base.Broadcast.Broadcasted{FS}, ::Type{T}
 # ) where {S,T<:Union{VectorizationBase.FloatingTypes,PaddedMatrices.VectorizationBase.IntTypes,PaddedMatrices.VectorizationBase.UIntTypes},N,FS<:AbstractStrideStyle{S,N}}
 function Base.similar(
-    ::Base.Broadcast.Broadcasted{FS}, ::Type{T}
+    bc::Base.Broadcast.Broadcasted{FS}, ::Type{T}
 ) where {S,T,N,FS<:AbstractStrideStyle{S,N}}
-    FixedSizeArray{S,T}(undef)
+    if isfixed(S)
+        FixedSizeArray{S,T}(undef)
+    else
+        StrideArray{S,T}(undef, size(bc))
+    end
 end
 Base.similar(sp::StackPointer, ::Base.Broadcast.Broadcasted{FS}, ::Type{T}) where {S,T,FS<:AbstractStrideStyle{S,T},N} = PtrArray{S,T}(sp)
 

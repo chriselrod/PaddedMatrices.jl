@@ -139,7 +139,9 @@ function pack_A(Aptr, mc, kc, ::Type{Ta}, mo::Int, k::Int) where {Ta}
     Apacked, Apmat
 end
 
-function jmulpackAonly!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}, (M, K, N) = matmul_sizes(C, A, B)) where {Tc, Ta, Tb, mc, kc, nc}
+function jmulpackAonly!(
+    C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}, (M, K, N) = matmul_sizes(C, A, B)
+) where {Tc, Ta, Tb, mc, kc, nc}
     W = VectorizationBase.pick_vector_width(Tc)
     mᵣW = mᵣ * W
 
@@ -215,17 +217,26 @@ function jmul!(
     # if K * N ≤ kc * nc#L₃ * VectorizationBase.NUM_CORES
         # W = VectorizationBase.pick_vector_width(Tc)
         # if contiguousstride1(A) && ( (M ≤ 72)  || ((2M ≤ 5mc) && iszero(stride(A,2) % W)))
-        if mc * kc ≥ M * K
-            loopmul!(C, A, B, α, β, (M,K,N))
-            return C
-        else
-            return jmulpackAonly!(C, A, B, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
-        end
+    if mc * kc ≥ M * K
+        loopmul!(C, A, B, α, β, (M,K,N))
+        return C
+    else
+        return jmulpackAonly!(C, A, B, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
+    end
     # else
     #     return jmulh!(C, A, B, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
     # end
 end # function
 
+@inline jmul!(C::AbstractMatrix, A::LinearAlgebra.Adjoint, B::LinearAlgebra.Adjoint, α, β) = (jmul!(C', B', A'); C)
+@inline function jmul!(
+    C::AbstractMatrix,
+    A::AbstractStrideArray{Sa,Ta,2,Tuple{Xa,1}},
+    B::AbstractStrideArray{Sb,Tb,2,Tuple{Xb,1}}
+) where {Sa, Ta, Xa, Sb, Tb, Xb}
+    jmul!(C', B', A')
+    C
+end
 
 # function jmult!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}) where {Tc, Ta, Tb, mc, kc, nc, log2kc}
 #     M, K, N = matmul_sizes(C, A, B)
@@ -767,15 +778,6 @@ end
     end
     mv
 end
-@inline function Base.:*(Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,X,L}}, bλ::Union{T,UniformScaling{T}}) where {S,T<:Real,N,X,L}
-    mv = FixedSizeArray{S,T,N,X,L}(undef)
-    A = Aadj.parent
-    b = extract_λ(bλ)
-    @avx for i ∈ eachindex(A)
-        mv[i] = A[i] * b
-    end
-    mv'
-end
 function Base.:*(
     sp::StackPointer,
     A::AbstractFixedSizeArray{S,T,N,X,L},
@@ -788,19 +790,6 @@ function Base.:*(
     end
     sp + align(sizeof(T)*L), mv
 end
-function Base.:*(
-    sp::StackPointer,
-    Aadj::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,X,L}},
-    bλ::Union{T,UniformScaling{T}}
-) where {S,T<:Real,N,X,L}
-    mv = PtrArray{S,T,N,X,L}(pointer(sp,T))
-    A = Aadj.parent
-    b = extract_λ(bλ)
-    @avx for i ∈ eachindex(A)
-        mv[i] = A[i] * b
-    end
-    sp + align(sizeof(T)*L), mv'
-end
 @inline function Base.:*(a::T, B::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T<:Number,N,X,L}
     mv = FixedSizeArray{S,T,N,X,L}(undef)
     @avx for i ∈ eachindex(B)
@@ -810,13 +799,13 @@ end
     ConstantFixedSizeArray(mv)
 end
 
-@inline function nmul!(
-    D::AbstractMatrix{T},
-    A′::LinearAlgebra.Adjoint{T,<:AbstractMatrix{T}},
-    X::AbstractMatrix{T}
-) where {T <: BLAS.BlasFloat}
-    BLAS.gemm!('T','N',-one(T),A′.parent,X,zero(T),D)
-end
+# @inline function nmul!(
+#     D::AbstractMatrix{T},
+#     A′::LinearAlgebra.Adjoint{T,<:AbstractMatrix{T}},
+#     X::AbstractMatrix{T}
+# ) where {T <: BLAS.BlasFloat}
+#     BLAS.gemm!('T','N',-one(T),A′.parent,X,zero(T),D)
+# end
 
 
 function LinearAlgebra.mul!(

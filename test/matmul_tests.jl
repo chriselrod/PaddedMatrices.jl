@@ -1,10 +1,41 @@
 
-function test_fixed_size(M, K = M, N = M)
+const TRAVIS_SKIP = VERSION.minor != 4 && isnothing(get(ENV, "TRAVIS_BRANCH", nothing))
+
+function test_fixed_size(M, K, N)
+    A = @FixedSize rand(M,K);
+    B = @FixedSize rand(K,N);
+    At = (@FixedSize rand(K,M))';
+    Bt = (@FixedSize rand(N,K))';
+    Aa = Array(A); Ba = Array(B);
+    Aat = Array(At); Bat = Array(Bt);
+    time = @elapsed(@test Aa * Ba ≈ A * B)
+    @show M, K, N, time
+    if !TRAVIS_SKIP || (isodd(M) & isodd(N))
+        time = @elapsed(@test Aa * Bat ≈ A * Bt)
+        @show M, K, N, time
+        time = @elapsed(@test Aat * Ba ≈ At * B)
+        @show M, K, N, time
+        time = @elapsed(@test Aat * Bat ≈ At * Bt)
+        @show M, K, N, time
+    end
+    nothing
+end
+
+function test_fixed_size(M)
+    K = N = M
     A = @FixedSize rand(M,K);
     B = @FixedSize rand(K,N);
     Aa = Array(A); Ba = Array(B);
     time = @elapsed(@test Aa * Ba ≈ A * B)
     @show M, K, N, time
+    if !TRAVIS_SKIP || isodd(M)
+        time = @elapsed(@test Aa * Ba' ≈ A * B')
+        @show M, K, N, time
+        time = @elapsed(@test Aa' * Ba ≈ A' * B)
+        @show M, K, N, time
+        time = @elapsed(@test Aa' * Ba' ≈ A' * B')
+        @show M, K, N, time
+    end
     nothing
 end
 
@@ -42,6 +73,32 @@ end
         for M ∈ r
             test_fixed_size(M)
         end
+        M = K = N = 80
+        A = @FixedSize rand(M,K);
+        B = @FixedSize rand(K,N);
+        C = FixedSizeMatrix{M,N,Float64}(undef);
+        M, K, N = 23, 37, 19
+        Av = A[1:M, 1:K]; 
+        Bv = B[1:K, 1:N]; 
+        Cv = C[1:M, 1:N]; 
+        Avsl = A[Static(1):M, Static(1):K]; 
+        Bvsl = B[Static(1):K, Static(1):N]; 
+        Cvsl = C[Static(1):M, Static(1):N]; 
+        Avsr = A[Static(1):Static(M), Static(1):Static(K)]; 
+        Bvsr = B[Static(1):Static(K), Static(1):Static(N)]; 
+        Cvsr = C[Static(1):Static(M), Static(1):Static(N)]; 
+
+        Creference = Array(Av) * Array(Bvsl);
+        time = @elapsed mul!(Cv, Av, Bv)
+        @test Creference ≈ Cv
+        @show M, K, N, time
+        time = @elapsed mul!(Cvsl, Avsl, Bvsl)
+        @test Creference ≈ Cv
+        @show M, K, N, time
+        time = @elapsed mul!(Cvsr, Avsr, Bvsr)
+        @test Creference ≈ Cv
+        @show M, K, N, time
+
     end
 end
 

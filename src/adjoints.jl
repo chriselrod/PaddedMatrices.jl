@@ -20,6 +20,16 @@ end
     Xnew = reverse_tuple_type(X)
     Expr(:block, Expr(:meta,:inline), Expr(:call, :(PtrArray{$Snew,$T,$N,$Xnew,0,0,$V}), :(pointer(A)), tuple(), tuple()))
 end
+@generated function Base.adjoint(A::FixedSizeArray{S,T,N,X,V}) where {S,T<:Real,N,X,V}
+    Snew = reverse_tuple_type(S)
+    Xnew = reverse_tuple_type(X)
+    Expr(:block, Expr(:meta,:inline), Expr(:call, :(FixedSizeArray{$Snew,$T,$N,$Xnew,0,0,$V}), :(pointer(A)), tuple(), tuple(), :(A.data)))
+end
+@generated function Base.transpose(A::FixedSizeArray{S,T,N,X,V}) where {S,T,N,X,V}
+    Snew = reverse_tuple_type(S)
+    Xnew = reverse_tuple_type(X)
+    Expr(:block, Expr(:meta,:inline), Expr(:call, :(FixedSizeArray{$Snew,$T,$N,$Xnew,0,0,$V}), :(pointer(A)), tuple(), tuple(), :(A.data)))
+end
 # @generated function Base.adjoint(A::AbstractStrideArray{S,T,N,X,SN,XN,V}) where {S,T<:Real,N,X,SN,XN,V}
 #     Snew = reverse_tuple_type(S)
 #     Xnew = reverse_tuple_type(X)
@@ -64,6 +74,12 @@ end
 
 # For vectors
 
+@inline function Base.adjoint(A::FixedSizeArray{Tuple{S},T,1,Tuple{X},L,SN,XN,V}) where {S,T<:Real,X,L,SN,XN,V}
+    FixedSizeArray{Tuple{1,S},T,2,Tuple{0,X},L,SN,XN,V}(pointer(A), A.size, A.stride, A.data)
+end
+@inline function Base.transpose(A::FixedSizeArray{Tuple{S},T,1,Tuple{X},L,SN,XN,V}) where {S,T<:Real,X,L,SN,XN,V}
+    FixedSizeArray{Tuple{1,S},T,2,Tuple{0,X},L,SN,XN,V}(pointer(A), A.size, A.stride, A.data)
+end
 @inline function Base.adjoint(A::AbstractFixedSizeArray{Tuple{S},T,1,Tuple{1},V}) where {S,T<:Real,V}
     PtrArray{Tuple{1,S},T,2,Tuple{0,1},0,0,V}(pointer(A), tuple(), tuple())
 end
