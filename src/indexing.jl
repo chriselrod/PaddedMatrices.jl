@@ -22,39 +22,36 @@ end
     end
     GC.@preserve A vload(stridedpointer(A), (vsub(first(i), 1),))
 end
-@inline function Base.getindex(
-    A::AbstractPtrStrideArray{S,T,1}, i::NTuple{2,<:Integer}
-) where {S,T,N}
-    @boundscheck begin
-        first(i) > length(A) && ThrowBoundsError(A, i)
+# Avoid method ambiguities
+for AT ∈ [:AbstractStrideArray, :AbstractPtrStrideArray, :StrideArray, :FixedSizeArray]
+    loadexprs = :(vload(pointer(A), vmul(sizeof(T), vsub(i, 1))))
+    loadexprt = :(vload(stridedpointer(A), staticm1(i)))
+    if AT !== :AbstractPtrStrideArray
+        loadexprs = :(GC.@preserve A $loadexprs)
+        loadexprt = :(GC.@preserve A $loadexprt)
     end
-    GC.@preserve A vload(stridedpointer(A), (vsub(first(i), 1),))
-end
-@inline function Base.getindex(
-    A::AbstractStrideArray{S,T,N}, i::NTuple{N,<:Integer}
-) where {S,T,N}
-    @boundscheck begin
-        any(i .> size(A)) && ThrowBoundsError(A, i)
+    @eval begin
+        @inline function Base.getindex(
+            A::$AT{S,T,N}, i::NTuple{N,<:Integer}
+        ) where {S,T,N}
+            @boundscheck begin
+                any(i .> size(A)) && ThrowBoundsError(A, i)
+            end
+            $loadexprt
+        end
+        Base.@propagate_inbounds Base.getindex(A::$AT, i::Vararg{<:Integer}) = getindex(A, i)
+        @inline function Base.getindex(A::$AT{S,T}, i::Integer) where {S,T}
+            @boundscheck i > length(A) && ThrowBoundsError(A, i)
+            $loadexprs
+        end
+        @inline function Base.getindex(A::$AT{S,T,1}, i::Integer) where {S,T}
+            @boundscheck i > length(A) && ThrowBoundsError(A, i)
+            $loadexprs
+        end
+
     end
-    GC.@preserve A vload(stridedpointer(A), staticm1(i))
 end
 Base.@propagate_inbounds Base.getindex(A::AbstractStrideArray, i::CartesianIndex) = getindex(A, i.I)
-Base.@propagate_inbounds function Base.getindex(A::AbstractStrideArray, i::Vararg{<:Number})
-    getindex(A, i)
-end
-Base.@propagate_inbounds Base.getindex(A::AbstractPtrStrideArray{S,T,N}, i::Vararg{<:Number,N}) where {S,T,N} = getindex(A, i)
-@inline function Base.getindex(A::AbstractPtrStrideArray{S,T}, i::Integer) where {S,T}
-    @boundscheck i > length(A) && ThrowBoundsError(A, i)
-    GC.@preserve A vload(pointer(A), vmul(sizeof(T), vsub(i, 1)))
-end
-@inline function Base.getindex(A::AbstractStrideArray{S,T}, i::Integer) where {S,T}
-    @boundscheck i > length(A) && ThrowBoundsError(A, i)
-    GC.@preserve A vload(pointer(A), vmul(sizeof(T), vsub(i, 1)))
-end
-@inline function Base.getindex(A::AbstractStrideArray{S,T,1}, i::Integer) where {S,T}
-    @boundscheck i > length(A) && ThrowBoundsError(A, i)
-    GC.@preserve A vload(pointer(A), vmul(sizeof(T), vsub(i, 1)))
-end
 
 @inline function Base.setindex!(
     A::AbstractStrideArray{S,T,N}, v, i::NTuple{N,<:Integer}

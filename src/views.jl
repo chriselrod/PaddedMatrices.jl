@@ -124,40 +124,37 @@ function generalized_getindex_quote(SV, XV, @nospecialize(inds))
     # push!(q.args, :(@inbounds $arraydef( _offset, $st2, $xt2)))
     # q
 end
-"""
-Note that the stride will currently only be correct when N <= 2.
-Perhaps R should be made into a stride-tuple?
-"""
+
+
+function array_inds_quote(S, T, N, X, V, inds, ArrayType, holdsdata, isview)
+    q, S2, Nsub, X2, SN, XN, st2, xt2 = generalized_getindex_quote(S.parameters, X.parameters, inds)
+    arraydef = if (!isview) & iszero(Nsub)
+        Expr(:(.), :VectorizationBase, QuoteNode(:vload))
+    else
+        Expr(:curly, ArrayType, S2, T, Nsub, X2, SN, XN, true)
+    end
+    call = Expr(:call, arraydef,  :_offset, st2, xt2 )
+    holdsdata && push!(call.args, :(A.data))
+    push!(q.args, :(@inbounds $call))
+    q
+end
 @generated function Base.getindex(A::AbstractPtrStrideArray{S,T,N,X}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}
-    @assert length(inds) == N
-    q, S2, Nsub, X2, SN, XN, st2, xt2 = generalized_getindex_quote(S.parameters, X.parameters, T, inds, false)
-    arraydef = if iszero(Nsub)
-        :(VectorizationBase.vload)
-    else
-        :(PtrArray{$S2,$T,$Nsub,$X2,$SN,$XN,true})
-    end
-    push!(q.args, :(@inbounds $arraydef( _offset, $st2, $xt2 )))
-    q
+    array_inds_quote(S, T, N, X, V, inds, :PtrArray, false, false)
 end
-Base.@propagate_inbounds function Base.getindex(A::StrideArray{S,T,N}, inds::Vararg{<:Any,N}) where {S,T,N}
-    q, S2, Nsub, X2, SN, XN, st2, xt2 = generalized_getindex_quote(S.parameters, X.parameters, T, inds, false)
-    if iszero(Nsub)
-        push!(q.args, :(@inbounds GC.@preserve A vload( _offset, $st2, $xt2, parent(A) )))
-    else
-        push!(q.args, :(@inbounds StrideArray{$S2,$T,$Nsub,$X2,$SN,$XN,true}( _offset, $st2, $xt2, parent(A) )))
-    end
-    q
+@generated function Base.getindex(A::StrideArray{S,T,N,X}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}
+    array_inds_quote(S, T, N, X, V, inds, :StrideArray, true, false)
 end
-Base.@propagate_inbounds function Base.getindex(A::AbstractStrideArray{S,T,N}, inds::Vararg{<:Any,N}) where {S,T,N}
-    view(A, inds...)
+@generated function Base.getindex(A::FixedSizeArray{S,T,N,X}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}
+    array_inds_quote(S, T, N, X, V, inds, :FixedSizeArray, true, false)
 end
-@generated function Base.view(
-    A::AbstractPtrStrideArray{S,T,N,X}, inds::Vararg{<:Any,N}
-# ) where {S,T,N,X,SN,XN,V}
-) where {V,S,T,N,X}
-    @assert length(inds) == N
-    generalized_getindex_quote(S.parameters, X.parameters, T, inds, true)
-    # @show generalized_getindex_quote(S.parameters, X.parameters, T, inds, false, true)
+@generated function Base.view(A::AbstractPtrStrideArray{S,T,N,X}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}
+    array_inds_quote(S, T, N, X, V, inds, :PtrArray, false, true)
+end
+@generated function Base.view(A::StrideArray{S,T,N,X}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}
+    array_inds_quote(S, T, N, X, V, inds, :StrideArray, true, true)
+end
+@generated function Base.view(A::FixedSizeArray{S,T,N,X}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}
+    array_inds_quote(S, T, N, X, V, inds, :FixedSizeArray, true, true)
 end
 
 

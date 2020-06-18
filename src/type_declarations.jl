@@ -8,16 +8,21 @@ struct StrideArray{S,T,N,X,SN,XN,V} <: AbstractMutableStrideArray{S,T,N,X,SN,XN,
     ptr::Ptr{T}
     size::NTuple{SN,Int}
     stride::NTuple{XN,Int}
-    parent::Vector{T}
+    data::Vector{T}
 end
-mutable struct FixedSizeArray{S,T,N,X,L} <: AbstractMutableStrideArray{S,T,N,X,0,0,false}
-    data::NTuple{L,T}
+struct FixedSizeArray{S,T,N,X,L,SN,XN,V} <: AbstractMutableStrideArray{S,T,N,X,SN,XN,V}
     ptr::Ptr{T}
-    @inline function FixedSizeArray{S,T,N,X,L}(::UndefInitializer) where {S,T,N,X,L,P}
-        A = new()
-        A.ptr = VectorizationBase.align(Base.pointer_from_objref(A))
-        A
-    end
+    size::NTuple{SN,Int}
+    stride::NTuple{XN,Int}
+    data::Base.RefValue{NTuple{L,T}}
+end
+@inline function FixedSizeArray{S,T,N,X,L}(::UndefInitializer) where {S,T,N,X,L}
+    r = Ref{NTuple{L,T}}()
+    ptr = VectorizationBase.align(Base.unsafe_convert(Ptr{T}, Base.pointer_from_objref(r)))
+    FixedSizeArray{S,T,N,X,L,0,0,false}(ptr, tuple(), tuple(), r)
+end
+@inline function FixedSizeArray{S,T,N,X,SN,XN,V}(ptr::Ptr{T}, sz::NTuple{SN,Int}, st::NTuple{XN,Int}, data::Base.RefValue{NTuple{L,T}}) where {S,T,N,X,L,SN,XN,V}
+    FixedSizeArray{S,T,N,X,L,SN,XN,V}(ptr, sz, st, data)
 end
 struct ConstantArray{S,T,N,X,L} <: AbstractStrideArray{S,T,N,X,0,0,false}
     data::NTuple{L,Core.VecElement{T}}
