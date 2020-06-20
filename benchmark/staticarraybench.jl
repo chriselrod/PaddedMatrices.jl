@@ -36,15 +36,16 @@ function runbenches(sr)
     bench_results
 end
 
-br = runbenches(2:40);
+sizerange = 2:48
+br = runbenches(sizerange);
 using DataFrames, VegaLite
 
-gflops = @. 2e-9 * (2:40) ^ 3 / br;
+gflops = @. 2e-9 * (sizerange) ^ 3 / br;
 
 df = DataFrame(gflops);
 matmulmethodnames = [:SMatrix, :MMatrix, :FixedSizeArray, :PaddedArray, :PtrArray, :DynamicMul];
 names!(df, matmulmethodnames);
-df.Size = 2:40
+df.Size = sizerange
 
 dfs = stack(df, matmulmethodnames, variable_name = :MatMulType, value_name = :GFLOPS);
 p = dfs |> @vlplot(:line, x = :Size, y = :GFLOPS, width = 900, height = 600, color = {:MatMulType});

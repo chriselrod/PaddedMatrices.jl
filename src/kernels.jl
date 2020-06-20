@@ -365,6 +365,13 @@ function packaloopmul!(
 end
 
 
+
+
+
+
+
+
+
 function packaloopmul!(
     C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ,Nᵢ}},
     Ãₚ::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
