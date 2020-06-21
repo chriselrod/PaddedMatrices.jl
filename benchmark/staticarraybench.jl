@@ -1,6 +1,8 @@
 
 using PaddedMatrices, StaticArrays, LinearAlgebra, BenchmarkTools
 
+BLAS.set_num_threads(1)
+
 BenchmarkTools.DEFAULT_PARAMETERS.samples = 1_000_000
 BenchmarkTools.DEFAULT_PARAMETERS.seconds = 10
 
