@@ -53,42 +53,27 @@ istransposed(x) = 'N'
 istransposed(x::Adjoint{<:Real}) = 'T'
 istransposed(x::Adjoint) = 'C'
 istransposed(x::Transpose) = 'T'
-for (T,fm,fo) ∈ [(Float32,:SGEMM_MKL,:SGEMM_OpenBLAS),(Float64,:DGEMM_MKL,:DGEMM_OpenBLAS)]
-    @eval begin
-        function gemmmkl!(C::AbstractMatrix{$T}, A::AbstractMatrix{$T}, B::AbstractMatrix{$T})
-            transA = istransposed(A)
-            transB = istransposed(B)
-            M, N = size(C); K = size(B, 1)
-            M32 = M % Int32
-            K32 = K % Int32
-            N32 = N % Int32
-            pA = parent(A); pB = parent(B)
-            ldA = stride(pA, 2) % Int32
-            ldB = stride(pB, 2) % Int32
-            ldC = stride(C, 2) % Int32
-            α = one($T)
-            β = zero($T)
-            ccall(
-                $fm, Cvoid,
-                (Ref{UInt8}, Ref{UInt8}, Ref{Int32}, Ref{Int32}, Ref{Int32}, Ref{$T}, Ref{$T}, Ref{Int32}, Ref{$T}, Ref{Int32}, Ref{$T}, Ref{$T}, Ref{Int32}),
-                transA, transB, M32, N32, K32, α, pA, ldA, pB, ldB, β, C, ldC
-            )
-        end
-        function gemmopenblas!(C::AbstractMatrix{$T}, A::AbstractMatrix{$T}, B::AbstractMatrix{$T})
-            transA = istransposed(A)
-            transB = istransposed(B)
-            M, N = size(C); K = size(B, 1)
-            pA = parent(A); pB = parent(B)
-            ldA = stride(pA, 2)
-            ldB = stride(pB, 2)
-            ldC = stride(C, 2)
-            α = one($T)
-            β = zero($T)
-            ccall(
-                $fo, Cvoid,
-                (Ref{UInt8}, Ref{UInt8}, Ref{Int64}, Ref{Int64}, Ref{Int64}, Ref{$T}, Ref{$T}, Ref{Int64}, Ref{$T}, Ref{Int64}, Ref{$T}, Ref{$T}, Ref{Int64}),
-                transA, transB, M, N, K, α, pA, ldA, pB, ldB, β, C, ldC
-            )
+for (lib,f) ∈ [(:GEMM_MKL,:gemmmkl!), (:GEMM_OpenBLAS,:gemmopenblas!)]
+    for (T,prefix) ∈ [(Float32,:S),(Float64,:D)]
+        fm = Symbol(prefix, lib)
+        @eval begin
+            function $f(C::AbstractMatrix{$T}, A::AbstractMatrix{$T}, B::AbstractMatrix{$T})
+                transA = istransposed(A)
+                transB = istransposed(B)
+                M, N = size(C); K = size(B, 1)
+                pA = parent(A); pB = parent(B)
+                ldA = stride(pA, 2)
+                ldB = stride(pB, 2)
+                ldC = stride(C, 2)
+                α = one($T)
+                β = zero($T)
+                ccall(
+                    $fm, Cvoid,
+                    (Ref{UInt8}, Ref{UInt8}, Ref{Int64}, Ref{Int64}, Ref{Int64}, Ref{$T}, Ref{$T},
+                     Ref{Int64}, Ref{$T}, Ref{Int64}, Ref{$T}, Ref{$T}, Ref{Int64}),
+                    transA, transB, M, N, K, α, pA, ldA, pB, ldB, β, C, ldC
+                )
+            end
         end
     end
 end
