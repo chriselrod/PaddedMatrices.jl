@@ -84,8 +84,7 @@ openblas_set_num_threads(1)
 
 function benchmark_fun!(f!, C, A, B, force_belapsed = false, reference = nothing)
     tmin = @elapsed f!(C, A, B)
-    if force_belapsed || tmin < BenchmarkTools.DEFAULT_PARAMETERS.seconds
-        tmin = min(tmin, @belapsed $f!($C, $A, $B))
+    if force_belapsed || 2tmin < BenchmarkTools.DEFAULT_PARAMETERS.seconds
         tmin = min(tmin, @belapsed $f!($C, $A, $B))
     elseif tmin < BenchmarkTools.DEFAULT_PARAMETERS.seconds
         tmin = min(tmin, @elapsed f!(C, A, B))

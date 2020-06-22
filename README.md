@@ -10,41 +10,42 @@
 
 This library provides a few array types, as well as pure-Julia matrix multiplication.
 
-The native types are optionally statically sized, and optionally given padding to ensure that all columns are aligned. The following chart shows benchmarks on a 10980XE CPU, comparing:
+The native types are optionally statically sized, and optionally given padding (the default) to ensure that all columns are aligned. The following chart shows single-threaded benchmarks on a few different CPUS, comparing:
 
-* `SMatrix` and `MMatrix` multiplication from [StaticArrays.jl](https://github.com/JuliaArrays/StaticArrays.jl).
+* `SMatrix` and `MMatrix` multiplication from [StaticArrays.jl](https://github.com/JuliaArrays/StaticArrays.jl). Beyond 14x14x14, MMatrix will switch to using `LinearAlgebra.BLAS.gemm!`.
 * `FixedSizeArray` from this library without any padding.
 * `FixedSizeArray` from this library with padding, named `PaddedArray` in the legend.
-* The base `Matrix{Float64}` type, using the `PaddedMatrices.jmul!` method.
+* The base `Matrix{Float64}` type, using the pure-Julia `PaddedMatrices.jmul!` method.
 
-![SizedArrayBenchmarks](docs/src/assets/sizedarraybenchmarks.svg)
+All matrices were square; the `x`-axis reports size of each dimension. Benchmarks ranged from `2`x`2` matrices through `48`x`48`. The `y`-axis reports double-precision GFLOPS. That is billions of double precision floating point operations per second. Higher is better.
 
-All matrices were square and filled with `Float64` elements. Size refers to the number of rows and columns.
-Inplace multiplication was used for all but the `SArray`. For the `FixedSizeArray`s, `LinearAlgebra.mul!` simple redirects to `jmul!`, which is capable of taking advantage of static size information.
+10980XE, a Cascadelake-X CPU with AVX512:
+![Cascadelake-X SizedArrayBenchmarks](docs/src/assets/sizedarraybenchmarksAVX512_cascadelakeX.svg)
+, a Skylake CPU with AVX2:
+![Skylake SizedArrayBenchmarks](docs/src/assets/sizedarraybenchmarks2_skylake.svg)
+, a Haswell CPU with AVX2:
+![Haswell SizedArrayBenchmarks](docs/src/assets/sizedarraybenchmarks2_haswell.svg)
 
-`StaticArray`s currently relies on unrolling the operations, and taking advantage of LLVM's powerful [SLP vectorizer](https://llvm.org/docs/Vectorizers.html#the-slp-vectorizer). It performs best for `2x2`, `3x3`, `4x4`, and `8x8` matrices on this architecture. Between stack allocation and marking these operations for inline, `SMatrix` achieves better performance than the alternatives at these sizes.
+`MMatrix` performed much better beyond 14x14 relative to the others on Haswell because `LinearAlgebra.BLAS.gemm!` on that computer was using `MKL` instead of `OpenBLAS` (the easiest way to change this is using [MKL.jl](https://github.com/JuliaComputing/MKL.jl)).
 
-PaddedMatrices relies on [LoopVectorization.jl](https://github.com/chriselrod/LoopVectorization.jl) to generate microkernels. Perhaps I should make it unroll more agressively at small static sizes, and also mark it for inlining. For now, it doesn't achieve quite the same performance as an `SMatrix` at `8x8`, `6x6`, and `4x4` and below. However, at `9x9` and beyond, even the dynamically sized `PaddedMatrices.jmul!` method achieves better performance than `SMatrix` or `MMatrix`. Of course, `StaticArrays` is primarily concerned with `10x10` matrices and smaller, and the `SMatrix` type allows you to use the more convenient non-mutating API without worrying about allocations or memory management.
+`StaticArray`s currently relies on unrolling the operations, and taking advantage of LLVM's [SLP vectorizer](https://llvm.org/docs/Vectorizers.html#the-slp-vectorizer). This approach can work well for very small arrays, but scales poorly. With AVX2, dynamically-sized matrix multiplication of regular `Array{Float64,2}` arrays was faster starting from `7`x`7`, despite not being able to specialize on the size of the arrays, unlike the `SMatrix` and `MMatrix` versions. This also means that the method didn't have to recompile (in order to specialize) on the `7`x`7` `Matrix{Float64}`s.
 
-How does `jmul!` compare with OpenBLAS and MKL at larger sizes? Single threaded `Float64` benchmarks:
-![dgemmbenchmarks](docs/src/assets/gemmf64.svg)
-It's slower than both OpenBLAS and MKL, but (on this architecture) it's closer to MKL than MKL is to OpenBLAS at large sizes. I also added [Gaius.jl](https://github.com/MasonProtter/Gaius.jl) for comparison. It also uses LoopVectorization to generate the microkernels, but uses divide and conquer to improve cache locality, rather than tiling and packing like the others. The divide and conquer approach yields much better performance than not handling cache locality; I may add a naive implementation for comparison for purposes of comparison eventually, but Julia's generic matmul -- which still makes some effort for cache optimality -- could give some perspective in the integer benchmarks below.
+With AVX512, the `SMatrix` method was faster than the dynamically sized method until the matrices were `9`x`9`, but quickly fell behind after this.
 
-But before moving onto integers, `Float32` benchmarks:
-![sgemmbenchmarks](docs/src/assets/gemmf32.svg)
-Both BLAS libraries again beat `jmul!`. OpenBLAS and MKL are now neck and neck.
+The size-specializing methods for `FixedSizeArray`s and `PtrArray`s matched `SMatrix`'s performance from the beginning, leaving the `SMatrix` method behind starting with `5`x`5` on the AVX2 systems, and `3`x`3` with AVX512.
 
-The BLAS libraries do not support integer multiplication, so the comparison is now with Julia's [generic matmul](https://github.com/JuliaLang/julia/blob/b1f51df1088b2ab4e1c954537fd8c22b9b5f19ac/stdlib/LinearAlgebra/src/matmul.jl#L730); `Int64`:
-![i64gemmbenchmarks](docs/src/assets/gemmi64.svg)
-64-bit integer multiplication is very slow on most platforms. With AVX2, it is implemented with repeated 32-bit integer multiplications, shifts, and additions (`(a + b)*(c + d) = ad + bc + bd`; you can drop the `ac` because it overflows). With AVX512 (like the benchmark rig), it uses the `vpmullq` instruction, which is slow.
+PaddedMatrices relies on [LoopVectorization.jl](https://github.com/chriselrod/LoopVectorization.jl) for code-generation.
 
-![i32gemmbenchmarks](docs/src/assets/gemmi32.svg)
-`Int32` multiplication is much faster, but still lags behind `Float64` performance.
-For some reason, the generic matmul is slower for `Int32`; I have not investigated why.
+One of the goals of PaddedMatrices.jl is to provide good performance across a range of practical sizes.
 
-There is also a threaded `PaddedMatrices.jmult!`, however it is not well optimized. It currently naively spawns a new task for each packed block of `A` and `B`. When `A` and `B` aren't large, this leads to too few tasks for much parallelism. When they are large, the number of tasks is excessive.
+How does the dynamic `jmul!` compare with OpenBLAS and MKL at larger sizes? Below are more single-threaded `Float64` benchmarks on the 10980XE. Size range from `2`x`2` through `256`x`256`:
+![dgemmbenchmarkssmall](docs/src/assets/gemmFloat64_2_256.svg)
+Benchmarks from `256`x`256` through `2000`x`2000`:
+![dgemmbenchmarksmedium](docs/src/assets/gemmFloat64_256_2000.svg)
 
-Additionally, the library uses [VectorizedRNG.jl](https://github.com/chriselrod/VectorizedRNG.jl) for random number generation.
+
+
+Additionally, the library uses [VectorizedRNG.jl](https://github.com/chriselrod/VectorizedRNG.jl) for random number generation. Unfortunately, here is where we pay the price of GC.
 ```julia
 julia> using PaddedMatrices, StaticArrays, BenchmarkTools
 
@@ -53,54 +54,58 @@ BenchmarkTools.Trial:
   memory estimate:  0 bytes
   allocs estimate:  0
   --------------
-  minimum time:     95.751 ns (0.00% GC)
-  median time:      96.082 ns (0.00% GC)
-  mean time:        96.325 ns (0.00% GC)
-  maximum time:     147.361 ns (0.00% GC)
+  minimum time:     90.861 ns (0.00% GC)
+  median time:      91.515 ns (0.00% GC)
+  mean time:        91.556 ns (0.00% GC)
+  maximum time:     122.468 ns (0.00% GC)
   --------------
   samples:          10000
-  evals/sample:     977
+  evals/sample:     968
 
 julia> @benchmark @FixedSize rand(8,8)
 BenchmarkTools.Trial:
-  memory estimate:  624 bytes
+  memory estimate:  576 bytes
   allocs estimate:  1
   --------------
-  minimum time:     33.949 ns (0.00% GC)
-  median time:      42.572 ns (0.00% GC)
-  mean time:        50.327 ns (13.49% GC)
-  maximum time:     805.577 ns (79.77% GC)
+  minimum time:     52.154 ns (0.00% GC)
+  median time:      169.038 ns (0.00% GC)
+  mean time:        189.961 ns (20.91% GC)
+  maximum time:     18.303 μs (99.10% GC)
   --------------
   samples:          10000
-  evals/sample:     994
+  evals/sample:     986
 
 julia> @benchmark @SMatrix randn(8,8)
 BenchmarkTools.Trial:
   memory estimate:  0 bytes
   allocs estimate:  0
   --------------
-  minimum time:     261.055 ns (0.00% GC)
-  median time:      268.551 ns (0.00% GC)
-  mean time:        268.758 ns (0.00% GC)
-  maximum time:     384.105 ns (0.00% GC)
+  minimum time:     220.342 ns (0.00% GC)
+  median time:      227.329 ns (0.00% GC)
+  mean time:        227.426 ns (0.00% GC)
+  maximum time:     430.583 ns (0.00% GC)
   --------------
   samples:          10000
-  evals/sample:     343
+  evals/sample:     535
 
 julia> @benchmark @FixedSize randn(8,8)
 BenchmarkTools.Trial:
-  memory estimate:  624 bytes
+  memory estimate:  576 bytes
   allocs estimate:  1
   --------------
-  minimum time:     97.017 ns (0.00% GC)
-  median time:      102.932 ns (0.00% GC)
-  mean time:        111.741 ns (6.15% GC)
-  maximum time:     935.145 ns (79.35% GC)
+  minimum time:     133.292 ns (0.00% GC)
+  median time:      262.179 ns (0.00% GC)
+  mean time:        280.922 ns (13.84% GC)
+  maximum time:     20.800 μs (99.02% GC)
   --------------
   samples:          10000
-  evals/sample:     950
+  evals/sample:     873
 ```
-and it uses [LoopVectorization.jl](https://github.com/chriselrod/LoopVectorization.jl) for broadcasts:
+Thus, it is recomended you either preallocate and mutate existing arrays, or find some other approach to working with these.
+In the future, I'll try to ensure that a large number of basic functions and operations (e.g. matrix multiplication, broadcasting, creation)
+inline for small arrays, so that the compiler will be able to stack-allocate them and avoid the heap and GC altogether, so long as they don't escape.
+
+These arrays also use [LoopVectorization.jl](https://github.com/chriselrod/LoopVectorization.jl) for broadcasts:
 ```julia
 julia> using PaddedMatrices, StaticArrays, BenchmarkTools
 
@@ -115,44 +120,44 @@ julia> Dfs = @. exp(Afs) + bfs * log(cfs');
 julia> Dfs ≈ @. exp(Asm) + bsv * log(csv')
 true
 
-julia> @benchmark @. exp($Afs) + $bfs * log($cfs')
+julia> @benchmark @. exp($Afs) + $bfs * log($cfs') # FixedSizeArrays, allocating
 BenchmarkTools.Trial:
-  memory estimate:  4.06 KiB
+  memory estimate:  3.75 KiB
   allocs estimate:  1
   --------------
-  minimum time:     645.871 ns (0.00% GC)
-  median time:      703.147 ns (0.00% GC)
-  mean time:        790.847 ns (10.55% GC)
-  maximum time:     11.067 μs (84.82% GC)
+  minimum time:     659.503 ns (0.00% GC)
+  median time:      715.554 ns (0.00% GC)
+  mean time:        850.659 ns (11.74% GC)
+  maximum time:     51.319 μs (96.06% GC)
   --------------
   samples:          10000
-  evals/sample:     170
+  evals/sample:     149
 
-julia> @benchmark @. exp($Asm) + $bsv * log($csv')
+julia> @benchmark @. exp($Asm) + $bsv * log($csv') # StaticArrays, non-allocating but much slower
 BenchmarkTools.Trial:
   memory estimate:  0 bytes
   allocs estimate:  0
   --------------
-  minimum time:     3.620 μs (0.00% GC)
-  median time:      3.658 μs (0.00% GC)
-  mean time:        3.669 μs (0.00% GC)
-  maximum time:     6.189 μs (0.00% GC)
+  minimum time:     3.676 μs (0.00% GC)
+  median time:      3.686 μs (0.00% GC)
+  mean time:        3.691 μs (0.00% GC)
+  maximum time:     6.073 μs (0.00% GC)
   --------------
   samples:          10000
   evals/sample:     8
 
-julia> @benchmark @. $Dfs = exp($Afs) + $bfs * log($cfs')
+julia> @benchmark @. $Dfs = exp($Afs) + $bfs * log($cfs') # FixedSizeArrays, using pre-allocated output
 BenchmarkTools.Trial:
   memory estimate:  0 bytes
   allocs estimate:  0
   --------------
-  minimum time:     461.500 ns (0.00% GC)
-  median time:      462.199 ns (0.00% GC)
-  mean time:        462.732 ns (0.00% GC)
-  maximum time:     599.357 ns (0.00% GC)
+  minimum time:     496.433 ns (0.00% GC)
+  median time:      498.995 ns (0.00% GC)
+  mean time:        499.542 ns (0.00% GC)
+  maximum time:     624.820 ns (0.00% GC)
   --------------
   samples:          10000
-  evals/sample:     196
-```
+  evals/sample:     194
+  ```
 
 

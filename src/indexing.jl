@@ -14,23 +14,26 @@ Base.IndexStyle(::Type{<:AbstractStrideVector{<:Any,<:Any,1}}) = IndexLinear()
     IndexLinear()
 end
 
-@inline function Base.getindex(
-    A::AbstractStrideArray{S,T,1}, i::NTuple{2,<:Integer}
-) where {S,T,N}
-    @boundscheck begin
-        first(i) > length(A) && ThrowBoundsError(A, i)
-    end
-    GC.@preserve A vload(stridedpointer(A), (vsub(first(i), 1),))
-end
 # Avoid method ambiguities
 for AT ∈ [:AbstractStrideArray, :AbstractPtrStrideArray, :StrideArray, :FixedSizeArray]
-    loadexprs = :(vload(pointer(A), vmul(sizeof(T), vsub(i, 1))))
+    loadexprs = :(vload(stridedpointer(A), (vsub(i, 1),)))
     loadexprt = :(vload(stridedpointer(A), staticm1(i)))
+    loadexprv = :(vload(stridedpointer(A), (vsub(first(i), 1),)))
     if AT !== :AbstractPtrStrideArray
         loadexprs = :(GC.@preserve A $loadexprs)
         loadexprt = :(GC.@preserve A $loadexprt)
+        loadexprv = :(GC.@preserve A $loadexprv)
     end
     @eval begin
+        @inline function Base.getindex(
+            A::$AT{S,T,1}, i::NTuple{2,<:Integer}
+        ) where {S,T}
+            @boundscheck begin
+                first(i) > length(A) && ThrowBoundsError(A, i)
+            end
+            $loadexprv
+        end
+
         @inline function Base.getindex(
             A::$AT{S,T,N}, i::NTuple{N,<:Integer}
         ) where {S,T,N}

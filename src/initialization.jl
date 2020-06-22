@@ -118,7 +118,7 @@ end
 
 function calc_NPL(SV::Core.SimpleVector, T)
     nrow = (SV[1])::Int
-    padded_rows = calc_padding(nrow, T)
+    padded_rows = isone(length(SV)) ? nrow : calc_padding(nrow, T)
     calc_NXL(SV, T, padded_rows)
 end
 function calc_NXL(SV::Core.SimpleVector, T, padded_rows::Int)
