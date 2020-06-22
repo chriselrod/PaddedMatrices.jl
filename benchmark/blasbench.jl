@@ -183,10 +183,6 @@ end
 create_df(res, ::Type{T}) where {T} = create_float_df(res, sizeof(T))
 create_df(res, ::Type{T}) where {T<:Integer} = create_int_df(res, sizeof(T))
 
-#using PaddedMatrices
-#PICTURES = joinpath(pkgdir(PaddedMatrices), "docs", "src", "assets")
-PICTURES = "/home/chriselrod/Pictures"
-
 
 function plot(tf, ::Type{T} = Float64, PICTURES = "/home/chriselrod/Pictures") where {T}
     res = create_df(tf, T)
@@ -195,9 +191,9 @@ function plot(tf, ::Type{T} = Float64, PICTURES = "/home/chriselrod/Pictures") w
         :line, color = :Library,
        # x = {:Size, scale={type=:log}}, y = {:GFLOPS},#, scale={type=:log}},
         x = {:Size}, y = {:GFLOPS},#, scale={type=:log}},
-        width = 2400, height = 600
+        width = 1200, height = 600
     )
-    save(joinpath(PICTURES, "gemm$(string(T))_$(l)_$(u).png"), plt)
+    save(joinpath(pkgdir(PaddedMatrices), "docs/src/assets/gemm$(string(T))_$(l)_$(u)_$(Sys.CPU_NAME).svg"), plt)
 end
 
 
