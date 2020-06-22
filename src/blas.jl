@@ -201,33 +201,26 @@ function jmulpackAB!(
 end
 
 
-contiguousstride1(::Any) = false
-contiguousstride1(::AbstractStrideArray) = false
-contiguousstride1(::AbstractStrideArray{<:Any,<:Any,<:Any,<:Tuple{1,Vararg}}) = true
-contiguousstride1(::DenseArray) = true
-contiguousstride1(A::LinearAlgebra.StridedArray) = isone(stride1(A))
-contiguousstride1(::SubArray{T,N,P,S}) where {T,N,P<:DenseArray,S<:Tuple{Int,Vararg}} = false
+@inline contiguousstride1(::Any) = false
+@inline contiguousstride1(::AbstractStrideArray) = false
+@inline contiguousstride1(::AbstractStrideArray{<:Any,<:Any,<:Any,<:Tuple{1,Vararg}}) = true
+@inline contiguousstride1(::DenseArray) = true
+@inline contiguousstride1(A::LinearAlgebra.StridedArray) = isone(stride1(A))
+@inline contiguousstride1(::SubArray{T,N,P,S}) where {T,N,P<:DenseArray,S<:Tuple{Int,Vararg}} = false
 
 
 
-function jmul!(
+@inline function jmul!(
     C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}, (M, K, N) = matmul_sizes(C, A, B)
 ) where {Tc, Ta, Tb, mc, kc, nc}
-    # if K * N ≤ kc * nc#L₃ * VectorizationBase.NUM_CORES
-        # W = VectorizationBase.pick_vector_width(Tc)
-        # if contiguousstride1(A) && ( (M ≤ 72)  || ((2M ≤ 5mc) && iszero(stride(A,2) % W)))
     if contiguousstride1(A) && mc * kc ≥ M * K
         loopmul!(C, A, B, α, β, (M,K,N))
         return C
     elseif kc * nc > K * N
-    # else
         return jmulpackAonly!(C, A, B, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
     else
         return jmulpackAB!(C, A, B, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
     end
-    # else
-    #     return jmulh!(C, A, B, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
-    # end
 end # function
 
 @inline jmul!(C::AbstractMatrix, A::LinearAlgebra.Adjoint, B::LinearAlgebra.Adjoint, α, β) = (jmul!(C', B', A'); C)
@@ -394,10 +387,10 @@ end
     mc, kc, nc = matmul_params_val(Tc)
     jmul!(C, A, B, α, β, mc, kc, nc)
 end
-function jmult!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}) where {Tc, Ta, Tb}
-    mc, kc, nc = matmul_params_val(Tc)
-    jmult!(C, A, B, mc, kc, nc)
-end
+# function jmult!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}) where {Tc, Ta, Tb}
+#     mc, kc, nc = matmul_params_val(Tc)
+#     jmult!(C, A, B, mc, kc, nc)
+# end
 
 
 
