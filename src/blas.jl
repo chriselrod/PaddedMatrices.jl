@@ -201,10 +201,12 @@ function jmulpackAB!(
 end
 
 
-# contiguousstride1(::Any) = false
-# contiguousstride1(::DenseArray) = true
-# contiguousstride1(A::LinearAlgebra.StridedArray) = isone(stride1(A))
-# contiguousstride1(::SubArray{T,N,P,S}) where {T,N,P,S<:Tuple{Int,Vararg}} = false
+contiguousstride1(::Any) = false
+contiguousstride1(::AbstractStrideArray) = false
+contiguousstride1(::AbstractStrideArray{<:Any,<:Any,<:Any,<:Tuple{1,Vararg}}) = true
+contiguousstride1(::DenseArray) = true
+contiguousstride1(A::LinearAlgebra.StridedArray) = isone(stride1(A))
+contiguousstride1(::SubArray{T,N,P,S}) where {T,N,P<:DenseArray,S<:Tuple{Int,Vararg}} = false
 
 
 
@@ -214,7 +216,7 @@ function jmul!(
     # if K * N ≤ kc * nc#L₃ * VectorizationBase.NUM_CORES
         # W = VectorizationBase.pick_vector_width(Tc)
         # if contiguousstride1(A) && ( (M ≤ 72)  || ((2M ≤ 5mc) && iszero(stride(A,2) % W)))
-    if mc * kc ≥ M * K
+    if contiguousstride1(A) && mc * kc ≥ M * K
         loopmul!(C, A, B, α, β, (M,K,N))
         return C
     elseif kc * nc > K * N
