@@ -4,10 +4,12 @@
 @inline function divrem_fast(x::I, y::I) where {I <: Integer}
     x32 = x % UInt32; y32 = y % UInt32
     d = Base.sdiv_int(x32, y32)
-    r = x32 - d * y32
+    r = vsub(x32, vmul(d, y32))
     d % I, r % I
 end
+@inline divrem_fast(::Static{x}, y::I) where {x, I <: Integer} = divrem_fast(x % I, y)
 @inline div_fast(x::I, y::I) where {I <: Integer} = Base.sdiv_int(x % UInt32, y % UInt32) % I
+@inline div_fast(::Static{x}, y::I) where {x, I <: Integer} = Base.sdiv_int(x % UInt32, y % UInt32) % I
 
 function Base.copyto!(B::AbstractStrideArray{S,T,N}, A::AbstractStrideArray{S,T,N}) where {S,T,N}
     @avx for I ∈ eachindex(A, B)
@@ -38,7 +40,7 @@ end
 
 function matmul_params(::Type{T}) where {T}
     W = VectorizationBase.pick_vector_width(T)
-    # kc = 10(L₁ ÷ (20nᵣ * sizeof(T)))
+   # kc = 10(L₁ ÷ (20nᵣ * sizeof(T)))
     # kc = 15(L₁ ÷ (20nᵣ * sizeof(T)))
     L₁ratio = L₁ ÷ (nᵣ * sizeof(T))
     kc = round(Int, 0.65L₁ratio)
@@ -213,7 +215,7 @@ end
 @inline function jmul!(
     C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}, (M, K, N) = matmul_sizes(C, A, B)
 ) where {Tc, Ta, Tb, mc, kc, nc}
-    if contiguousstride1(A) && mc * kc ≥ M * K
+    if (contiguousstride1(A) && (mc * kc ≥ M * K)) || N ≤ nᵣ
         loopmul!(C, A, B, α, β, (M,K,N))
         return C
     elseif kc * nc > K * N
@@ -223,7 +225,10 @@ end
     end
 end # function
 
-@inline jmul!(C::AbstractMatrix, A::LinearAlgebra.Adjoint, B::LinearAlgebra.Adjoint, α, β) = (jmul!(C', B', A'); C)
+@inline function jmul!(C::AbstractMatrix, A::LinearAlgebra.Adjoint, B::LinearAlgebra.Adjoint, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}) where {mc,kc,nc}
+    jmul!(C', B', A', α, β, Val{mc}(), Val{kc}(), Val{nc}())
+    C
+end
 @inline function jmul!(
     C::AbstractMatrix,
     A::AbstractStrideArray{Sa,Ta,2,Tuple{Xa,1}},

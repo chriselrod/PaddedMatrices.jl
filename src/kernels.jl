@@ -974,8 +974,10 @@ function two_cols_per_vector_quote!(q, K, N, W, Wshift, Noffbase = 0, Amask = no
     
     Nrep, Nrem = divrem(Ndoublereps, Nunroll)
     Krep, Krem = divrem(K, Kunroll)
-    Ashuffle = Expr(:call, Expr(:curly, :Val, Expr(:tuple, (0:Wh-1)..., (0:Wh-1)...)))
-    Bshuffle = Expr(:call, Expr(:curly, :Val, Expr(:tuple, (0 for _ ∈ 1:Wh)..., (1 for _ ∈ 1:Wh)...)))
+    Ashuftup = Expr(:tuple); append!(Ashuftup.args, 0:Wh-1); append!(Ashuftup.args, 0:Wh-1)
+    Bshuftup = Expr(:tuple); foreach(_ -> push!(Bshuftup.args, 0), 1:Wh); foreach(_ -> push!(Bshuftup.args, 1), 1:Wh)
+    Ashuffle = Expr(:call, Expr(:curly, :Val, Ashuftup))
+    Bshuffle = Expr(:call, Expr(:curly, :Val, Bshuftup))
     MindA = Expr(:call, Expr(:curly, :_MM, Wh), 0)
     MindC = Expr(:call, Expr(:curly, :_MM, W), 0)
     for n ∈ 0:Nrep-1
@@ -1086,8 +1088,14 @@ function four_cols_per_vector_quote(K, N, W, Wshift)
     
     Nrep, Nrem = divrem(Nquadreps, Nunroll)
     Krep, Krem = divrem(K, Kunroll)
-    Ashuffle = Expr(:call, Expr(:curly, :Val, Expr(:tuple, (0:Wq-1)..., (0:Wq-1)..., (0:Wq-1)..., (0:Wq-1)...)))
-    Bshuffle = Expr(:call, Expr(:curly, :Val, Expr(:tuple, (0 for _ ∈ 1:Wq)..., (1 for _ ∈ 1:Wq)..., (0 for _ ∈ 1:Wq)..., (1 for _ ∈ 1:Wq)...)))
+    Ashuftup = Expr(:tuple);
+    append!(Ashuftup.args, 0:Wq-1); append!(Ashuftup.args, 0:Wq-1)
+    append!(Ashuftup.args, 0:Wq-1); append!(Ashuftup.args, 0:Wq-1)
+    Bshuftup = Expr(:tuple);
+    foreach(_ -> push!(Bshuftup.args, 0), 1:Wq); foreach(_ -> push!(Bshuftup.args, 1), 1:Wq)
+    foreach(_ -> push!(Bshuftup.args, 0), 1:Wq); foreach(_ -> push!(Bshuftup.args, 1), 1:Wq)
+    Ashuffle = Expr(:call, Expr(:curly, :Val, Ashuftup))
+    Bshuffle = Expr(:call, Expr(:curly, :Val, Bshuftup))
     MindA = Expr(:call, Expr(:curly, :_MM, Wq), 0)
     MindC = Expr(:call, Expr(:curly, :_MM, W), 0)
     for n ∈ 0:Nrep-1

@@ -192,7 +192,16 @@ function plot(tf, ::Type{T} = Float64, PICTURES = "/home/chriselrod/Pictures") w
         x = {:Size}, y = {:GFLOPS},#, scale={type=:log}},
         width = 1200, height = 600
     )
-    save(joinpath(pkgdir(PaddedMatrices), "docs/src/assets/gemm$(string(T))_$(l)_$(u)_$(Sys.CPU_NAME).svg"), plt)
+    suffix = if PaddedMatrices.VectorizationBase.AVX512F
+        "AVX512"
+    elseif PaddedMatrices.VectorizationBase.AVX2
+        "AVX2"
+    elseif PaddedMatrices.VectorizationBase.REGISTER_SIZE == 32
+        "AVX"
+    else
+        "REGSUZE$(PaddedMatrices.VectorizationBase.REGISTER_SIZE)"
+    end
+    save(joinpath(pkgdir(PaddedMatrices), "docs/src/assets/gemm$(string(T))_$(l)_$(u)_$(Sys.CPU_NAME)_$(suffix).svg"), plt)
 end
 
 

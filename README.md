@@ -39,10 +39,13 @@ PaddedMatrices relies on [LoopVectorization.jl](https://github.com/chriselrod/Lo
 One of the goals of PaddedMatrices.jl is to provide good performance across a range of practical sizes.
 
 How does the dynamic `jmul!` compare with OpenBLAS and MKL at larger sizes? Below are more single-threaded `Float64` benchmarks on the 10980XE. Size range from `2`x`2` through `256`x`256`:
-![dgemmbenchmarkssmall](docs/src/assets/gemmFloat64_2_256.svg)
+![dgemmbenchmarkssmall](docs/src/assets/gemmFloat64_2_256_cascadelakeX.svg)
 Benchmarks from `256`x`256` through `2000`x`2000`:
-![dgemmbenchmarksmedium](docs/src/assets/gemmFloat64_256_2000.svg)
+![dgemmbenchmarksmedium](docs/src/assets/gemmFloat64_256_2000_cascadelakeX.svg)
 
+Skylake:
+![dgemmbenchmarkssmall](docs/src/assets/gemmFloat64_2_256_skylake.svg)
+![dgemmbenchmarksmedium](docs/src/assets/gemmFloat64_256_2000_skylake.svg)
 
 
 Additionally, the library uses [VectorizedRNG.jl](https://github.com/chriselrod/VectorizedRNG.jl) for random number generation. Unfortunately, here is where we pay the price of GC.

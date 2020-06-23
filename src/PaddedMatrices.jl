@@ -70,7 +70,7 @@ end
 function cache_sizes()
     L₁, L₂, L₃ = VectorizationBase.CACHE_SIZE
     # L₃ ÷= VectorizationBase.NUM_CORES # L₃ is shared, L₁ and L₂ are not
-    align.((L₁, L₂, L₃))
+    align.((L₁, L₂, L₃), ccall(:jl_getpagesize, Int, ()))
 end
 const L₁, L₂, L₃ = cache_sizes()
 

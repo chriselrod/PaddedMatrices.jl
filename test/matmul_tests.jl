@@ -1,5 +1,5 @@
 
-const TRAVIS_SKIP = VERSION.minor != 4 && isnothing(get(ENV, "TRAVIS_BRANCH", nothing))
+const TRAVIS_SKIP = VERSION.minor != 4 && !isnothing(get(ENV, "TRAVIS_BRANCH", nothing))
 
 function test_fixed_size(M, K, N)
     A = @FixedSize rand(M,K);
