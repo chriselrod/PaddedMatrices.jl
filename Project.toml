@@ -14,7 +14,7 @@ VectorizationBase = "3d5dd08c-fd9d-11e8-17fa-ed2836048c2f"
 VectorizedRNG = "33b4df10-0173-11e9-2a0c-851a7edac40e"
 
 [compat]
-LoopVectorization = "0.8.5"
+LoopVectorization = "0.8.6"
 StackPointers = "0.1.2"
 SIMDPirates = "0.8"
 SLEEFPirates = "0.5"

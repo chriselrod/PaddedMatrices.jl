@@ -12,7 +12,7 @@ This library provides a few array types, as well as pure-Julia matrix multiplica
 
 The native types are optionally statically sized, and optionally given padding (the default) to ensure that all columns are aligned. The following chart shows single-threaded benchmarks on a few different CPUS, comparing:
 
-* `SMatrix` and `MMatrix` multiplication from [StaticArrays.jl](https://github.com/JuliaArrays/StaticArrays.jl). Beyond 14x14x14, MMatrix will switch to using `LinearAlgebra.BLAS.gemm!`.
+* `SMatrix` and `MMatrix` multiplication from [StaticArrays.jl](https://github.com/JuliaArrays/StaticArrays.jl). Beyond `14`x`14`x`14`, MMatrix will switch to using `LinearAlgebra.BLAS.gemm!`.
 * `FixedSizeArray` from this library without any padding.
 * `FixedSizeArray` from this library with padding, named `PaddedArray` in the legend.
 * The base `Matrix{Float64}` type, using the pure-Julia `PaddedMatrices.jmul!` method.
@@ -21,12 +21,12 @@ All matrices were square; the `x`-axis reports size of each dimension. Benchmark
 
 10980XE, a Cascadelake-X CPU with AVX512:
 ![Cascadelake-X SizedArrayBenchmarks](docs/src/assets/sizedarraybenchmarksAVX512_cascadelakeX.svg)
-, a Skylake CPU with AVX2:
+i5 8350U, a Skylake CPU with AVX2:
 ![Skylake SizedArrayBenchmarks](docs/src/assets/sizedarraybenchmarksAVX2_skylake.svg)
-, a Haswell CPU with AVX2:
+i3-4010U, a Haswell CPU with AVX2:
 ![Haswell SizedArrayBenchmarks](docs/src/assets/sizedarraybenchmarksAVX2_haswell.svg)
 
-`MMatrix` performed much better beyond 14x14 relative to the others on Haswell because `LinearAlgebra.BLAS.gemm!` on that computer was using `MKL` instead of `OpenBLAS` (the easiest way to change this is using [MKL.jl](https://github.com/JuliaComputing/MKL.jl)).
+`MMatrix` performed much better beyond `14`x`14` relative to the others on Haswell because `LinearAlgebra.BLAS.gemm!` on that computer was using `MKL` instead of `OpenBLAS` (the easiest way to change this is using [MKL.jl](https://github.com/JuliaComputing/MKL.jl)).
 
 `StaticArray`s currently relies on unrolling the operations, and taking advantage of LLVM's [SLP vectorizer](https://llvm.org/docs/Vectorizers.html#the-slp-vectorizer). This approach can work well for very small arrays, but scales poorly. With AVX2, dynamically-sized matrix multiplication of regular `Array{Float64,2}` arrays was faster starting from `7`x`7`, despite not being able to specialize on the size of the arrays, unlike the `SMatrix` and `MMatrix` versions. This also means that the method didn't have to recompile (in order to specialize) on the `7`x`7` `Matrix{Float64}`s.
 
@@ -40,17 +40,20 @@ One of the goals of PaddedMatrices.jl is to provide good performance across a ra
 
 How does the dynamic `jmul!` compare with OpenBLAS and MKL at larger sizes? Below are more single-threaded `Float64` benchmarks on the 10980XE. Size range from `2`x`2` through `256`x`256`:
 ![dgemmbenchmarkssmall](docs/src/assets/gemmFloat64_2_256_skylake_AVX512.svg)
-Benchmarks from `256`x`256` through `2000`x`2000`:
-![dgemmbenchmarksmedium](docs/src/assets/gemmFloat64_256_2000_skylake_AVX512.svg)
-
 Skylake laptop (same as earlier):
 ![dgemmbenchmarkssmall](docs/src/assets/gemmFloat64_2_256_skylake_AVX2.svg)
+
+Performance is quite strong over this size range, especially compared the the default OpenBLAS, which does not adaptively change packing strategy as a function of size.
+
+Extending the benchmarks from `256`x`256` through `2000`x`2000`, we see that performance does start to fall behind after a few hundred:
+![dgemmbenchmarksmedium](docs/src/assets/gemmFloat64_256_2000_skylake_AVX512.svg)
 ![dgemmbenchmarksmedium](docs/src/assets/gemmFloat64_256_2000_skylake_AVX2.svg)
 
 Performance still needs work. In particular
 1) Tuning of blocking parameters at larger sizes
 2) Possibly switching packed arrays from column to panel-major storage.
-3) Diagnosing and fixing the cause of erratic performance.
+3) Better prefetching.
+4) Diagnosing and fixing the cause of erratic performance.
 
 As an illustration of the last point, consider multiplication of `71`x`71` matrices. Setup:
 ```julia
