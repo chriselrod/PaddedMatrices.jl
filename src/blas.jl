@@ -224,8 +224,8 @@ end
     iszero(x & (W - 1))
 end
 @inline function dontpack(ptrA, M, K, ::Val{mc}, ::Val{kc}, ::Type{T}) where {mc, kc, T}
-    mc_mult = VectorizationBase.AVX512F ? 72 : 120
-    (mc_mult > M) || (vectormultiple(M, T) && ((M * K) < (mc * kc)) && iszero(ptrA & (reinterpret(Int, VectorizationBase.REGISTER_SIZE) - 1)))
+    mc_mult = VectorizationBase.AVX512F ? 73 : 121
+    (mc_mult > M) || (vectormultiple(M, T) && ((M * K) < (mc * kc)) && iszero(reinterpret(Int, ptrA) & (VectorizationBase.REGISTER_SIZE - 1)))
 end
 
 @inline function jmul!(
