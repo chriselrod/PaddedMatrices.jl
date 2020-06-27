@@ -44,7 +44,8 @@ function runbenchfeo(::Type{T}, sizes = 2:300) where {T}
         opbt = benchmark_fun!(gemmopenblas!, C2, A, B, sz == first(sizes), C1)
         mklbt= benchmark_fun!(gemmmkl!, C3, A, B, sz == first(sizes), C1)
         bfeot= benchmark_fun!(gemmfeo!, C4, A, B, sz == first(sizes), C1)
-        @show (matrix_size=sz, OpenBLAS=opbt, MKL=mklbt, PaddedMatrices=jmlt, BLASFEO=bfeot)
+        res =  (matrix_size=sz, OpenBLAS=opbt, MKL=mklbt, PaddedMatrices=jmlt, BLASFEO=bfeot)
+        @show res
     end
 end
 
