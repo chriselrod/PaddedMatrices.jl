@@ -148,43 +148,19 @@ const INSTR_PER_CLOCK = 2 # I don't know how to query this, but true for most re
 const PEAK_DGFLOPS = GHz * W64 * FMA_RATIO * INSTR_PER_CLOCK
 
 using DataFrames, VegaLite
-function create_float_df(res, nbytes)
-    df = DataFrame(
-        Size = res.matrix_size,
-        # MaBLAS_24x9 = res.MaBLAS_24x9,
-        # MaBLAS_32x6 = res.MaBLAS_32x6,
-        # MaBLAS_40x5 = res.MaBLAS_40x5,
-        PaddedMatrices = res.PaddedMatrices,
-        OpenBLAS = res.OpenBLAS,
-        MKL = res.MKL
-    );
-#    dfs = stack(df, [:Gaius, :PaddedMatrices, :OpenBLAS, :MKL], variable_name = :Library, value_name = :Time);
-    # dfs = stack(df, [:MaBLAS_24x9, :MaBLAS_32x6, :MaBLAS_40x5, :PaddedMatrices, :OpenBLAS, :MKL], variable_name = :Library, value_name = :Time);
-    dfs = stack(df, [:PaddedMatrices, :OpenBLAS, :MKL], variable_name = :Library, value_name = :Time);
+function create_df(res)
+    df = DataFrame()
+    for field in fieldnames(typeof(fieldarrays(res)))
+        setproperty!(df, field, getproperty(res, field))
+    end
+    rename!(df, :matrix_size => :Size)
+    dfs = stack(df, Not(:Size), variable_name = :Library, value_name = :Time);
     dfs.GFLOPS = calcgflops.(dfs.Size, dfs.Time);
-    dfs.Percent_Peak = 100 .* dfs.GFLOPS .* (8 ÷ nbytes) ./ PEAK_DGFLOPS;
     dfs
 end
-function create_int_df(res, nbytes)
-    df = DataFrame(
-        Size = res.matrix_size,
-        MaBLAS_24x9 = res.MaBLAS_24x9,
-        MaBLAS_32x6 = res.MaBLAS_32x6,
-        MaBLAS_40x5 = res.MaBLAS_40x5,
-        PaddedMatrices = res.PaddedMatrices,
-        GenericMatMul = res.OpenBLAS,
-    );
-    dfs = stack(df, [:MaBLAS_24x9, :MaBLAS_32x6, :MaBLAS_40x5, :PaddedMatrices, :GenericMatMul], variable_name = :Library, value_name = :Time);
-    dfs.GFLOPS = calcgflops.(dfs.Size, dfs.Time);
- #   dfs.Percent_Peak = 100 .* dfs.GFLOPS .* (FMA_RATIO * 8 ÷ nbytes) ./ PEAK_DGFLOPS;
-    dfs
-end
-create_df(res, ::Type{T}) where {T} = create_float_df(res, sizeof(T))
-create_df(res, ::Type{T}) where {T<:Integer} = create_int_df(res, sizeof(T))
-
 
 function plot(tf, ::Type{T} = Float64, PICTURES = "/home/chriselrod/Pictures") where {T}
-    res = create_df(tf, T)
+    res = create_df(tf)
     l, u = extrema(tf.matrix_size)
     plt = res |> @vlplot(
         :line, color = :Library,
@@ -202,6 +178,7 @@ function plot(tf, ::Type{T} = Float64, PICTURES = "/home/chriselrod/Pictures") w
         "REGSUZE$(PaddedMatrices.VectorizationBase.REGISTER_SIZE)"
     end
     save(joinpath(pkgdir(PaddedMatrices), "docs/src/assets/gemm$(string(T))_$(l)_$(u)_$(Sys.CPU_NAME)_$(suffix).svg"), plt)
+    save(joinpath(pkgdir(PaddedMatrices), "docs/src/assets/gemm$(string(T))_$(l)_$(u)_$(Sys.CPU_NAME)_$(suffix).png"), plt)
 end
 
 

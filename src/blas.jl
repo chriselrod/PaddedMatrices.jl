@@ -48,19 +48,20 @@ end
 #    nc = round(Int, 0.4ncrep * nᵣ) #* VectorizationBase.NUM_CORES
 #    mc, kc, nc
 # end
-@generated function matmul_params(::Type{T}) where {T}
+function matmul_params_calc(::Type{T}, W, mᵣ = mᵣ, nᵣ = nᵣ) where {T}
     W = VectorizationBase.pick_vector_width(T)
     mᵣW = mᵣ * W
-    L₂ratio = 0.75 * (L₂ ÷ sizeof(T));
+    L₂ratio = 0.5 * (L₂ ÷ sizeof(T));
     M_K = sqrt(L₂ratio)
     mcrep = round(Int, M_K) ÷ mᵣW
     mc = mcrep * mᵣW 
-    kc = round(Int, L₂ratio / mc)
+    kc = round(Int, 1.2L₂ratio / mc)
 #    kc = round(Int, (L₂ ÷ sizeof(T)) / mc)
     ncrep = L₃ ÷ (sizeof(T) * 2kc * nᵣ)
     nc = ncrep * nᵣ
     mc, kc, nc
 end
+@generated matmul_params(::Type{T}) where {T} = matmul_params_calc(T, VectorizationBase.pick_vector_width(T), mᵣ, nᵣ)
 function matmul_params_val(::Type{T}) where {T}
     mc, kc, nc = matmul_params(T)
     Val(mc), Val(kc), Val(nc)
@@ -224,7 +225,7 @@ end
     iszero(x & (W - 1))
 end
 @inline function dontpack(ptrA, M, K, ::Val{mc}, ::Val{kc}, ::Type{T}) where {mc, kc, T}
-    mc_mult = VectorizationBase.AVX512F ? 73 : 121
+    mc_mult = VectorizationBase.AVX512F ? 73 : 53
     (mc_mult > M) || (vectormultiple(M, T) && ((M * K) < (mc * kc)) && iszero(reinterpret(Int, ptrA) & (VectorizationBase.REGISTER_SIZE - 1)))
 end
 
