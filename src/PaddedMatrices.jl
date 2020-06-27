@@ -8,7 +8,7 @@ using VectorizationBase, SIMDPirates,
     Random, StackPointers#,
     # SpecialFunctions # Perhaps there is a better way to support erf?
 
-using VectorizationBase: Static, StaticUnitRange, align, gep, offset, AbstractStructVec, AbstractStridedPointer, AbstractSIMDVector, vnoaliasstore!, staticm1
+using VectorizationBase: Static, StaticUnitRange, align, gep, offset, AbstractStructVec, AbstractStridedPointer, AbstractSIMDVector, vnoaliasstore!, staticm1, ZeroInitializedStridedPointer
 using LoopVectorization: maybestaticsize, mᵣ, nᵣ
 # import ReverseDiffExpressionsBase:
     # RESERVED_INCREMENT_SEED_RESERVED!, ∂getindex,
@@ -109,7 +109,7 @@ end
 function __init__()
 #    set_zero_subnormals(true)
     page_size = ccall(:jl_getpagesize, Int, ())
-    resize!(LCACHEARRAY, ((L₂ + L₃ * VectorizationBase.NUM_CORES) >>> 3) * Threads.nthreads() + page_size)
+    resize!(LCACHEARRAY, ((L₂ + L₃) >>> 3) * Threads.nthreads() + page_size)
     LCACHE[] = VectorizationBase.align(pointer(LCACHEARRAY), page_size)
     @assert iszero(reinterpret(UInt, LCACHE[]) % page_size)
   #  resize!(BCACHE, (L₃ >>> 3) )#* Threads.nthreads())

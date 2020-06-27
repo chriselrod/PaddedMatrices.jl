@@ -127,7 +127,7 @@ function jmulpackAonly!(
             koffset += kreps_per_iter
         end
     end # GC.@preserve
-    C
+    nothing
 end
 function jmulpackAB!(
     C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}, (M, K, N) = matmul_sizes(C, A, B)
@@ -199,7 +199,7 @@ function jmulpackAB!(
             noffset += nreps_per_iter
         end
     end # GC.@preserve
-    C
+    nothing
 end
 
 
@@ -215,14 +215,19 @@ end
 @inline function jmul!(
     C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}, (M, K, N) = matmul_sizes(C, A, B)
 ) where {Tc, Ta, Tb, mc, kc, nc}
-    if (contiguousstride1(A) && (mc * kc ≥ M * K)) || N ≤ nᵣ
-        loopmul!(C, A, B, α, β, (M,K,N))
-        return C
-    elseif kc * nc > K * N
-        return jmulpackAonly!(C, A, B, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
-    else
-        return jmulpackAB!(C, A, B, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
+    pA = PtrArray(A)
+    pB = PtrArray(B)
+    pC = PtrArray(C)
+    GC.@preserve C A B begin
+        if (contiguousstride1(A) && (mc * kc ≥ M * K)) || N ≤ nᵣ
+            loopmul!(pC, pA, pB, α, β, (M,K,N))
+        elseif kc * nc > K * N
+            jmulpackAonly!(pC, pA, pB, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
+        else
+            jmulpackAB!(pC, pA, pB, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
+        end
     end
+    return C
 end # function
 
 @inline function jmul!(C::AbstractMatrix, A::LinearAlgebra.Adjoint, B::LinearAlgebra.Adjoint, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}) where {mc,kc,nc}
@@ -373,7 +378,7 @@ end
 
 maybeinline(::Any) = false
 @generated function maybeinline(::AbstractFixedSizeMatrix{M,N,T}) where {M,N,T}
-    sizeof(T) * M * N < 24mᵣ * nᵣ
+    sizeof(T) * M * N < 176mᵣ * nᵣ
 end
                                                                        
 

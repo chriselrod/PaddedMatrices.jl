@@ -9,3 +9,8 @@ end
 @inline Base.getindex(A::ZeroInitializedArray{S,T}, i...) where {S,T} = zero(T)
 @inline Base.setindex!(A::ZeroInitializedArray, v, i...) = setindex!(A.data, v, i...)
 
+@inline initialized(A::ZeroInitializedArray) = A.data
+@inline initialized(A) = A
+
+@inline VectorizationBase.stridedpointer(A::ZeroInitializedArray) = ZeroInitializedStridedPointer(stridedpointer(parent(A)))
+
