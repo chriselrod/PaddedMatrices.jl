@@ -51,12 +51,13 @@ end
 @generated function matmul_params(::Type{T}) where {T}
     W = VectorizationBase.pick_vector_width(T)
     mᵣW = mᵣ * W
-    M_K = sqrt(0.8 * (L₂ ÷ sizeof(T)));
+    L₂ratio = 0.75 * (L₂ ÷ sizeof(T));
+    M_K = sqrt(L₂ratio)
     mcrep = round(Int, M_K) ÷ mᵣW
     mc = mcrep * mᵣW 
-    kc = round(Int, 0.8*(L₂ ÷ sizeof(T)) / mc)
+    kc = round(Int, L₂ratio / mc)
 #    kc = round(Int, (L₂ ÷ sizeof(T)) / mc)
-    ncrep = 3L₃ ÷ (sizeof(T) * 4kc * nᵣ)
+    ncrep = L₃ ÷ (sizeof(T) * 2kc * nᵣ)
     nc = ncrep * nᵣ
     mc, kc, nc
 end
@@ -219,12 +220,12 @@ end
 @inline contiguousstride1(::SubArray{T,N,P,S}) where {T,N,P<:DenseArray,S<:Tuple{Int,Vararg}} = false
 
 @inline function vectormultiple(x, ::Type{T}) where {T}
-    W = Vectorizationbase.pick_vector_width(T)
+    W = VectorizationBase.pick_vector_width(T)
     iszero(x & (W - 1))
 end
 @inline function dontpack(ptrA, M, K, ::Val{mc}, ::Val{kc}, ::Type{T}) where {mc, kc, T}
-    mc_mult = VectorizationBase.AVX512F ? 7 : 15
-    (mc_mult * mc > M) || (vectormultiple(M, T) && ((M * K) < (mc * kc)) && iszero(ptrA & (reinterpret(Int, VectorizationBase.REGISTER_SIZE) - 1)))
+    mc_mult = VectorizationBase.AVX512F ? 72 : 120
+    (mc_mult > M) || (vectormultiple(M, T) && ((M * K) < (mc * kc)) && iszero(ptrA & (reinterpret(Int, VectorizationBase.REGISTER_SIZE) - 1)))
 end
 
 @inline function jmul!(
@@ -234,7 +235,7 @@ end
     pB = PtrArray(B)
     pC = PtrArray(C)
     GC.@preserve C A B begin
-        if (contiguousstride1(A) && dontpack(pointer(pA), M, K, Val{mc}(), Val{kc}(), T)
+        if (nᵣ ≥ N) || (contiguousstride1(A) && dontpack(pointer(pA), M, K, Val{mc}(), Val{kc}(), Tc))
             loopmul!(pC, pA, pB, α, β, (M,K,N))
         elseif kc * nc > K * N
             jmulpackAonly!(pC, pA, pB, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
