@@ -38,18 +38,26 @@ end
 #     end
 # end
 
-function matmul_params(::Type{T}) where {T}
+# function matmul_params(::Type{T}) where {T}
+#    W = VectorizationBase.pick_vector_width(T)
+#    L₁ratio = L₁ ÷ (nᵣ * sizeof(T))
+#    kc = round(Int, 0.65L₁ratio)
+#    mcrep =  5L₂ ÷ (8kc * sizeof(T) * mᵣ * W)
+#    ncrep = L₃ ÷ (kc * sizeof(T) * nᵣ)
+#    mc = mcrep * mᵣ * W
+#    nc = round(Int, 0.4ncrep * nᵣ) #* VectorizationBase.NUM_CORES
+#    mc, kc, nc
+# end
+@generated function matmul_params(::Type{T}) where {T}
     W = VectorizationBase.pick_vector_width(T)
-   # kc = 10(L₁ ÷ (20nᵣ * sizeof(T)))
-    # kc = 15(L₁ ÷ (20nᵣ * sizeof(T)))
-    L₁ratio = L₁ ÷ (nᵣ * sizeof(T))
-    kc = round(Int, 0.65L₁ratio)
-    # mcrep =  L₂ ÷ (2kc * sizeof(T) * mᵣ * W)
-    mcrep =  5L₂ ÷ (8kc * sizeof(T) * mᵣ * W)
-    ncrep = L₃ ÷ (kc * sizeof(T) * nᵣ)
-    # ncrep = 5L₃ ÷ (16kc * sizeof(T) * nᵣ)
-    mc = mcrep * mᵣ * W
-    nc = round(Int, 0.4ncrep * nᵣ) #* VectorizationBase.NUM_CORES
+    mᵣW = mᵣ * W
+    M_K = sqrt(0.8 * (L₂ ÷ sizeof(T)));
+    mcrep = round(Int, M_K) ÷ mᵣW
+    mc = mcrep * mᵣW 
+    kc = round(Int, 0.8*(L₂ ÷ sizeof(T)) / mc)
+#    kc = round(Int, (L₂ ÷ sizeof(T)) / mc)
+    ncrep = 3L₃ ÷ (sizeof(T) * 4kc * nᵣ)
+    nc = ncrep * nᵣ
     mc, kc, nc
 end
 function matmul_params_val(::Type{T}) where {T}
@@ -210,7 +218,14 @@ end
 @inline contiguousstride1(A::LinearAlgebra.StridedArray) = isone(stride1(A))
 @inline contiguousstride1(::SubArray{T,N,P,S}) where {T,N,P<:DenseArray,S<:Tuple{Int,Vararg}} = false
 
-
+@inline function vectormultiple(x, ::Type{T}) where {T}
+    W = Vectorizationbase.pick_vector_width(T)
+    iszero(x & (W - 1))
+end
+@inline function dontpack(ptrA, M, K, ::Val{mc}, ::Val{kc}, ::Type{T}) where {mc, kc, T}
+    mc_mult = VectorizationBase.AVX512F ? 7 : 15
+    (mc_mult * mc > M) || (vectormultiple(M, T) && ((M * K) < (mc * kc)) && iszero(ptrA & (reinterpret(Int, VectorizationBase.REGISTER_SIZE) - 1)))
+end
 
 @inline function jmul!(
     C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}, (M, K, N) = matmul_sizes(C, A, B)
@@ -219,7 +234,7 @@ end
     pB = PtrArray(B)
     pC = PtrArray(C)
     GC.@preserve C A B begin
-        if (contiguousstride1(A) && (mc * kc ≥ M * K)) || N ≤ nᵣ
+        if (contiguousstride1(A) && dontpack(pointer(pA), M, K, Val{mc}(), Val{kc}(), T)
             loopmul!(pC, pA, pB, α, β, (M,K,N))
         elseif kc * nc > K * N
             jmulpackAonly!(pC, pA, pB, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
