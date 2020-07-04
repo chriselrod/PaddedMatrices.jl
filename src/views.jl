@@ -15,7 +15,7 @@ end
     Expr(
         :block,
         Expr(:meta,:inline),
-        :(StrideArray{Tuple{$L},$T,1,Tuple{1},0,0}(A.ptr, tuple(), tuple(), A.parent))
+        :(StrideArray{Tuple{$L},$T,1,Tuple{1},0,0,false}(A.ptr, tuple(), tuple(), A.data))
     )
 end
 

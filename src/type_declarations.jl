@@ -27,17 +27,20 @@ end
 struct ConstantArray{S,T,N,X,L} <: AbstractStrideArray{S,T,N,X,0,0,false}
     data::NTuple{L,Core.VecElement{T}}
 end
+@generated function check_N(::Val{N}, ::Type{S}, ::Type{X}) where {N,S,X}
+    if N == length(S.parameters) == length(X.parameters)
+        nothing
+    else
+        throw("Dimensions declared: $N; Size: $S; Strides: $X")
+    end
+end
 struct PtrArray{S,T,N,X,SN,XN,V} <: AbstractPtrStrideArray{S,T,N,X,SN,XN,V}
     ptr::Ptr{T}
     size::NTuple{SN,Int}
     stride::NTuple{XN,Int}
     @inline function PtrArray{S,T,N,X,SN,XN,V}(ptr::Ptr{T}, size::NTuple{SN,Int}, stride::NTuple{XN,Int}) where {S,T,N,X,SN,XN,V}
-        @assert N == length(S.parameters) == length(X.parameters) "Dimensions declared: $N; Size: $S; Strides: $X"
-#        quote
-#            $(Expr(:meta,:inline))
-        # new{$S,$T,$N,$X,$SN,$XN,$V}(ptr, size, stride)
+        check_N(Val{N}(), S, X)
         new(ptr, size, stride)
-#        end
     end
 end
 # const LazyArray{F,S,T,N,X,SN,XN,V,L} = VectorizationBase.LazyMap{F,A,A<:AbstractStrideArray{S,T,N,X,SN,XN,V,L}}
