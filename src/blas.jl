@@ -398,7 +398,7 @@ maybeinline(::Any, ::Any) = false
     sizeof(T) * M * N < 176mᵣ * nᵣ
 end
 @generated function maybeinline(::AbstractFixedSizeMatrix{M,N,T}, ::AbstractFixedSizeMatrix{M}) where {M,N,T}
-    sizeof(T) * M * N < 176mᵣ * nᵣ
+    M * sizeof(T) ≤ 2VectorizationBase.REGISTER_SIZE
 end
 
                                                                        
