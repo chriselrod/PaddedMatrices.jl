@@ -6,6 +6,9 @@ const LIBBLASFEO = Libdl.dlopen("/home/chriselrod/Documents/libraries/blasfeo/li
 const DGEMM_BLASFEO = Libdl.dlsym(LIBBLASFEO, :blasfeo_dgemm)
 const SGEMM_BLASFEO = Libdl.dlsym(LIBBLASFEO, :blasfeo_sgemm)
 
+@inline nottransposed(A) = A
+@inline nottransposed(A::Adjoint) = parent(A)
+@inline nottransposed(A::Transpose) = parent(A)
 
 for (fm,T) ∈ [(:DGEMM_BLASFEO,Float64), (:SGEMM_BLASFEO, Float32)]
     @eval begin
@@ -13,7 +16,7 @@ for (fm,T) ∈ [(:DGEMM_BLASFEO,Float64), (:SGEMM_BLASFEO, Float32)]
             transA = istransposed(A)
             transB = istransposed(B)
             M, N = size(C); K = size(B, 1) % Int32
-            pA = parent(A); pB = parent(B)
+            pA = nottransposed(A); pB = nottransposed(B)
             ldA = stride(pA, 2) % Int32
             ldB = stride(pB, 2) % Int32
             ldC = stride(C, 2) % Int32
@@ -45,6 +48,30 @@ function runbenchfeo(::Type{T}, sizes = 2:300) where {T}
         mklbt= benchmark_fun!(gemmmkl!, C3, A, B, sz == first(sizes), C1)
         bfeot= benchmark_fun!(gemmfeo!, C4, A, B, sz == first(sizes), C1)
         res =  (matrix_size=sz, OpenBLAS=opbt, MKL=mklbt, PaddedMatrices=jmlt, BLASFEO=bfeot)
+        @show res
+    end
+end
+
+istransposed(::PaddedMatrices.AbstractStrideMatrix{<:Any,<:Any,<:Any,1}) = 'N'
+istransposed(::PaddedMatrices.AbstractStrideMatrix{<:Any,<:Any,<:Any,1,1}) = 'N'
+istransposed(::PaddedMatrices.AbstractStrideMatrix{<:Any,<:Any,<:Any,<:Any,1}) = 'T'
+nottransposed(A::PaddedMatrices.AbstractStrideMatrix{<:Any,<:Any,<:Any,1}) = A
+nottransposed(A::PaddedMatrices.AbstractStrideMatrix{<:Any,<:Any,<:Any,1,1}) = A
+nottransposed(A::PaddedMatrices.AbstractStrideMatrix{<:Any,<:Any,<:Any,<:Any,1}) = A'
+using Random
+function runstaticbenchfeo(::Type{T}, sizes, f1 = identity, f2 = identity) where {T}
+    (StructVector ∘ map)(sizes) do sz
+        Apadded = f1(rand!(FixedSizeMatrix{sz,sz,T}(undef)))
+        Bpadded = f2(rand!(FixedSizeMatrix{sz,sz,T}(undef)))
+        Cpadded1 = FixedSizeMatrix{sz,sz,T}(undef)
+        Cpadded2 = FixedSizeMatrix{sz,sz,T}(undef)
+        A = f1(Array(nottransposed(Apadded)));
+        B = f2(Array(nottransposed(Bpadded)));
+        C = similar(A, size(A,1), size(B,2));
+        pmt = benchmark_fun!(mul!, Cpadded1, Apadded, Bpadded, sz == first(sizes))
+        fmt = benchmark_fun!(gemmfeo!, Cpadded2, Apadded, Bpadded, sz == first(sizes), Cpadded1)
+        jmt = benchmark_fun!(PaddedMatrices.jmul!, C, A, B, sz == first(sizes), Cpadded1)
+        res = (matrix_size=sz, SizedArray = pmt, BLASFEO=fmt, PaddedMatrices=jmt)
         @show res
     end
 end

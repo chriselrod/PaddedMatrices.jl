@@ -393,24 +393,28 @@ end
 #     C
 # end
 
-maybeinline(::Any) = false
-@generated function maybeinline(::AbstractFixedSizeMatrix{M,N,T}) where {M,N,T}
+maybeinline(::Any, ::Any) = false
+@generated function maybeinline(::AbstractFixedSizeMatrix{M,N,T}, ::AbstractFixedSizeMatrix{M,<:Any,<:Any,1}) where {M,N,T}
     sizeof(T) * M * N < 176mᵣ * nᵣ
 end
+@generated function maybeinline(::AbstractFixedSizeMatrix{M,N,T}, ::AbstractFixedSizeMatrix{M}) where {M,N,T}
+    sizeof(T) * M * N < 176mᵣ * nᵣ
+end
+
                                                                        
 
 @inline function jmul!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}) where {Tc, Ta, Tb}
-    maybeinline(C) && return inlineloopmul!(C, A, B, Val{1}(), Val{0}())
+    maybeinline(C, A) && return inlineloopmul!(C, A, B, Val{1}(), Val{0}())
     mc, kc, nc = matmul_params_val(Tc)
     jmul!(C, A, B, Val{1}(), Val{0}(), mc, kc, nc)
 end
 @inline function jmul!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α) where {Tc, Ta, Tb}
-    maybeinline(C) && return inlineloopmul!(C, A, B, α, Val{0}())
+    maybeinline(C, A) && return inlineloopmul!(C, A, B, α, Val{0}())
     mc, kc, nc = matmul_params_val(Tc)
     jmul!(C, A, B, α, Val{0}(), mc, kc, nc)
 end
 @inline function jmul!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β) where {Tc, Ta, Tb}
-    maybeinline(C) && return inlineloopmul!(C, A, B, α, β)
+    maybeinline(C, A) && return inlineloopmul!(C, A, B, α, β)
     mc, kc, nc = matmul_params_val(Tc)
     jmul!(C, A, B, α, β, mc, kc, nc)
 end
