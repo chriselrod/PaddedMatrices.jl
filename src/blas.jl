@@ -238,7 +238,7 @@ end
     GC.@preserve C A B begin
         if (nᵣ ≥ N) || (contiguousstride1(A) && dontpack(pointer(pA), M, K, stride(A,2), Val{mc}(), Val{kc}(), Tc))
             loopmul!(pC, pA, pB, α, β, (M,K,N))
-        elseif kc * nc > K * N
+        elseif (contiguousstride1(B) && (kc * nc < K * N)) || LinearAlgebra.stride1(B) < 120
             jmulpackAonly!(pC, pA, pB, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
         else
             jmulpackAB!(pC, pA, pB, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
@@ -247,15 +247,15 @@ end
     return C
 end # function
 
-@inline function jmul!(C::AbstractMatrix, A::LinearAlgebra.Adjoint, B::LinearAlgebra.Adjoint, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}) where {mc,kc,nc}
+@inline function jmul!(C::LinearAlgebra.Adjoint{<:Real}, A::AbstractMatrix, B::AbstractMatrix, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}) where {mc,kc,nc}
     jmul!(C', B', A', α, β, Val{mc}(), Val{kc}(), Val{nc}())
     C
 end
 @inline function jmul!(
-    C::AbstractMatrix,
-    A::AbstractStrideArray{Sa,Ta,2,Tuple{Xa,1}},
-    B::AbstractStrideArray{Sb,Tb,2,Tuple{Xb,1}}
-) where {Sa, Ta, Xa, Sb, Tb, Xb}
+    C::AbstractStrideArray{S,T,2,Tuple{X,1}},
+    A::AbstractMatrix,
+    B::AbstractMatrix
+) where {S, T, X}
     jmul!(C', B', A')
     C
 end
