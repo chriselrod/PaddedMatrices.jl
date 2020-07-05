@@ -224,9 +224,9 @@ end
     W = VectorizationBase.pick_vector_width(T)
     iszero(x & (W - 1))
 end
-@inline function dontpack(ptrA, M, K, ::Val{mc}, ::Val{kc}, ::Type{T}) where {mc, kc, T}
+@inline function dontpack(ptrA, M, K, Xa, ::Val{mc}, ::Val{kc}, ::Type{T}) where {mc, kc, T}
     mc_mult = VectorizationBase.AVX512F ? 73 : 53
-    (mc_mult > M) || (vectormultiple(M, T) && ((M * K) < (mc * kc)) && iszero(reinterpret(Int, ptrA) & (VectorizationBase.REGISTER_SIZE - 1)))
+    (mc_mult > M) || (vectormultiple(Xa, T) && ((M * K) < (mc * kc)) && iszero(reinterpret(Int, ptrA) & (VectorizationBase.REGISTER_SIZE - 1)))
 end
 
 @inline function jmul!(
@@ -236,7 +236,7 @@ end
     pB = PtrArray(B)
     pC = PtrArray(C)
     GC.@preserve C A B begin
-        if (nᵣ ≥ N) || (contiguousstride1(A) && dontpack(pointer(pA), M, K, Val{mc}(), Val{kc}(), Tc))
+        if (nᵣ ≥ N) || (contiguousstride1(A) && dontpack(pointer(pA), M, K, stride(A,2), Val{mc}(), Val{kc}(), Tc))
             loopmul!(pC, pA, pB, α, β, (M,K,N))
         elseif kc * nc > K * N
             jmulpackAonly!(pC, pA, pB, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))

@@ -159,7 +159,7 @@ function create_df(res)
     dfs
 end
 
-function plot(tf, ::Type{T} = Float64, PICTURES = "/home/chriselrod/Pictures") where {T}
+function plot(tf, ::Type{T} = Float64, desc = "") where {T}
     res = create_df(tf)
     l, u = extrema(tf.matrix_size)
     plt = res |> @vlplot(
@@ -176,6 +176,9 @@ function plot(tf, ::Type{T} = Float64, PICTURES = "/home/chriselrod/Pictures") w
         "AVX"
     else
         "REGSUZE$(PaddedMatrices.VectorizationBase.REGISTER_SIZE)"
+    end
+    if desc != ""
+        suffix *= '_' * desc
     end
     save(joinpath(pkgdir(PaddedMatrices), "docs/src/assets/gemm$(string(T))_$(l)_$(u)_$(Sys.CPU_NAME)_$(suffix).svg"), plt)
     save(joinpath(pkgdir(PaddedMatrices), "docs/src/assets/gemm$(string(T))_$(l)_$(u)_$(Sys.CPU_NAME)_$(suffix).png"), plt)
