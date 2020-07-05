@@ -217,8 +217,14 @@ end
 @inline contiguousstride1(::AbstractStrideArray) = false
 @inline contiguousstride1(::AbstractStrideArray{<:Any,<:Any,<:Any,<:Tuple{1,Vararg}}) = true
 @inline contiguousstride1(::DenseArray) = true
-@inline contiguousstride1(A::LinearAlgebra.StridedArray) = isone(stride1(A))
+@inline contiguousstride1(A::LinearAlgebra.StridedArray) = isone(LinearAlgebra.stride1(A))
+@inline contiguousstride1(A::PermutedDimsArray) = isone(LinearAlgebra.stride1(A))
 @inline contiguousstride1(::SubArray{T,N,P,S}) where {T,N,P<:DenseArray,S<:Tuple{Int,Vararg}} = false
+@inline firststride(A::StridedArray) = LinearAlgebra.stride1(A)
+@inline firststride(A::PermutedDimsArray) = LinearAlgebra.stride1(A)
+@inline firststride(A::Adjoint{<:Any,<:AbstractMatrix}) = stride(parent(A), 2)
+@inline firststride(A::Transpose{<:Any,<:AbstractMatrix}) = stride(parent(A), 2)
+@inline firststride(::Any) = typemax(Int)
 
 @inline function vectormultiple(x, ::Type{T}) where {T}
     W = VectorizationBase.pick_vector_width(T)
@@ -229,6 +235,7 @@ end
     (mc_mult > M) || (vectormultiple(Xa, T) && ((M * K) ≤ (mc * kc)) && iszero(reinterpret(Int, ptrA) & (VectorizationBase.REGISTER_SIZE - 1)))
 end
 
+
 @inline function jmul!(
     C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::Val{mc}, ::Val{kc}, ::Val{nc}, (M, K, N) = matmul_sizes(C, A, B)
 ) where {Tc, Ta, Tb, mc, kc, nc}
@@ -238,7 +245,7 @@ end
     GC.@preserve C A B begin
         if (nᵣ ≥ N) || (contiguousstride1(A) && dontpack(pointer(pA), M, K, stride(A,2), Val{mc}(), Val{kc}(), Tc))
             loopmul!(pC, pA, pB, α, β, (M,K,N))
-        elseif (contiguousstride1(B) && (kc * nc < K * N)) || LinearAlgebra.stride1(B) < 120
+        elseif (contiguousstride1(B) && (kc * nc < K * N)) || firststride(B) < 120
             jmulpackAonly!(pC, pA, pB, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
         else
             jmulpackAB!(pC, pA, pB, α, β, Val{mc}(), Val{kc}(), Val{nc}(), (M,K,N))
