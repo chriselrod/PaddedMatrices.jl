@@ -7,10 +7,11 @@ function calc_padding(nrow::Int, T)
     W > nrow ? VectorizationBase.nextpow2(nrow) : VectorizationBase.align(nrow, T)
 end
 
-@generated function StrideArray{S,T}(::UndefInitializer) where {S,T}
+@generated function StrideArray{S,T}(::UndefInitializer, ::Val{pad} = Val{false}()) where {S,T,pad}
     sv = tointvec(S)
     N = length(sv)
-    L = calc_padding(first(sv), T)
+    firstsv = first(sv)::Int
+    L = pad ? calc_padding(firstsv, T) : firstsv
     xv = similar(sv)
     xv[1] = 1
     for n ∈ 2:N
@@ -25,7 +26,7 @@ end
     end
 end
 
-function partially_sized(sv, ::Type{T}) where {T}
+function partially_sized(sv, pad::Bool, ::Type{T}) where {T}
     st = Expr(:tuple)
     xt = Expr(:tuple)
     xv = similar(sv)
@@ -38,7 +39,7 @@ function partially_sized(sv, ::Type{T}) where {T}
         if L == -1
             xn = Symbol(:stride_,n)
             calcstride = Expr(:call, :vmul, Expr(:ref,:s,n-1), Symbol(:stride_, n-1))
-            if n == 2
+            if pad & (n == 2)
                 calcstride = Expr(:call, :calc_padding, calcstride, T)
             end
             calcstride = Expr(:call, :vmul, sizeof(T), calcstride)
@@ -53,7 +54,7 @@ function partially_sized(sv, ::Type{T}) where {T}
             L = -1
             push!(st.args, Expr(:ref, :s, n))
         else
-            if n == 1
+            if pad & (n == 1)
                 svₙ = calc_padding(svₙ, T)
             end
             Lpos *= svₙ
@@ -72,18 +73,19 @@ end
 
 @generated function StrideArray{S,T}(
 # function StrideArray{S,T}(
-    ::UndefInitializer, s::NTuple{N,<:Integer}
-) where {S,T,N}
+    ::UndefInitializer, s::NTuple{N,<:Integer}, ::Val{pad}
+) where {S,T,N,pad}
     sv = tointvec(S)
     @assert N == length(sv)
-    any(isequal(-1), sv) || return :(StrideArray{$S,$T}(::UndefInitializer))
-    q, st, xt, xv, L = partially_sized(sv, T)
+    any(isequal(-1), sv) || return Expr(:block, Expr(:meta,:inline), :(StrideArray{$S,$T}(::UndefInitializer)))
+    q, st, xt, xv, L = partially_sized(sv, pad, T)
     SN = length(st.args); XN = length(xt.args)
     # W = VectorizationBase.pick_vector_width(T)
     push!(q.args, :(parent = Vector{$T}(undef, $L)))
     push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false}(align(pointer(parent)), $st, $xt, parent)))
     q
 end
+@inline StrideArray{S,T}(::UndefInitializer, s::NTuple{N,<:Integer}) where {S,T,N} = StrideArray{S,T}(undef, s, Val{false}())
 function StrideArray(A::AbstractArray{T}, ::Type{S}) where {T,S<:Tuple}
     StrideArray{S,T}(undef, size(A)) .= A
 end
@@ -103,22 +105,22 @@ function tointvecdt(ssv)
     end
     sv
 end
-@generated function StrideArray{T}(::UndefInitializer, s::Tuple) where {T}
+@generated function StrideArray{T}(::UndefInitializer, s::Tuple, ::Val{pad}) where {T,pad}
     sv = tointvecdt(s.parameters)
     N = length(sv)
     S = Tuple{sv...}
-    any(s -> s == -1, sv) || return :(StrideArray{$S,$T}(::UndefInitializer))
-    q, st, xt, xv, L = partially_sized(sv, T)
+    any(s -> s == -1, sv) || return Expr(:block, Expr(:meta,:inline), :(StrideArray{$S,$T}(::UndefInitializer)))
+    q, st, xt, xv, L = partially_sized(sv, pad, T)
     SN = length(st.args); XN = length(xt.args)
     push!(q.args, :(parent = Vector{$T}(undef, $L)))
     push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false}(align(pointer(parent)), $st, $xt, parent)))
     q    
 end
+@inline StrideArray{T}(::UndefInitializer, s::Tuple) where {T} = StrideArray{T}(undef, s, Val{false}())
 
-
-function calc_NPL(SV::Core.SimpleVector, T)
+function calc_NPL(SV::Core.SimpleVector, pad::Bool, T)
     nrow = (SV[1])::Int
-    padded_rows = isone(length(SV)) ? nrow : calc_padding(nrow, T)
+    padded_rows = ((!pad) || isone(length(SV))) ? nrow : calc_padding(nrow, T)
     calc_NXL(SV, T, padded_rows)
 end
 function calc_NXL(SV::Core.SimpleVector, T, padded_rows::Int)
@@ -145,11 +147,12 @@ function maybeincreaseL(L::Int, ::Type{T}) where {T}
     #     512 ÷ sizeof(T)
     # end
 end
-@generated function FixedSizeArray{S,T}(::UndefInitializer) where {S,T}
-    N, X, L = calc_NPL(S.parameters, T)
+@generated function FixedSizeArray{S,T}(::UndefInitializer, ::Val{pad}) where {S,T,pad}
+    N, X, L = calc_NPL(S.parameters, pad, T)
     L = maybeincreaseL(L, T)
-    :(FixedSizeArray{$S,$T,$N,$X,$L}(undef))
+    Expr(:block, Expr(:meta,:inline), :(FixedSizeArray{$S,$T,$N,$X,$L}(undef)))
 end
+@inline FixedSizeArray{S,T}(::UndefInitializer) where {S,T} = FixedSizeArray{S,T}(undef, Val{false}())
 @generated function FixedSizeArray{S,T,N,X}(::UndefInitializer) where {S,T,N,X}
     # X may not be monotonic!!!
     # Largest stride corresponds to last dimension.
@@ -170,11 +173,12 @@ end
     L = maybeincreaseL(M, T)
     :(FixedSizeArray{Tuple{$M},$T,1,Tuple{1},$L}(undef))
 end
-@generated function FixedSizeMatrix{M,N,T}(::UndefInitializer) where {M,N,T}
-    X = calc_padding(M, T)
+@generated function FixedSizeMatrix{M,N,T}(::UndefInitializer, ::Val{pad}) where {M,N,T,pad}
+    X = pad ? calc_padding(M, T) : M
     L = maybeincreaseL(X*N, T)
-    :(FixedSizeArray{Tuple{$M,$N},$T,2,Tuple{1,$X},$L}(undef))
+    Expr(:block, Expr(:meta,:inline), :(FixedSizeArray{Tuple{$M,$N},$T,2,Tuple{1,$X},$L}(undef)))
 end
+@inline FixedSizeMatrix{M,N,T}(::UndefInitializer) where {M,N,T} = FixedSizeMatrix{M,N,T}(undef, Val{false}())
 @generated function FixedSizeMatrix{M,N,T,X}(::UndefInitializer) where {M,N,T,X}
     @assert X ≥ M
     L = maybeincreaseL(X * N, T)
@@ -188,19 +192,21 @@ end
     true
 end
 
-@generated function PtrArray{S}(ptr::Ptr{T}) where {S,T}
+@generated function PtrArray{S}(ptr::Ptr{T}, ::Val{pad}) where {S,T,pad}
     N, X, L = calc_NPL(S.parameters, T)
-    :(PtrArray{$S,$T,$N,$X,0,0,false}(ptr))
+    Expr(:block, Expr(:meta,:inline), :(PtrArray{$S,$T,$N,$X,0,0,false}(ptr)))
 end
-@generated function PtrArray{S}(ptr::Ptr{T}, s::NTuple{N,<:Integer}) where {S,T,N}
+@inline PtrArray{S}(ptr::Ptr{T}) where {S,T} = PtrArray{S}(ptr, Val{false}())
+@generated function PtrArray{S}(ptr::Ptr{T}, s::NTuple{N,<:Integer}, ::Val{pad}) where {S,T,N,pad}
     sv = tointvec(S)
     @assert N == length(sv)
     any(isequal(-1), sv) || return Expr(:block, Expr(:meta,:inline), :(PtrArray{$S}(ptr)))
-    q, st, xt, xv, L = partially_sized(sv, T)
+    q, st, xt, xv, L = partially_sized(sv, pad, T)
     SN = length(st.args); XN = length(xt.args)
     push!(q.args, :(PtrArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false}(ptr, $st, $xt)))
     q
 end
+@inline PtrArray{S}(ptr::Ptr{T}, s::NTuple{N,<:Integer}) where {S,T,N} = PtrArray{S}(ptr, s, Val{false}())
 function toctuple(s)
     sv = Int[]
     sp = s.parameters
@@ -215,14 +221,15 @@ function toctuple(s)
     append!(S.args, sv)
     S, sv
 end
-@generated function PtrArray(ptr::Ptr{T}, s::Tuple{Vararg{<:Any,N}}) where {T,N}
+@generated function PtrArray(ptr::Ptr{T}, s::Tuple{Vararg{<:Any,N}}, ::Val{pad}) where {T,N, pad}
     S, sv = toctuple(s)
     any(isequal(-1), sv) || return Expr(:block, Expr(:meta,:inline), :(PtrArray{$S}(ptr)))
-    q, st, xt, xv, L = partially_sized(sv, T)
+    q, st, xt, xv, L = partially_sized(sv, pad, T)
     SN = length(st.args); XN = length(xt.args)
     push!(q.args, :(PtrArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false}(ptr, $st, $xt)))
     q
 end
+@inline PtrArray(ptr::Ptr{T}, s::Tuple{Vararg{<:Any,N}}) where {T,N} = PtrArray(ptr, s, Val{false}())
 @inline PtrArray{S,T,N}(ptr::Ptr{T}) where {S,T,N} = PtrArray{S}(ptr)
 # @inline PtrArray{S,T,N,X,SN,XN}(ptr) where {S,T,N,X,SN,XN} = PtrArray{S,T,X,0,0,true}(ptr)
 # @inline PtrArray{S,T,N,X,SN,XN,V}(ptr) where {S,T,N,X,SN,XN,V} = PtrArray{S,T,X,0,0,V}(ptr)
