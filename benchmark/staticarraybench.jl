@@ -16,13 +16,13 @@ function runbenches(sr)
         Bmutable = MArray(Bstatic);
         Cmutable = similar(Amutable);
         bench_results[i,2] = @belapsed mul!($Cmutable, $Amutable, $Bmutable)
-        Afixed = FixedSizeMatrix{s,s,Float64,s}(undef) .= Amutable
-        Bfixed = FixedSizeMatrix{s,s,Float64,s}(undef) .= Bmutable
-        Cfixed = FixedSizeMatrix{s,s,Float64,s}(undef)
+        Afixed = FixedSizeMatrix{s,s,Float64}(undef) .= Amutable
+        Bfixed = FixedSizeMatrix{s,s,Float64}(undef) .= Bmutable
+        Cfixed = FixedSizeMatrix{s,s,Float64}(undef)
         bench_results[i,3] = @belapsed mul!($Cfixed, $Afixed, $Bfixed)
-        Apadded = FixedSizeMatrix{s,s,Float64}(undef) .= Amutable
-        Bpadded = FixedSizeMatrix{s,s,Float64}(undef) .= Bmutable
-        Cpadded = FixedSizeMatrix{s,s,Float64}(undef)
+        Apadded = FixedSizeMatrix{s,s,Float64}(undef, Val(true)) .= Amutable
+        Bpadded = FixedSizeMatrix{s,s,Float64}(undef, Val(true)) .= Bmutable
+        Cpadded = FixedSizeMatrix{s,s,Float64}(undef, Val(true))
         Cpaddedptr = FixedSizeMatrix{s,s,Float64}(undef)
         bench_results[i,4] = @belapsed mul!($Cpadded, $Apadded, $Bpadded)
         Aptr = PtrArray(Apadded); Bptr = PtrArray(Bpadded); Cptr = PtrArray(Cpaddedptr);

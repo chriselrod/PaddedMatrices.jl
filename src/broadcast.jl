@@ -197,10 +197,13 @@ end
     LoopVectorization.add_broadcast!(ls, :dest, :bc, loopsyms, BC, elementbytes)
     LoopVectorization.add_simple_store!(ls, :dest, LoopVectorization.ArrayReference(:dest, loopsyms), elementbytes)
     resize!(ls.loop_order, LoopVectorization.num_loops(ls)) # num_loops may be greater than N, eg Product
-    q = LoopVectorization.lower(ls)
-    push!(q.args, :dest)
-    pushfirst!(q.args, Expr(:meta,:inline))
-    q
+    Expr(
+        :block,
+        Expr(:meta,:inline),
+        ls.prepreamble,
+        LoopVectorization.lower(ls),
+        :dest
+    )
     # ls
 end
 @generated function Base.Broadcast.materialize!(
@@ -242,10 +245,12 @@ end
     LoopVectorization.add_simple_store!(ls, :dest, destref, elementbytes)
     resize!(ls.loop_order, LoopVectorization.num_loops(ls)) # num_loops may be greater than N, eg Product
     # return ls
-    q = LoopVectorization.lower(ls)
-    push!(q.args, :dest)
-    pushfirst!(q.args, Expr(:meta,:inline))
-    q
+    Expr(
+        :block,
+        ls.prepreamble,
+        LoopVectorization.lower(ls, 0),
+        :dest
+    )
 end
 
 # @generated function Base.Broadcast.materialize!(
