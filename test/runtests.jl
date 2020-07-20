@@ -11,4 +11,5 @@ using Test
     @test isempty(detect_unbound_args(PaddedMatrices))
     @time include("matmul_tests.jl")
     @time include("broadcast_tests.jl")
+    @time include("misc.jl")
 end
