@@ -42,24 +42,39 @@ include("zeroinitialized.jl")
 include("stack_pointers.jl")
 include("mappedtypes.jl")
 include("lazy_maps.jl")
+
+include("miscellaneous.jl")
 # include("gradsupport.jl")
 # include("linear_algebra.jl")
 
-function logdensity(x)
-    s = zero(first(x))
-    @avx for i ∈ eachindex(x)
-        s += x[i]*x[i]
-    end
-    -0.5s
-end
-function ∂logdensity!(∂x, x)
-    s = zero(first(x))
-    @avx for i ∈ eachindex(x)
-        s += x[i]*x[i]
-        ∂x[i] = -x[i]
-    end
-    -0.5s
-end
+
+"""
+To find a mode, define methods for `logdensity` and logdensity_and_gradient!` dispatching on obj, and evaluating at the position `q`.
+
+logdensity(obj, q, [::StackPointer])
+∂logdensity!(∇, obj, q, [::StackPointer])
+
+These must return a value (eg, a logdensity). logdensity_and_gradient! should store the gradient in ∇.
+"""
+function logdensity end
+function ∂logdensity! end
+
+
+# function logdensity(x)
+#     s = zero(first(x))
+#     @avx for i ∈ eachindex(x)
+#         s += x[i]*x[i]
+#     end
+#     -0.5s
+# end
+# function ∂logdensity!(∂x, x)
+#     s = zero(first(x))
+#     @avx for i ∈ eachindex(x)
+#         s += x[i]*x[i]
+#         ∂x[i] = -x[i]
+#     end
+#     -0.5s
+# end
 
 # include("precompile.jl")
 # _precompile_()

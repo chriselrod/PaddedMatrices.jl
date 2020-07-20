@@ -137,6 +137,7 @@ function calc_NXL(SV::Core.SimpleVector, T, padded_rows::Int)
 end
 
 function maybeincreaseL(L::Int, ::Type{T}) where {T}
+    # Wm1 = VectorizationBase.pick_vector_width(L, T) - 1
     Wm1 = VectorizationBase.pick_vector_width(T) - 1
     return L + Wm1
     # if ALIGN_ALL_FS_ARRAYS || (L + Wm1) * sizeof(T) < 512
@@ -233,9 +234,9 @@ end
 @inline PtrArray{S,T,N}(ptr::Ptr{T}) where {S,T,N} = PtrArray{S}(ptr)
 # @inline PtrArray{S,T,N,X,SN,XN}(ptr) where {S,T,N,X,SN,XN} = PtrArray{S,T,X,0,0,true}(ptr)
 # @inline PtrArray{S,T,N,X,SN,XN,V}(ptr) where {S,T,N,X,SN,XN,V} = PtrArray{S,T,X,0,0,V}(ptr)
-@inline PtrArray{S,T,N,X}(ptr) where {S,T,N,X} = PtrArray{S,T,X,0,0,true}(ptr, tuple(), tuple())
-@inline PtrArray{S,T,N,X,0}(ptr) where {S,T,N,X} = PtrArray{S,T,X,0,0,true}(ptr, tuple(), tuple())
-@inline PtrArray{S,T,N,X,0,0}(ptr) where {S,T,N,X} = PtrArray{S,T,X,0,0,true}(ptr, tuple(), tuple())
+@inline PtrArray{S,T,N,X}(ptr) where {S,T,N,X} = PtrArray{S,T,N,X,0,0,true}(ptr, tuple(), tuple())
+@inline PtrArray{S,T,N,X,0}(ptr) where {S,T,N,X} = PtrArray{S,T,N,X,0,0,true}(ptr, tuple(), tuple())
+@inline PtrArray{S,T,N,X,0,0}(ptr) where {S,T,N,X} = PtrArray{S,T,N,X,0,0,true}(ptr, tuple(), tuple())
 # @generated PtrArray{S,T,N,X,0,0,V}(ptr) where {S,T,N,X,V} = Expr(:block, Expr(:meta,:inline), :(PtrArray{$S,$T,$X,0,0,$V}(ptr, tuple(), tuple())))
 # @inline PtrArray{S,T,N,X,0,0}(ptr, ::NTuple{0}, ::NTuple{0}) where {S,T,N,X} = PtrArray{S,T,X,0,0,true}(ptr, tuple(), tuple())
 # @generated PtrArray{S,T,N,X,0,0,V}(ptr, ::NTuple{0}, ::NTuple{0}) where {S,T,N,X,V} = Expr(:block, Expr(:meta,:inline), :(PtrArray{$S,$T,$X,0,0,$V,$(last(S.parameters)::Int*last(X.parameters)::Int)}(ptr, tuple(), tuple())))
@@ -256,6 +257,7 @@ end
 function PtrArray(A::AbstractArray)
     PtrArray(stridedpointer(A), size(A))
 end
+PtrVector{M}(ptr::Ptr{T}) where {M,T} = PtrVector{M,T,1,0,0,false}(ptr, tuple(), tuple())
 function PtrMatrix{M,N}(A::PackedStridedPointer{T,1}) where {M, N, T}
     PtrArray{Tuple{M,N},T,2,Tuple{1,-1},0,1,false}(pointer(A), tuple(), A.strides)
 end
@@ -384,6 +386,9 @@ function PtrMatrix{-1,-1,Tb,X}(A::Ptr{Ta}, ::Static{M}, ncols::Integer) where {M
 end
 function PtrMatrix{-1,-1,Tb,X}(A::Ptr{Ta}, ::Static{M}, ::Static{N}) where {M, N, Ta, Tb, X}
     PtrArray{Tuple{M, M}, Tb, 2, Tuple{1,X}, 0, 0, false}(Base.unsafe_convert(Ptr{Tb},A), tuple(), tuple())
+end
+function PtrMatrix{M,N}(A::Ptr{T}) where {M, N, T}
+    PtrArray{Tuple{M, N}, T, 2, Tuple{1,M}, 0, 0, false}(A, tuple(), tuple())
 end
 function PtrMatrix{M,N,X}(A::Ptr{T}) where {M, N, T, X}
     PtrArray{Tuple{M, N}, T, 2, Tuple{1,X}, 0, 0, false}(A, tuple(), tuple())
