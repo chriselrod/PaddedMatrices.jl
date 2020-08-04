@@ -83,3 +83,4 @@ const AbstractMutableFixedSizeMatrix{M,N,T,X1,X2,V} = AbstractMutableStrideArray
 @inline Base.unsafe_convert(::Type{Ptr{T}}, A::LazyMap{S,T}) where {S,T} = A.ptr
 @inline Base.elsize(::AbstractStrideArray{<:Any,T}) where {T} = sizeof(T)
 
+

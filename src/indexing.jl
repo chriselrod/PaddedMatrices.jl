@@ -62,8 +62,16 @@ Base.@propagate_inbounds Base.getindex(A::AbstractStrideArray, i::CartesianIndex
     @boundscheck begin
         any(i .> size(A)) && ThrowBoundsError(A, i)
     end
-   # vstore!(stridedpointer(A), v, i)
     GC.@preserve A vnoaliasstore!(stridedpointer(A), v, staticm1(i))
+end
+
+@inline function Base.setindex!(
+    A::AbstractPtrStrideArray{S,T,N}, v, i::NTuple{N,<:Integer}
+) where {S,T,N}
+    @boundscheck begin
+        any(i .> size(A)) && ThrowBoundsError(A, i)
+    end
+    vnoaliasstore!(stridedpointer(A), v, staticm1(i))
 end
 Base.@propagate_inbounds Base.setindex!(A::AbstractStrideArray, v, i::CartesianIndex) = setindex!(A, v, i.I)
 
@@ -75,8 +83,12 @@ end
 
 @inline function Base.setindex!(A::AbstractStrideArray{S,T}, v, i::Integer) where {S,T}
     @boundscheck i > length(A) && ThrowBoundsError(A, i)
-   # vstore!(pointer(A), v, i - 1)
     GC.@preserve A vnoaliasstore!(pointer(A), v, vmul(sizeof(T), vsub(i, 1)))
+end
+
+@inline function Base.setindex!(A::AbstractPtrStrideArray{S,T}, v, i::Integer) where {S,T}
+    @boundscheck i > length(A) && ThrowBoundsError(A, i)
+    vnoaliasstore!(pointer(A), v, vmul(sizeof(T), vsub(i, 1)))
 end
 
 
