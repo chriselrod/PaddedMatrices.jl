@@ -1,15 +1,20 @@
 
-
+@inline cld_fast(x, y) = cld(x, y)
+@inline function cld_fast(x::I, y::I) where {I <: Integer}
+    x32 = x % UInt32; y32 = y % UInt32
+    d = Base.udiv_int(x32, y32)
+    (d * y32 == x32 ? d : d + one(UInt32)) % I
+end
 
 @inline function divrem_fast(x::I, y::I) where {I <: Integer}
     x32 = x % UInt32; y32 = y % UInt32
-    d = Base.sdiv_int(x32, y32)
+    d = Base.udiv_int(x32, y32)
     r = vsub(x32, vmul(d, y32))
     d % I, r % I
 end
 @inline divrem_fast(::Static{x}, y::I) where {x, I <: Integer} = divrem_fast(x % I, y)
-@inline div_fast(x::I, y::I) where {I <: Integer} = Base.sdiv_int(x % UInt32, y % UInt32) % I
-@inline div_fast(::Static{x}, y::I) where {x, I <: Integer} = Base.sdiv_int(x % UInt32, y % UInt32) % I
+@inline div_fast(x::I, y::I) where {I <: Integer} = Base.udiv_int(x % UInt32, y % UInt32) % I
+@inline div_fast(::Static{x}, y::I) where {x, I <: Integer} = Base.udiv_int(x % UInt32, y % UInt32) % I
 
 function Base.copyto!(B::AbstractStrideArray{S,T,N}, A::AbstractStrideArray{S,T,N}) where {S,T,N}
     @avx for I ∈ eachindex(A, B)
@@ -92,7 +97,7 @@ function jmulpackAonly!(
     W = VectorizationBase.pick_vector_width(Tc)
     mᵣW = mᵣ * W
 
-    num_m_iter = cld(M, mc)
+    num_m_iter = cld_fast(M, mc)
     mreps_per_iter = div_fast(M, num_m_iter)
     mreps_per_iter += mᵣW - 1
     mcrepetitions = mreps_per_iter ÷ mᵣW
@@ -100,7 +105,7 @@ function jmulpackAonly!(
     Miter = num_m_iter - 1
     Mrem = M - Miter * mreps_per_iter
     #(iszero(Miter) && iszero(Niter)) && return loopmul!(C, A, B)
-    num_k_iter = cld(K, kc)
+    num_k_iter = cld_fast(K, kc)
     kreps_per_iter = ((div_fast(K, num_k_iter)) + 3) & -4
     Krem = K - (num_k_iter - 1) * kreps_per_iter
     Kiter = num_k_iter - 1
@@ -145,7 +150,7 @@ function jmulpackAB!(
     W = VectorizationBase.pick_vector_width(Tc)
     mᵣW = mᵣ * W
 
-    num_n_iter = cld(N, nc)
+    num_n_iter = cld_fast(N, nc)
     nreps_per_iter = div_fast(N, num_n_iter)
     nreps_per_iter += nᵣ - 1
     ncrepetitions = div_fast(nreps_per_iter, nᵣ)
@@ -153,7 +158,7 @@ function jmulpackAB!(
     Niter = num_n_iter - 1
     Nrem = N - Niter * nreps_per_iter
 
-    num_m_iter = cld(M, mc)
+    num_m_iter = cld_fast(M, mc)
     mreps_per_iter = div_fast(M, num_m_iter)
     mreps_per_iter += mᵣW - 1
     mcrepetitions = div_fast(mreps_per_iter, mᵣW)
@@ -161,7 +166,7 @@ function jmulpackAB!(
     Miter = num_m_iter - 1
     Mrem = M - Miter * mreps_per_iter
     
-    num_k_iter = cld(K, kc)
+    num_k_iter = cld_fast(K, kc)
     kreps_per_iter = ((div_fast(K, num_k_iter)) + 3) & -4
     Krem = K - (num_k_iter - 1) * kreps_per_iter
     Kiter = num_k_iter - 1
@@ -589,7 +594,7 @@ function jmulh!(
     W = VectorizationBase.pick_vector_width(Tc)
     mᵣW = mᵣ * W
 
-    num_n_iter = cld(N, nc)
+    num_n_iter = cld_fast(N, nc)
     nreps_per_iter = div_fast(N, num_n_iter)
     nreps_per_iter += nᵣ - 1
     ncrepetitions = div_fast(nreps_per_iter, nᵣ)
@@ -597,7 +602,7 @@ function jmulh!(
     Niter = num_n_iter - 1
     Nrem = N - Niter * nreps_per_iter
 
-    num_m_iter = cld(M, mc)
+    num_m_iter = cld_fast(M, mc)
     mreps_per_iter = div_fast(M, num_m_iter)
     mreps_per_iter += mᵣW - 1
     mcrepetitions = div_fast(mreps_per_iter, mᵣW)
@@ -605,7 +610,7 @@ function jmulh!(
     Miter = num_m_iter - 1
     Mrem = M - Miter * mreps_per_iter
     
-    num_k_iter = cld(K, kc)
+    num_k_iter = cld_fast(K, kc)
     kreps_per_iter = ((div_fast(K, num_k_iter)) + 3) & -4
     Krem = K - (num_k_iter - 1) * kreps_per_iter
     Kiter = num_k_iter - 1
