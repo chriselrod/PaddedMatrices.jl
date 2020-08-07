@@ -446,19 +446,22 @@ end
 #     end
 # end
 function packarray_B!(dest::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ},T}, src::AbstractStrideArray{Tuple{K,Nᵣ,Nᵢ},T}) where {Nᵣ,K,Nᵢ,T}
-    @avx for k ∈ axes(dest,2), nᵢ ∈ axes(dest,3), nᵣ ∈ axes(dest,1)
+    # @avx
+    for k ∈ axes(dest,2), nᵢ ∈ axes(dest,3), nᵣ ∈ axes(dest,1)
         dest[nᵣ,k,nᵢ] = src[k,nᵣ,nᵢ]
     end
 end
 function packarray_B!(dest::AbstractStrideArray{Tuple{Nᵣ,K,Nᵢ},T}, src::AbstractStrideArray{Tuple{K,Nᵣ,Nᵢ},T}, nrem) where {Nᵣ,K,Nᵢ,T}
     nᵢaxis = 1:(size(src,3) - !iszero(nrem))
     @avx inline=true for nᵢ ∈ nᵢaxis, k ∈ axes(dest,2), nᵣᵢ ∈ axes(dest,1)
+    # for nᵢ ∈ nᵢaxis, k ∈ axes(dest,2), nᵣᵢ ∈ axes(dest,1)
         dest[nᵣᵢ,k,nᵢ] = src[k,nᵣᵢ,nᵢ]
     end
     if !iszero(nrem)
         nᵢ = size(dest,3)
         nᵣₛ = Static{nᵣ}()
         @avx inline=true for k ∈ axes(dest,2), nᵣᵢ ∈ 1:nᵣₛ
+        # for k ∈ axes(dest,2), nᵣᵢ ∈ 1:nᵣₛ
             dest[nᵣᵢ,k,nᵢ] = nᵣᵢ ≤ nrem ? src[k,nᵣᵢ,nᵢ] : zero(T)
         end
         # @inbounds for k ∈ axes(dest,2)

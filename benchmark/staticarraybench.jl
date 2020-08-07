@@ -3,27 +3,38 @@ using PaddedMatrices, StaticArrays, LinearAlgebra, BenchmarkTools
 
 BLAS.set_num_threads(1)
 
-BenchmarkTools.DEFAULT_PARAMETERS.samples = 1_000_000
-BenchmarkTools.DEFAULT_PARAMETERS.seconds = 10
+# BenchmarkTools.DEFAULT_PARAMETERS.samples = 1_000_000
+# BenchmarkTools.DEFAULT_PARAMETERS.seconds = 10
 
-function runbenches(sr)
-    bench_results = Matrix{Float64}(undef, length(sr), 6)
+function runbenches(sr, ::Type{T} = Float64) where {T}
+    bench_results = Matrix{T}(undef, length(sr), 6)
     for (i,s) ∈ enumerate(sr)
-        Astatic = @SMatrix rand(s, s);
-        Bstatic = @SMatrix rand(s, s);
-        bench_results[i,1] = @belapsed $(Ref(Astatic))[] * $(Ref(Bstatic))[]
-        Amutable = MArray(Astatic);
-        Bmutable = MArray(Bstatic);
-        Cmutable = similar(Amutable);
+        if s ≤ 20
+            Astatic = @SMatrix rand(T, s, s);
+            Bstatic = @SMatrix rand(T, s, s);
+            bench_results[i,1] = @belapsed $(Ref(Astatic))[] * $(Ref(Bstatic))[]
+            Amutable = MArray(Astatic);
+            Bmutable = MArray(Bstatic);
+            Cmutable = similar(Amutable);
+        else
+            bench_results[i,1] = Inf
+            Amutable = MMatrix{s,s,T}(undef)
+            Bmutable = MMatrix{s,s,T}(undef)
+            Cmutable = MMatrix{s,s,T}(undef)
+            @inbounds for i ∈ 1:s^2
+                Amutable[i] = rand()
+                Bmutable[i] = rand()
+            end
+        end
         bench_results[i,2] = @belapsed mul!($Cmutable, $Amutable, $Bmutable)
-        Afixed = FixedSizeMatrix{s,s,Float64}(undef) .= Amutable
-        Bfixed = FixedSizeMatrix{s,s,Float64}(undef) .= Bmutable
-        Cfixed = FixedSizeMatrix{s,s,Float64}(undef)
+        Afixed = FixedSizeMatrix{s,s,T}(undef) .= Amutable
+        Bfixed = FixedSizeMatrix{s,s,T}(undef) .= Bmutable
+        Cfixed = FixedSizeMatrix{s,s,T}(undef)
         bench_results[i,3] = @belapsed mul!($Cfixed, $Afixed, $Bfixed)
-        Apadded = FixedSizeMatrix{s,s,Float64}(undef, Val(true)) .= Amutable
-        Bpadded = FixedSizeMatrix{s,s,Float64}(undef, Val(true)) .= Bmutable
-        Cpadded = FixedSizeMatrix{s,s,Float64}(undef, Val(true))
-        Cpaddedptr = FixedSizeMatrix{s,s,Float64}(undef)
+        Apadded = FixedSizeMatrix{s,s,T}(undef, Val(true)) .= Amutable
+        Bpadded = FixedSizeMatrix{s,s,T}(undef, Val(true)) .= Bmutable
+        Cpadded = FixedSizeMatrix{s,s,T}(undef, Val(true))
+        Cpaddedptr = FixedSizeMatrix{s,s,T}(undef)
         bench_results[i,4] = @belapsed mul!($Cpadded, $Apadded, $Bpadded)
         Aptr = PtrArray(Apadded); Bptr = PtrArray(Bpadded); Cptr = PtrArray(Cpaddedptr);
         GC.@preserve Apadded Bpadded Cpadded begin

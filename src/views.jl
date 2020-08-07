@@ -46,6 +46,8 @@ staticrangelength(::Type{VectorizationBase.StaticUnitRange{L,U}}) where {L,U} = 
 #     stride::NTuple{XN,Int}
 # end
 
+_ndims(::Type{CartesianIndex{N}}) where {N} = N::Int
+
 static_type(::Type{StaticUnitRange{L,U}}) where {L,U} = (L,U)
 function generalized_getindex_quote(SV, XV, @nospecialize(inds))
     N = length(SV)
@@ -57,7 +59,8 @@ function generalized_getindex_quote(SV, XV, @nospecialize(inds))
     offset::Int = 0
     offset_expr = Expr[]
     size_expr = Expr(:tuple)
-    for n ∈ 1:N
+    n = 1
+    while n ≤ N
         svn = (SV[n])::Int
         svn == -1 && (sti += 1)
         xvn = (XV[n])::Int
@@ -87,10 +90,25 @@ function generalized_getindex_quote(SV, XV, @nospecialize(inds))
             elseif inds[n] <: Base.OneTo
                 push!(s2, -1)
                 push!(st2.args, Expr(:call, :length, :(@inbounds(inds[$n]))))
+            elseif inds[n] <: CartesianIndex
+                Nd = _ndims(inds[n])
+                if Nd > 0
+                    push!(offset_expr, :($xvn * (inds[$n][1] - 1)))
+                end
+                norig = n
+                for nd ∈ 2:Nd
+                    n += 1
+                    svn = (SV[n])::Int
+                    svn == -1 && (sti += 1)
+                    xvn = (XV[n])::Int
+                    xvn == -1 && (xti += 1)
+                    push!(offset_expr, :($xvn * (inds[$norig][$nd] - 1)))
+                end
             else
                 throw("Indices of type $(inds[n]) not currently supported.")
             end
         end
+        n += 1
     end
     S2 = Tuple{s2...}
     X2 = Tuple{x2...}
@@ -128,13 +146,15 @@ end
 
 function array_inds_quote(S, T, N, X, V, inds, ArrayType, holdsdata, isview)
     q, S2, Nsub, X2, SN, XN, st2, xt2 = generalized_getindex_quote(S.parameters, X.parameters, inds)
-    arraydef = if (!isview) & iszero(Nsub)
+    call = if (!isview) & iszero(Nsub)
         Expr(:(.), :VectorizationBase, QuoteNode(:vload))
+        Expr(:call, Expr(:(.), :VectorizationBase, QuoteNode(:vload)), :_offset)
     else
-        Expr(:curly, ArrayType, S2, T, Nsub, X2, SN, XN, true)
+        arraydef = Expr(:curly, ArrayType, S2, T, Nsub, X2, SN, XN, true)
+        call = Expr(:call, arraydef,  :_offset, st2, xt2 )
+        holdsdata && push!(call.args, :(A.data))
+        call
     end
-    call = Expr(:call, arraydef,  :_offset, st2, xt2 )
-    holdsdata && push!(call.args, :(A.data))
     push!(q.args, :(@inbounds $call))
     q
 end
@@ -142,9 +162,11 @@ end
     array_inds_quote(S, T, N, X, V, inds, :PtrArray, false, false)
 end
 @generated function Base.getindex(A::StrideArray{S,T,N,X}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}
+    # 1+1
     array_inds_quote(S, T, N, X, V, inds, :StrideArray, true, false)
 end
 @generated function Base.getindex(A::FixedSizeArray{S,T,N,X}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}
+    # 1+1
     array_inds_quote(S, T, N, X, V, inds, :FixedSizeArray, true, false)
 end
 @generated function Base.view(A::AbstractPtrStrideArray{S,T,N,X}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}
