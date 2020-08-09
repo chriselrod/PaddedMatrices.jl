@@ -113,3 +113,54 @@ end
 end
 
 
+Base.PermutedDimsArray(A::AbstractStrideArray{<:Any,<:Any,N}, perm::NTuple{N}) where {N} = PermutedDimsArray(A, Static(perm))
+function permuted_dims_array_expr(Sv,N,Xv,perm)
+    S = tointvec(Sv)::Vector{Int}; X = tointvec(Xv)::Vector{Int}
+    Sunknown = cumsum(S .== -1)
+    Xunknown = cumsum(X .== -1)
+    Sp = Expr(:curly, :Tuple)
+    Xp = Expr(:curly, :Tuple)
+    sp = Expr(:tuple)
+    xp = Expr(:tuple)
+    si = xi = 0;
+    for n in 1:N
+        p = perm[n]
+        Sn = S[p]
+        push!(Sp.args, Sn)
+        if Sn == -1
+            push!(sp.args, Expr(:ref, :st, Sunknown[p]))
+        end
+        Xn = X[p]
+        push!(Xp.args, Xn)
+        if Xn == -1
+            push!(xp.args, Expr(:ref, :zt, Xunknown[p]))
+        end
+    end
+    Sp, Xp, sp, xp
+end
+@generated function Base.PermutedDimsArray(A::PtrArray{S,T,N,X}, ::Static{perm}) where {S,T,N,X,perm}
+     Sp, Xp, sp, xp = permuted_dims_array_expr(S, N, X, perm)
+    quote
+        # $(Expr(:meta,:inline))
+        st = A.size; xt = A.stride;
+        PtrArray{$Sp,$T,$N,$Xp}(A.ptr, $sp, $xp)
+    end
+end
+@generated function Base.PermutedDimsArray(A::FixedSizeArray{S,T,N,X}, ::Static{perm}) where {S,T,N,X,perm}
+    Sp, Xp, sp, xp = permuted_dims_array_expr(S, N, X, perm)
+    quote
+        $(Expr(:meta,:inline))
+        st = A.size; xt = A.stride;
+        FixedSizeArray{$Sp,$T,$N,$Xp}(A.ptr, $sp, $xp, A.data)
+    end
+end
+@generated function Base.PermutedDimsArray(A::StrideArray{S,T,N,X}, ::Static{perm}) where {S,T,N,X,perm}
+    Sp, Xp, sp, xp = permuted_dims_array_expr(S, N, X, perm)
+    quote
+        # $(Expr(:meta,:inline))
+        st = A.size; xt = A.stride;
+        StrideArray{$Sp,$T,$N,$Xp}(A.ptr, $sp, $xp, A.data)
+    end
+end
+
+
