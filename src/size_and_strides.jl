@@ -184,7 +184,7 @@ end
             push!(retexpr.args, :(VectorizationBase.StaticUnitRange{1,$sn}()))
         end
     end
-    retexpr
+    Expr(:block, Expr(:meta,:inline), retexpr)
 end
 
 @inline function Base.eachindex(::Base.IndexLinear, ::A) where {A <: AbstractFixedSizeArray}

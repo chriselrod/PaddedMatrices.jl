@@ -20,9 +20,15 @@ end
 end
 
 @inline flatvector(A::StrideArray{S,T,1,Tuple{1},SN,XN}) where {S,T,SN,XN} = A
-@inline function flatvector(A::StrideArray{S,T,N,<:Tuple{1,Vararg},SN,XN,false}) where {S,T,N,SN,XN}
-    StrideArray{Tuple{-1},T,1,Tuple{1},1,0,false}(A.ptr, (stride(A,2)*prod(Base.tail(size(A))),), tuple(), A.data)
+@inline function flatvector(A::StrideArray{S,T,N,X,SN,XN,false}) where {S,T,N,X,SN,XN}
+    # StrideArray{Tuple{-1},T,1,Tuple{1},1,0,false}(A.ptr, (stride(A,N)*prod(Base.tail(size(A))),), tuple(), A.data)
+    StrideArray{Tuple{-1},T,1,Tuple{1},1,0,false}(A.ptr, (length(A),), tuple(), A.data)
 end
+# @generated function flatvector(A::StrideArray{S,T,N,X,SN,XN}) where {S,T,N,SN,XN}
+    
+#     :(StrideArray{Tuple{-1},$T,1,Tuple{1},1,0}(A.ptr, (stride(A,2)*prod(Base.tail(size(A))),), tuple(), A.data))
+# end
+
 
 @inline flatvector(A::AbstractStrideArray{Tuple{-1},T,1,Tuple{1},1,0,false}) where {T} = A
 @inline function flatvector(A::AbstractStrideArray{S,T,N,<:Tuple{1,Vararg},SN,XN,false}) where {S,T,N,SN,XN}
@@ -67,6 +73,9 @@ function generalized_getindex_quote(SV, XV, @nospecialize(inds))
         xvn == -1 && (xti += 1)
         if inds[n] <: Integer
             push!(offset_expr, :($xvn * (inds[$n] - 1)))
+        elseif inds[n] <: Static
+            sind = VectorizationBase.unwrap(inds[n]) - 1
+            push!(offset_expr, :($xvn * $sind))
         else
             push!(x2, xvn)
             if xvn == -1
@@ -166,7 +175,6 @@ end
     array_inds_quote(S, T, N, X, V, inds, :StrideArray, true, false)
 end
 @generated function Base.getindex(A::FixedSizeArray{S,T,N,X}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}
-    # 1+1
     array_inds_quote(S, T, N, X, V, inds, :FixedSizeArray, true, false)
 end
 @generated function Base.view(A::AbstractPtrStrideArray{S,T,N,X}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}

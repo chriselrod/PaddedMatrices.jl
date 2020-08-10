@@ -117,43 +117,49 @@ function add_fs_array!(ls::LoopVectorization.LoopSet, destname::Symbol, bcname::
     ref = Symbol[]
     # aref = LoopVectorization.ArrayReference(bcname, ref)
     vptrbc = LoopVectorization.vptr(bcname)
+    LoopVectorization.add_vptr!(ls, bcname, vptrbc, true, false) #TODO: is this necessary?
     offset = 0
     for (i,n) ∈ enumerate(indexes)
         s = (S.parameters[i])::Int
         stride = X[i]
         # (isone(n) & (stride != 1)) && pushfirst!(ref, LoopVectorization.DISCONTIGUOUS)
         if iszero(stride) || s == 1
-            vptrbc = LoopVectorization.subset_vptr!(
-                ls, vptrbc, i - offset, 1, loopsyms, fill(true, length(indexes))
-            )
             offset += 1
+            bco = bcname
+            bcname = Symbol(:_, bcname)
+            v = Expr(:call, :view, bco)
+            foreach(_ -> push!(v.args, :(:)), 1:i - offset)
+            push!(v.args, Expr(:call, Expr(:curly, :Static, 1)))
+            foreach(_ -> push!(v.args, :(:)), i+1:length(indexes))
+            LoopVectorization.pushpreamble!(ls, Expr(:(=), bcname, v))
+            # vptrbc = LoopVectorization.subset_vptr!(
+            #     ls, vptrbc, i - offset, 1, loopsyms, fill(true, length(indexes))
+            # )
         else
             push!(ref, loopsyms[n])
         end
     end
-    if length(ref) > 0
-        bctemp = Symbol(:_, bcname)
-        mref = LoopVectorization.ArrayReferenceMeta(
-            LoopVectorization.ArrayReference(bctemp, ref), fill(true, length(ref)), vptrbc
-        )
-        sp = sort_indices!(mref, X)
-        if isnothing(sp)
-            LoopVectorization.pushpreamble!(ls, Expr(:(=), bctemp,  bcname))
-            # LoopVectorization.add_vptr!(ls, bcname, vptrbc, true, false)
-        else
-            ssp = Expr(:tuple); append!(ssp.args, sp)
-            ssp = Expr(:call, Expr(:curly, :Static, ssp))
-            LoopVectorization.pushpreamble!(ls, Expr(:(=), bctemp,  Expr(:call, :PermutedDimsArray, bcname, ssp)))
-            # LoopVectorization.add_vptr!(ls, bctemp, vptrbc, true, false)
-            # vptemp = gensym(vptrbc)
-            # LoopVectorization.add_vptr!(ls, bcname, vptemp, true, false)
-            # LoopVectorization.pushpreamble!(Expr(:(=), vptrbc,  Expr(:call, :permutedims, vptemp, ssp)))
-        end
-        LoopVectorization.add_simple_load!(ls, destname, mref, mref.ref.indices, elementbytes)
-    else
-        LoopVectorization.add_vptr!(ls, bcname, vptrbc, true, false) #TODO: is this necessary?
-        add_single_element_array!(ls, destname, bcname, elementbytes)
+    if iszero(length(ref))
+        return add_single_element_array!(ls, destname, bcname, elementbytes)
     end
+    bctemp = Symbol(:_, bcname)
+    mref = LoopVectorization.ArrayReferenceMeta(
+        LoopVectorization.ArrayReference(bctemp, ref), fill(true, length(ref)), vptrbc
+    )
+    sp = sort_indices!(mref, X)
+    if isnothing(sp)
+        LoopVectorization.pushpreamble!(ls, Expr(:(=), bctemp,  bcname))
+        # LoopVectorization.add_vptr!(ls, bcname, vptrbc, true, false)
+    else
+        ssp = Expr(:tuple); append!(ssp.args, sp)
+        ssp = Expr(:call, Expr(:curly, :Static, ssp))
+        LoopVectorization.pushpreamble!(ls, Expr(:(=), bctemp,  Expr(:call, :PermutedDimsArray, bcname, ssp)))
+        # LoopVectorization.add_vptr!(ls, bctemp, vptrbc, true, false)
+        # vptemp = gensym(vptrbc)
+        # LoopVectorization.add_vptr!(ls, bcname, vptemp, true, false)
+        # LoopVectorization.pushpreamble!(Expr(:(=), vptrbc,  Expr(:call, :permutedims, vptemp, ssp)))
+    end
+    LoopVectorization.add_simple_load!(ls, destname, mref, mref.ref.indices, elementbytes)
 end
 
 function add_broadcast_adjoint_array!(
@@ -197,11 +203,7 @@ function sort_indices!(ar, Xv)
     all(n -> ((Xv[n+1]) % UInt) ≥ ((Xv[n]) % UInt), 1:NN-1) && return nothing    
     inds = LoopVectorization.getindices(ar)
     sp = sortperm(reinterpret(UInt,Xv), alg = Base.Sort.DEFAULT_STABLE)
-    lib = similar(li); indsb = similar(inds)
-    for i ∈ eachindex(li, inds)
-        lib[i] = li[i]
-        indsb[i] = inds[i]
-    end
+    lib = copy(li); indsb = copy(inds)
     for i ∈ eachindex(li, inds)
         li[i] = lib[sp[i]]
         inds[i] = indsb[sp[i]]
@@ -285,7 +287,7 @@ end
     # end
     LoopVectorization.add_broadcast!(ls, :destination, :bc, loopsyms, BC, elementbytes)
     if isnothing(sp)
-        pushpreamble!(ls, Expr(:(=), :_dest, :dest))
+        LoopVectorization.pushpreamble!(ls, Expr(:(=), :_dest, :dest))
     else
         ssp = Expr(:tuple); append!(ssp.args, sp)
         ssp = Expr(:call, Expr(:curly, :Static, ssp))
@@ -318,7 +320,7 @@ end
 #     # need to construct the LoopSet
 #     loopsyms = [gensym(:n) for n ∈ 1:N]
 #     ls = LoopVectorization.LoopSet(:PaddedMatrices)
-#     pushpreamble!(ls, Expr(:(=), :dest, Expr(:call, :parent, :dest′)))
+#     LoopVectorization.pushpreamble!(ls, Expr(:(=), :dest, Expr(:call, :parent, :dest′)))
 #     for (n,itersym) ∈ enumerate(loopsyms)
 #         LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 1, (S.parameters[n])::Int))
 #     end

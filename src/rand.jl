@@ -1,21 +1,23 @@
 using VectorizedRNG: local_rng, AbstractVRNG
 
-Random.rand!(A::AbstractStrideArray) = (rand!(local_rng(), flatvector(A)); A)
-Random.rand!(A::AbstractStrideArray{S,T}, l::T, u::T) where {S,T} = (rand!(local_rng(), flatvector(A), l, u); A)
+Random.rand!(A::AbstractStrideArray) = (rand!(local_rng(), A); A)
+Random.rand!(A::AbstractStrideArray{S,T}, l::T, u::T) where {S,T} = (rand!(local_rng(), A, l, u); A)
 # Specific to avoid ambiguities
-Random.randn!(A::AbstractStrideArray) = (randn!(local_rng(), flatvector(A)); A)
+Random.randn!(A::AbstractStrideArray) = (randn!(local_rng(), A); A)
 function Random.randn!(
     A::AbstractStrideArray{S,T,N,X},
-    B::Union{T,<:AbstractStrideArray{S,T,N,X}}
+    B::T
+    # B::Union{T,<:AbstractStrideArray{S,T,N,X}}
 ) where {S,T,N,X,L}
-    randn!(local_rng(), flatvector(A), flatvector(B)); A
+    randn!(local_rng(), A, B); A
 end
 function Random.randn!(
     A::AbstractStrideArray{S,T,N,X,L},
-    B::Union{T,<:AbstractStrideArray{S,T,N,X,L}},
-    C::Union{T,<:AbstractStrideArray{S,T,N,X,L}}
+    B::T, C::T
+    # B::Union{T,<:AbstractStrideArray{S,T,N,X,L}},
+    # C::Union{T,<:AbstractStrideArray{S,T,N,X,L}}
 ) where {S,T,N,X,L}
-    randn!(local_rng(), flatvector(A), flatvector(B), flatvector(C)); A
+    randn!(local_rng(), A, B, C); A
 end
 
 # @generated function Random.randn(rng::VectorizedRNG.AbstractPCG{P}, ::Type{<:ConstantFixedSizeArray{S,T}}) where {P,S,T<:Union{Float32,Float64}}
@@ -54,20 +56,20 @@ end
 end
 
 
-Random.randexp!(A::AbstractStrideArray) = randexp!(local_rng(), flatvector(A))
-function Random.randexp!(
-    A::AbstractStrideArray{S,T,N,X,L},
-    B::Union{T,<:AbstractStrideArray{S,T,N,X,L}},
-    C::Union{T,<:AbstractStrideArray{S,T,N,X,L}}
-) where {P,S,T<:Union{Float32,Float64},N,X,L}
-    randexp!(local_rng(), flatvector(A), flatvector(B), flatvector(C)); A
-end
-function Random.randexp!(
-    A::AbstractStrideArray{S,T,N,X,L},
-    B::Union{T,<:AbstractStrideArray{S,T,N,X,L}}
-) where {P,S,T<:Union{Float32,Float64},N,X,L}
-    randexp!(local_rng(), flatvector(A), flatvector(B)); A
-end
+# Random.randexp!(A::AbstractStrideArray) = randexp!(local_rng(), A)
+# function Random.randexp!(
+#     A::AbstractStrideArray{S,T,N,X,L},
+#     B::Union{T,<:AbstractStrideArray{S,T,N,X,L}},
+#     C::Union{T,<:AbstractStrideArray{S,T,N,X,L}}
+# ) where {P,S,T<:Union{Float32,Float64},N,X,L}
+#     randexp!(local_rng(), A, B, C); A
+# end
+# function Random.randexp!(
+#     A::AbstractStrideArray{S,T,N,X,L},
+#     B::Union{T,<:AbstractStrideArray{S,T,N,X,L}}
+# ) where {P,S,T<:Union{Float32,Float64},N,X,L}
+#     randexp!(local_rng(), A, B); A
+# end
 
 function Random.rand(::Type{<: FixedSizeArray{S,T}}) where {S,T}
     rand!(FixedSizeArray{S,T}(undef))
@@ -75,21 +77,21 @@ end
 function Random.randn(::Type{<: FixedSizeArray{S,T}}) where {S,T}
     randn!(FixedSizeArray{S,T}(undef))
 end
-function Random.randexp(::Type{<: FixedSizeArray{S,T}}) where {S,T}
-    randexp!(FixedSizeArray{S,T}(undef))
-end
+# function Random.randexp(::Type{<: FixedSizeArray{S,T}}) where {S,T}
+#     randexp!(FixedSizeArray{S,T}(undef))
+# end
 function Random.rand(rng, ::Type{<: FixedSizeArray{S,T}}) where {S,T}
     A = FixedSizeArray{S,T}(undef)
-    rand!(rng, flatvector(A)); A
+    rand!(rng, A); A
 end
 function Random.randn(rng, ::Type{<: FixedSizeArray{S,T}}) where {S,T}
     A = FixedSizeArray{S,T}(undef)
-    randn!(rng, flatvector(A)); A
+    randn!(rng, A); A
 end
-function Random.randexp(rng, ::Type{<: FixedSizeArray{S,T}}) where {S,T}
-    A = FixedSizeArray{S,T}(undef)
-    randexp!(rng, flatvector(A)); A
-end
+# function Random.randexp(rng, ::Type{<: FixedSizeArray{S,T}}) where {S,T}
+#     A = FixedSizeArray{S,T}(undef)
+#     randexp!(rng, A); A
+# end
 
 function Random.rand(::Type{<: FixedSizeArray{S,T}}, l::T, u::T) where {S,T}
     rand!(FixedSizeArray{S,T}(undef), l, u)
@@ -97,35 +99,35 @@ end
 function Random.randn(::Type{<: FixedSizeArray{S,T}}, μ::T, σ::T) where {S,T}
     randn!(FixedSizeArray{S,T}(undef), μ, σ)
 end
-function Random.randexp(::Type{<: FixedSizeArray{S,T}}, β::T, l::T) where {S,T}
-    randexp!(FixedSizeArray{S,T}(undef), β, l)
-end
+# function Random.randexp(::Type{<: FixedSizeArray{S,T}}, β::T, l::T) where {S,T}
+#     randexp!(FixedSizeArray{S,T}(undef), β, l)
+# end
 function Random.rand(rng, ::Type{<: FixedSizeArray{S,T}}, l::T, u::T) where {S,T}
     A = FixedSizeArray{S,T}(undef)
-    rand!(rng, flatvector(A), l, u); A
+    rand!(rng, A, l, u); A
 end
 function Random.randn(rng, ::Type{<: FixedSizeArray{S,T}}, μ::T, σ::T) where {S,T}
     A = FixedSizeArray{S,T}(undef)
-    randn!(rng, flatvector(A), μ, σ); A
+    randn!(rng, A, μ, σ); A
 end
-function Random.randexp(rng, ::Type{<: FixedSizeArray{S,T}}, β::T, l::T) where {S,T}
-    A = FixedSizeArray{S,T}(undef)
-    randexp!(rng, flatvector(A), β, l); A
-end
+# function Random.randexp(rng, ::Type{<: FixedSizeArray{S,T}}, β::T, l::T) where {S,T}
+#     A = FixedSizeArray{S,T}(undef)
+#     randexp!(rng, A, β, l); A
+# end
 function Random.randn(::Type{<: FixedSizeArray{S,T}}, σ::T) where {S,T}
     randn!(FixedSizeArray{S,T}(undef), σ)
 end
-function Random.randexp(::Type{<: FixedSizeArray{S,T}}, β::T) where {S,T}
-    randexp!(FixedSizeArray{S,T}(undef), β)
-end
+# function Random.randexp(::Type{<: FixedSizeArray{S,T}}, β::T) where {S,T}
+#     randexp!(FixedSizeArray{S,T}(undef), β)
+# end
 function Random.randn(rng, ::Type{<: FixedSizeArray{S,T}}, σ::T) where {S,T}
     A = FixedSizeArray{S,T}(undef)
-    randn!(rng, flatvector(A), σ); A
+    randn!(rng, A, σ); A
 end
-function Random.randexp(rng, ::Type{<: FixedSizeArray{S,T}}, β::T) where {S,T}
-    A = FixedSizeArray{S,T}(undef)
-    randexp!(rng, flatvector(A), β); A
-end
+# function Random.randexp(rng, ::Type{<: FixedSizeArray{S,T}}, β::T) where {S,T}
+#     A = FixedSizeArray{S,T}(undef)
+#     randexp!(rng, A, β); A
+# end
 
 
 compatible(::Type{T}, x::T) where {T} = x
