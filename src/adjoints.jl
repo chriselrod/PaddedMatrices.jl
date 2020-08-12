@@ -94,6 +94,7 @@ end
 
 
 Base.PermutedDimsArray(A::AbstractStrideArray{<:Any,<:Any,N}, perm::NTuple{N}) where {N} = PermutedDimsArray(A, Static(perm))
+Base.PermutedDimsArray(A::AbstractArray, ::Static{perm}) where {perm} = PermutedDimsArray(A, perm)
 function permuted_dims_array_expr(Sv,N,Xv,perm)
     S = tointvec(Sv)::Vector{Int}; X = tointvec(Xv)::Vector{Int}
     Sunknown = cumsum(S .== -1)

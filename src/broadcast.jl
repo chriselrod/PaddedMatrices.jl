@@ -201,12 +201,13 @@ end
 function sort_indices!(ar, Xv)
     li = ar.loopedindex; NN = length(li)
     all(n -> ((Xv[n+1]) % UInt) ≥ ((Xv[n]) % UInt), 1:NN-1) && return nothing    
-    inds = LoopVectorization.getindices(ar)
+    inds = LoopVectorization.getindices(ar); offsets = ar.ref.offsets;
     sp = sortperm(reinterpret(UInt,Xv), alg = Base.Sort.DEFAULT_STABLE)
-    lib = copy(li); indsb = copy(inds)
+    lib = copy(li); indsb = copy(inds); offsetsb = copy(offsets);
     for i ∈ eachindex(li, inds)
         li[i] = lib[sp[i]]
         inds[i] = indsb[sp[i]]
+        offsets[i] = offsetsb[sp[i]]
     end
     isone(Xv[sp[1]]) || pushfirst!(inds, LoopVectorization.DISCONTIGUOUS)
     sp
