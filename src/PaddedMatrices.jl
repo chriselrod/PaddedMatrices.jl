@@ -23,7 +23,7 @@ export @FixedSize, # @Constant,
     FixedSizeArray, FixedSizeVector, FixedSizeMatrix,
     PtrArray, PtrVector, PtrMatrix,
     # ConstantArray, ConstantVector, ConstantMatrix,
-    LazyMap, mul!, *ˡ, Static
+    LazyMap, mul!, *ˡ, Static, allocarray
 
 
 include("type_declarations.jl")

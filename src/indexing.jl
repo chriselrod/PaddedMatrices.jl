@@ -29,7 +29,7 @@ for AT ∈ [:AbstractStrideArray, :AbstractPtrStrideArray, :StrideArray, :FixedS
             A::$AT{S,T,1}, i::NTuple{2,<:Integer}
         ) where {S,T}
             @boundscheck begin
-                first(i) > length(A) && ThrowBoundsError(A, i)
+                checkbounds(A, first(i))
             end
             $loadexprv
         end
@@ -38,17 +38,17 @@ for AT ∈ [:AbstractStrideArray, :AbstractPtrStrideArray, :StrideArray, :FixedS
             A::$AT{S,T,N}, i::NTuple{N,<:Integer}
         ) where {S,T,N}
             @boundscheck begin
-                any(i .> size(A)) && ThrowBoundsError(A, i)
+                checkbounds(A, i...)
             end
             $loadexprt
         end
         Base.@propagate_inbounds Base.getindex(A::$AT, i::Vararg{<:Integer}) = getindex(A, i)
         @inline function Base.getindex(A::$AT{S,T}, i::Integer) where {S,T}
-            @boundscheck i > length(A) && ThrowBoundsError(A, i)
+            @boundscheck checkbounds(A, i)
             $loadexprs
         end
         @inline function Base.getindex(A::$AT{S,T,1}, i::Integer) where {S,T}
-            @boundscheck i > length(A) && ThrowBoundsError(A, i)
+            @boundscheck checkbounds(A, i)
             $loadexprs
         end
 
@@ -60,7 +60,7 @@ Base.@propagate_inbounds Base.getindex(A::AbstractStrideArray, i::CartesianIndex
     A::AbstractStrideArray{S,T,N}, v, i::NTuple{N,<:Integer}
 ) where {S,T,N}
     @boundscheck begin
-        any(i .> size(A)) && ThrowBoundsError(A, i)
+        checkbounds(A, i...)
     end
     GC.@preserve A vnoaliasstore!(stridedpointer(A), v, staticm1(i))
 end
@@ -69,7 +69,7 @@ end
     A::AbstractPtrStrideArray{S,T,N}, v, i::NTuple{N,<:Integer}
 ) where {S,T,N}
     @boundscheck begin
-        any(i .> size(A)) && ThrowBoundsError(A, i)
+        checkbounds(A, i...)
     end
     vnoaliasstore!(stridedpointer(A), v, staticm1(i))
 end
@@ -82,12 +82,12 @@ Base.@propagate_inbounds function Base.setindex!(
 end
 
 @inline function Base.setindex!(A::AbstractStrideArray{S,T}, v, i::Integer) where {S,T}
-    @boundscheck i > length(A) && ThrowBoundsError(A, i)
+    @boundscheck checkbounds(A, i)
     GC.@preserve A vnoaliasstore!(pointer(A), v, vmul(sizeof(T), vsub(i, 1)))
 end
 
 @inline function Base.setindex!(A::AbstractPtrStrideArray{S,T}, v, i::Integer) where {S,T}
-    @boundscheck i > length(A) && ThrowBoundsError(A, i)
+    @boundscheck checkbounds(A, i)
     vnoaliasstore!(pointer(A), v, vmul(sizeof(T), vsub(i, 1)))
 end
 

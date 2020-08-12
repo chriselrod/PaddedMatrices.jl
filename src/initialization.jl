@@ -511,4 +511,6 @@ function Base.similar(A::AbstractStrideArray{S}, ::Type{T}) where {S,T}
 end
 
 
+allocarray(::Type{T}, s::NTuple{N,Int}) where {T,N} = Array{T}(undef, s)
+allocarray(::Type{T}, s::Tuple) where {T} = StrideArray{T}(undef, s)
 

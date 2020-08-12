@@ -157,7 +157,7 @@ function add_fs_array!(ls::LoopVectorization.LoopSet, destname::Symbol, bcname::
         # LoopVectorization.add_vptr!(ls, bctemp, vptrbc, true, false)
         # vptemp = gensym(vptrbc)
         # LoopVectorization.add_vptr!(ls, bcname, vptemp, true, false)
-        # LoopVectorization.pushpreamble!(Expr(:(=), vptrbc,  Expr(:call, :permutedims, vptemp, ssp)))
+        # LoopVectorization.pushpreamble!(Expr(:(=), vptrbc,  Expr(:call, :PermutedDimsArray, vptemp, ssp)))
     end
     LoopVectorization.add_simple_load!(ls, destname, mref, mref.ref.indices, elementbytes)
 end
@@ -190,13 +190,13 @@ function LoopVectorization.add_broadcast!(
     # @show @__LINE__, A
     add_broadcast_adjoint_array!( ls, destname, bcname, loopsyms, A, N:-1:1, sizeof(T) )
 end
-# function LoopVectorization.add_broadcast!(
-#     ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol,
-#     loopsyms::Vector{Symbol}, ::Type{PermutedDimsArray{T,N,I1,I2,A}}, elementbytes::Int = 8
-# ) where {T, S, N, I1, I2, A <: AbstractStrideArray{S, T, N}}
-#     @show @__LINE__, A
-#     add_broadcast_adjoint_array!( ls, destname, bcname, loopsyms, A, I2, sizeof(T) )
-# end
+function LoopVectorization.add_broadcast!(
+    ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol,
+    loopsyms::Vector{Symbol}, ::Type{PermutedDimsArray{T,N,I1,I2,A}}, elementbytes::Int = 8
+) where {T, S, N, I1, I2, A <: AbstractStrideArray{S, T, N}}
+    @show @__LINE__, A
+    add_broadcast_adjoint_array!( ls, destname, bcname, loopsyms, A, I2, sizeof(T) )
+end
 
 function sort_indices!(ar, Xv)
     li = ar.loopedindex; NN = length(li)
@@ -259,7 +259,7 @@ end
 # function Base.Broadcast.materialize!(
     dest::A, bc::BC
 ) where {S, T <: Union{Float32,Float64}, N, X, A <: AbstractStrideArray{S,T,N,X}, BC <: Union{Base.Broadcast.Broadcasted,StrideArrayProduct}}
-    # 1+1
+    1+1
     # we have an N dimensional loop.
     # need to construct the LoopSet
     loopsyms = [gensym(:n) for n ∈ 1:N]

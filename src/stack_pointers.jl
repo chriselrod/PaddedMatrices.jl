@@ -46,6 +46,12 @@ end
     A = PtrArray(pointer(sp), az)
     sp + align(memory_length(A)), A
 end
+@inline function PtrArray{T}(sp::StackPointer, sz::Vararg{<:Any,N}) where {T,N}
+    A = PtrArray(pointer(sp, T), az)
+    sp + align(memory_length(A)), A
+end
+@inline StackPointers.stack_pointer_call(::typeof(allocarray), sp::StackPointer, ::Type{T}, s) where {T} = PtrArray{T}(sp, s)
+
 
 @generated function PtrVector{P,T}(a::StackPointer) where {P,T}
     L = calc_padding(P, T)
