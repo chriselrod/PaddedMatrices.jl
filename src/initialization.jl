@@ -7,6 +7,22 @@ function calc_padding(nrow::Int, T)
     W > nrow ? VectorizationBase.nextpow2(nrow) : VectorizationBase.align(nrow, T)
 end
 
+axis_expressions(x::Core.SimpleVector, s) = axis_expressions(x.parameters, s)
+static_expr(x) = Expr(:call, Expr(:curly, :Static, x))
+function axis_expressions(x, s)
+    out = Vector{Expr}(undef, length(x))
+    n = 0
+    for i ∈ eachindex(x)
+        xᵢ = (x[i])::Int
+        out[i] = xᵢ == -1 ? Expr(:ref, s, n += 1) : static_expr(xᵢ)
+    end
+    out
+end
+
+@inline new_view(A::PtrArray{S,T,N,X,SN,XN,V}, sn, xn) where {S,T,N,X,SN,XN,V} = PtrArray(A.ptr, sn, xn, Val{V}())
+@inline new_view(A::StrideArray, sn, xn) = StrideArray(new_view(A.ptr, sn, xn), A.data)
+@inline new_view(A::FixedSizeArray, sn, xn) = FixedSizeArray(new_view(A.ptr, sn, xn), A.data)
+
 @generated function StrideArray{S,T}(::UndefInitializer, ::Val{pad} = Val{false}()) where {S,T,pad}
     sv = tointvec(S)
     N = length(sv)
@@ -222,6 +238,30 @@ function toctuple(s)
     S = Expr(:curly, :Tuple)
     append!(S.args, sv)
     S, sv
+end
+@inline PtrArray(ptr::Ptr{T}, s::Tuple{Vararg{<:Any,N}}, x::Tuple{Vararg{<:Any,N}}) where {T,N} = PtrArray(ptr, s, x, Val{false}())
+function totupleexpr(x)
+    ex = Expr(:tuple); append!(ex.args, x); ex
+end
+function sizedefs(s, sym)
+    cT = Expr(:curly, :Tuple)
+    t = Expr(:tuple)
+    sp = s.parameters
+    for i ∈ eachindex(sp)
+        if sp[i] <: Static
+            push!(cT.args, sp[i].parameters[1])
+        else
+            push!(cT.args, -1)
+            push!(t.args, Expr(:ref, sym, i))
+        end
+    end
+    cT, t
+end
+@generated function PtrArray(ptr::Ptr{T}, s::Tuple{Vararg{<:Any,N}}, x::Tuple{Vararg{<:Any,N}}, ::Val{V}) where {T,N,V}
+    S, sv = sizedefs(s, :s)
+    X, xv = sizedefs(x, :x)
+    SN = length(sv.args); XN = length(xv.args)
+    Expr(:block, Expr(:meta, :inline), :(PtrArray{$S,$T,$N,$X,$SN,$XN,$V}(ptr, $sv, $xv)))
 end
 @generated function PtrArray(ptr::Ptr{T}, s::Tuple{Vararg{<:Any,N}}, ::Val{pad}) where {T,N, pad}
     S, sv = toctuple(s)
@@ -509,7 +549,21 @@ end
 function Base.similar(A::AbstractStrideArray{S}, ::Type{T}) where {S,T}
     StrideArray{S,T}(undef, size(A))
 end
-
+@generated function similarlypermuted(A::AbstractStrideArray{S,Told,N,X}, ::Type{T} = Told) where {S,Told,T,N,X}
+    sp = sortperm(reinterpret(UInt,tointvec(X)), alg = Base.Sort.DEFAULT_STABLE)
+    Si = tointvec(S)
+    Sv = axis_expressions(Si, :(size_tuple(A)))
+    Svp = Sv[sp]
+    perm = Vector{Int}(undef, N)
+    for n in 1:N
+        perm[sp[n]] = n
+    end
+    arrtyp = any(isequal(-1), Si) ? :StrideArray : :FixedSizeArray
+    quote
+        $(Expr(:meta,:inline))
+        PermutedDimsArray($arrtyp{$T}(undef, $(totupleexpr(Svp))), Static{$(totupleexpr(perm))}())
+    end
+end
 
 allocarray(::Type{T}, s::NTuple{N,Int}) where {T,N} = Array{T}(undef, s)
 allocarray(::Type{T}, s::Tuple) where {T} = StrideArray{T}(undef, s)

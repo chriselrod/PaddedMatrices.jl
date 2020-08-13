@@ -138,8 +138,10 @@ function generalized_getindex_quote(SV, XV, @nospecialize(inds))
         $(Expr(:meta,:inline))
         _offset = $ex
     end
-    SN > 0 && push!(q.args, Expr(:(=), :Asize, Expr(:(.), :A, QuoteNode(:size))))
-    XN > 0 && push!(q.args, Expr(:(=), :Astride, Expr(:(.), :A, QuoteNode(:stride))))
+    # SN > 0 && push!(q.args, Expr(:(=), :Asize, Expr(:(.), :A, QuoteNode(:size))))
+    # XN > 0 && push!(q.args, Expr(:(=), :Astride, Expr(:(.), :A, QuoteNode(:stride))))
+    SN > 0 && push!(q.args, Expr(:(=), :Asize, Expr(:call, :size_tuple, :A)))
+    XN > 0 && push!(q.args, Expr(:(=), :Astride, Expr(:call, :stride_tuple, :A)))
     # arraydef = if length(s2) == 0
     #     scalarview ? :(VectorizationBase.Pointer) : :(VectorizationBase.load)
     # else
@@ -159,9 +161,11 @@ function array_inds_quote(S, T, N, X, V, inds, ArrayType, holdsdata, isview)
         Expr(:(.), :VectorizationBase, QuoteNode(:vload))
         Expr(:call, Expr(:(.), :VectorizationBase, QuoteNode(:vload)), :_offset)
     else
-        arraydef = Expr(:curly, ArrayType, S2, T, Nsub, X2, SN, XN, true)
+        arraydef = Expr(:curly, :PtrArray, S2, T, Nsub, X2, SN, XN, true)
         call = Expr(:call, arraydef,  :_offset, st2, xt2 )
-        holdsdata && push!(call.args, :(A.data))
+        if holdsdata
+            call = Expr(:call, ArrayType, call, :(A.data))
+        end
         call
     end
     push!(q.args, :(@inbounds $call))
@@ -187,4 +191,49 @@ end
     array_inds_quote(S, T, N, X, V, inds, :FixedSizeArray, true, true)
 end
 
+
+function mixed_const_expr_prod(x, s)
+    c = true
+    e = Union{Symbol,Expr}[]
+    n = 0
+    for xᵢ ∈ x
+        if xᵢ != -1
+            c *= xᵢ
+        else
+            push!(e, Expr(:ref, s, (n += 1)))
+        end
+    end
+    if iszero(length(e))
+        c
+    else
+        p = Expr(:call, :*, c)
+        append!(p.args, e)
+        p
+    end
+end
+"""
+flatten(A)
+
+Follows the definition from Flux, where it flattens all but the last dimension to output a matrix.
+"""
+@generated function flatten(A::AbstractStrideArray{S,T,N,X,SN,0}) where {S,T,N,X,SN}
+    Sv = tointvec(S)
+    Xv = tointvec(X)
+    leadingx = @view(Xv[1:end-1])
+    lastx = last(Xv)
+    flattened_is_column_major = all(x -> x < lastx, leadingx)
+    flattened_is_row_major = !flattened_is_column_major && all(x -> x > lastx, leadingx)
+    @assert flattened_is_column_major | flattened_is_row_major "Flattening into non row/column major layouts is not yet supported."
+    leading_size = mixed_const_expr_prod(@view(Sv[1:end-1]), :(size_tuple(A)))
+    ls = leading_size isa Integer ? static_expr(leading_size) : leading_size
+    last_sv = last(Sv) == -1 ? :(size(A,$N)) : static_expr(last(Sv))
+    newst = Expr(:tuple, ls, last_sv)
+    newxt = Expr(:tuple, static_expr(minimum(leadingx)), static_expr(lastx))
+    quote
+        $(Expr(:meta, :inline))
+        new_view(A, $newst, $newxt)
+    end
+end
+flatten(a::AbstractStrideVector) = a
+flatten(A::AbstractStrideMatrix) = A
 

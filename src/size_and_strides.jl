@@ -18,14 +18,14 @@ LoopVectorization.maybestaticsize(::AbstractStrideArray{<:Tuple{M,Vararg}}, ::Va
 LoopVectorization.maybestaticsize(::AbstractStrideArray{<:Tuple{M,N,Vararg}}, ::Val{2}) where {M,N} = Static{N}()
 LoopVectorization.maybestaticsize(::AbstractStrideArray{<:Tuple{M,N,K,Vararg}}, ::Val{3}) where {M,N,K} = Static{K}()
 LoopVectorization.maybestaticsize(::AbstractStrideArray{<:Tuple{M,N,K,L,Vararg}}, ::Val{4}) where {M,N,K,L} = Static{L}()
-LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{-1,Vararg}}, ::Val{1}) = @inbounds A.size[1]
-LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{M,-1,Vararg}}, ::Val{2}) where {M} = @inbounds A.size[1]
-LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{-1,-1,Vararg}}, ::Val{2}) = @inbounds A.size[2]
+LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{-1,Vararg}}, ::Val{1}) = @inbounds size_tuple(A)[1]
+LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{M,-1,Vararg}}, ::Val{2}) where {M} = @inbounds size_tuple(A)[1]
+LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{-1,-1,Vararg}}, ::Val{2}) = @inbounds size_tuple(A)[2]
 LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{M,N,-1,Vararg}}, ::Val{3}) where {M,N} = size(A,3)
 LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{M,N,K,-1,Vararg}}, ::Val{4}) where {M,N,K} = size(A,4)
-LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{-1,N,Vararg}}, ::Val{1:2}) where {N} = (A.size[1],Static{N}())
-LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{M,-1,Vararg}}, ::Val{1:2}) where {M} = (Static{M}(),A.size[1])
-LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{-1,-1,Vararg}}, ::Val{1:2}) = (A.size[1], A.size[2])
+LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{-1,N,Vararg}}, ::Val{1:2}) where {N} = (size_tuple(A)[1],Static{N}())
+LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{M,-1,Vararg}}, ::Val{1:2}) where {M} = (Static{M}(),size_tuple(A)[1])
+LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{-1,-1,Vararg}}, ::Val{1:2}) = (size_tuple(A)[1], size_tuple(A)[2])
 LoopVectorization.maybestaticsize(A::AbstractStrideArray{<:Tuple{M,N,Vararg}}, ::Val{1:2}) where {M,N} = (Static{M}(),Static{N}())
 LoopVectorization.maybestaticsize(A::AbstractStrideArray{Tuple{M}}, ::Val{1:2}) where {M} = (Static{M}(),Static{1}())
 @generated function LoopVectorization.maybestaticsize(A::AbstractStrideArray{S}, ::Val{I}) where {S,I}
@@ -40,7 +40,9 @@ end
 tup_sv_quote(T) = tup_sv_quote(T.parameters)
 
 function makeref(s, i)
-    ref = Expr(:ref, Expr(:(.), :A, QuoteNode(s === :bytestride ? :stride : s)), i)
+    # ref = Expr(:ref, Expr(:(.), :A, QuoteNode(s === :bytestride ? :stride : s)), i)
+    f = s === :size ? :size_tuple : :stride_tuple
+    ref = Expr(:ref, Expr(:call, f, :A), i)
     if s === :stride
         ref = Expr(:call, :>>>, ref, Expr(:call, :(VectorizationBase.intlog2), Expr(:call, :sizeof, :T)))
     end
@@ -93,10 +95,10 @@ end
 @inline LinearAlgebra.stride1(A::AbstractStrideArray{S,T,N,<:Tuple{-1,Vararg}}) where {S,T,N} = @inbounds A.stride[1]
 
 LinearAlgebra.checksquare(::AbstractStrideMatrix{M,M}) where {M} = M
-LinearAlgebra.checksquare(A::AbstractStrideMatrix{M,-1}) where {M} = ((@assert M == @inbounds A.size[1]); M)
-LinearAlgebra.checksquare(A::AbstractStrideMatrix{-1,M}) where {M} = ((@assert M == @inbounds A.size[1]); M)
+LinearAlgebra.checksquare(A::AbstractStrideMatrix{M,-1}) where {M} = ((@assert M == @inbounds size_tuple(A)[1]); M)
+LinearAlgebra.checksquare(A::AbstractStrideMatrix{-1,M}) where {M} = ((@assert M == @inbounds size_tuple(A)[1]); M)
 function LinearAlgebra.checksquare(A::AbstractStrideMatrix{-1,-1})
-    M, N = @inbounds A.size[1], A.size[2]
+    M, N = @inbounds size_tuple(A)[1], size_tuple(A)[2]
     @assert M == N
     M
 end
@@ -178,7 +180,7 @@ end
     for n in 1:length(SV)
         sn = (SV[n])::Int
         if sn == -1
-            push!(retexpr.args, :(Base.OneTo(A.size[$ioff])))
+            push!(retexpr.args, :(Base.OneTo(size_tuple(A)[$ioff])))
             ioff += 1
         else
             push!(retexpr.args, :(VectorizationBase.StaticUnitRange{1,$sn}()))

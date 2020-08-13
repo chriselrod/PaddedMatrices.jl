@@ -7,9 +7,6 @@ using VectorizationBase: MappedStridedPointer
 # @inline Base.:+(i::Integer, m::MappedStridedPointer{F,T}) where {F,T} = MappedStridedPointer{F,T}(m.f, gep(m.ptr, i))
 # @inline Base.:-(m::MappedStridedPointer{F,T}, i::Integer) where {F,T} = MappedStridedPointer{F,T}(m.f, gep(m.ptr, -i))
 
-@inline function LazyMap(f::F, A::AbstractStrideArray{S,T,N,X,SN,XN,V}) where {F,S,T,N,X,SN,XN,V}
-    LazyMap{F,S,T,N,X}(f, pointer(A))
-end
     
 @inline function Base.getindex(A::LazyMap{F,S,T,1,Tuple{1}}, i::Int) where {F,S,T,N,X}
     @boundscheck i <= length(A) || ThrowBoundsError("Index $i > full length $L.")
