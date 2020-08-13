@@ -293,7 +293,7 @@ end
 end
 
 @inline function PtrArray(A::AbstractStrideArray{S,T,N,X,SN,XN,V}) where {S,T,N,X,SN,XN,V}
-    PtrArray{S,T,N,X,SN,XN,V}(pointer(A), A.size, A.stride)
+    PtrArray{S,T,N,X,SN,XN,V}(pointer(A), size_tuple(A), stride_tuple(A))
 end
 @inline function PtrArray(A::AbstractFixedSizeArray{S,T,N,X,V}) where {S,T,N,X,V}
     PtrArray{S,T,N,X,0,0,V}(pointer(A), tuple(), tuple())
