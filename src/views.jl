@@ -35,10 +35,10 @@ end
     PtrArray{Tuple{-1},T,1,Tuple{1},1,0}(pointer(A), (stride(A,2)*prod(Base.tail(size(A))),), tuple())
 end
 
-@inline flatvector(A::ConstantArray{S,T,1,Tuple{1}}) where {S,T} = A
-@inline function flatvector(A::ConstantArray{S,T,N,X,L}) where {S,T,N,X,L}
-    ConstantArray{Tuple{L},T,1,Tuple{1},L}(A.data)
-end
+# @inline flatvector(A::ConstantArray{S,T,1,Tuple{1}}) where {S,T} = A
+# @inline function flatvector(A::ConstantArray{S,T,N,X,L}) where {S,T,N,X,L}
+#     ConstantArray{Tuple{L},T,1,Tuple{1},L}(A.data)
+# end
 
 @inline flatvector(a::Number) = a
 

@@ -28,53 +28,53 @@ end
 #        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
     end
 end
-@generated function PtrArray{S,T,N,X,L}(sp::StackPointer) where {S,T,N,X,L}
-    quote
-        $(Expr(:meta,:inline))
-        sp + $(align(sizeof(T)*L)), PtrArray{$S,$T,$N,$X,$L,false}(pointer(sp, $T))
-#        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
-    end
-end
-@generated function PtrArray{S,T,N,X,L,V}(sp::StackPointer) where {S,T,N,X,L,V}
-    quote
-        $(Expr(:meta,:inline))
-        sp + $(align(sizeof(T)*L)), PtrArray{$S,$T,$N,$X,$L,$V}(pointer(sp, $T))
-#        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
-    end
-end
-@inline function PtrArray(sp::StackPointer, sz::Vararg{<:Any,N}) where {N}
-    A = PtrArray(pointer(sp), az)
+# @generated function PtrArray{S,T,N,X,L}(sp::StackPointer) where {S,T,N,X,L}
+#     quote
+#         $(Expr(:meta,:inline))
+#         sp + $(align(sizeof(T)*L)), PtrArray{$S,$T,$N,$X,$L,false}(pointer(sp, $T))
+# #        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
+#     end
+# end
+# @generated function PtrArray{S,T,N,X,L,V}(sp::StackPointer) where {S,T,N,X,L,V}
+#     quote
+#         $(Expr(:meta,:inline))
+#         sp + $(align(sizeof(T)*L)), PtrArray{$S,$T,$N,$X,$L,$V}(pointer(sp, $T))
+# #        PtrArray{$S,$T,$N,$R,$L,$P}(ptr)
+#     end
+# end
+@inline function PtrArray(sp::StackPointer, sz::Tuple)
+    A = PtrArray(pointer(sp, Float64), sz)
     sp + align(memory_length(A)), A
 end
-@inline function PtrArray{T}(sp::StackPointer, sz::Vararg{<:Any,N}) where {T,N}
-    A = PtrArray(pointer(sp, T), az)
+@inline function PtrArray{T}(sp::StackPointer, sz::Tuple) where {T}
+    A = PtrArray(pointer(sp, T), sz)
     sp + align(memory_length(A)), A
 end
-@inline StackPointers.stack_pointer_call(::typeof(allocarray), sp::StackPointer, ::Type{T}, s) where {T} = PtrArray{T}(sp, s)
+@inline (sp::StackPointer)(::typeof(allocarray), ::Type{T}, s) where {T} = PtrArray{T}(sp, s)
 
 
-@generated function PtrVector{P,T}(a::StackPointer) where {P,T}
-    L = calc_padding(P, T)
-    quote
-        $(Expr(:meta,:inline))
-        a + $(align(L*sizeof(T))), PtrArray{Tuple{$P},$T,1,Tuple{1},$L,false}(pointer(a,$T))
-    end
-end
-@generated function PtrMatrix{M,N,T}(a::StackPointer) where {M,N,T}
-    L = calc_padding(M, T)
-    quote
-        $(Expr(:meta,:inline))
-        a + $(align(L*N*sizeof(T))), PtrArray{Tuple{$M,$N},$T,2,Tuple{1,$L},$(L*N),false}(pointer(a,$T))
-    end
-end
-@inline Base.similar(sp::StackPointer, ::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L} = PtrArray{S,T,N,X,L,false}(sp)
-@inline function StackPointers.stack_pointer_call(::typeof(similar), sp::StackPointer, ::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,X,L}}) where {S,T,N,X,L}
-    sp, A = PtrArray{S,T,N,X,L,false}(sp)
+# @generated function PtrVector{P,T}(a::StackPointer) where {P,T}
+#     L = calc_padding(P, T)
+#     quote
+#         $(Expr(:meta,:inline))
+#         a + $(align(L*sizeof(T))), PtrArray{Tuple{$P},$T,1,Tuple{1},$L,false}(pointer(a,$T))
+#     end
+# end
+# @generated function PtrMatrix{M,N,T}(a::StackPointer) where {M,N,T}
+#     L = calc_padding(M, T)
+#     quote
+#         $(Expr(:meta,:inline))
+#         a + $(align(L*N*sizeof(T))), PtrArray{Tuple{$M,$N},$T,2,Tuple{1,$L},$(L*N),false}(pointer(a,$T))
+#     end
+# end
+@inline Base.similar(sp::StackPointer, ::AbstractFixedSizeArray{S,T,N,X}) where {S,T,N,X} = PtrArray{S,T,N,X,false}(sp)
+@inline function (sp::StackPointer)(::typeof(similar), ::LinearAlgebra.Adjoint{T,<:AbstractFixedSizeArray{S,T,N,X,L}}) where {S,T,N,X,L}
+    sp, A = PtrArray{S,T,N,X}(sp)
     sp, A'
 end
 
-@inline function StackPointers.stack_pointer_call(::typeof(copy), sp::StackPointer, A::AbstractFixedSizeArray{S,T,N,X,L}) where {S,T,N,X,L}
-    sp, B = PtrArray{S,T,N,X,L,false}(sp)
+@inline function (sp::StackPointer)(::typeof(copy), A::AbstractFixedSizeArray{S,T,N,X}) where {S,T,N,X}
+    sp, B = PtrArray{S,T,N,X}(sp)
     sp, copyto!(B, A)
 end
 
@@ -85,12 +85,14 @@ SIMDPirates.vfnmadd!(C::AbstractArray, A, B) = mul!(C, A, B, Val{-1}(), Val{1}()
 SIMDPirates.vfmadd!(C::ZeroInitializedArray, A, B) = mul!(C.data, A, B, Val{1}(), Val{0}())
 SIMDPirates.vfnmadd!(C::ZeroInitializedArray, A, B) = mul!(C.data, A, B, Val{-1}(), Val{0}())
 
-@inline function StackPointers.stack_pointer_call(::typeof(*), sp::StackPointer, A::AbstractMatrix, B::AbstractMatrix)
-    sp, C = PtrArray(sp, maybestaticsize(A, Val{1}()), maybestaticsize(B, Val{2}()))
+@inline function (sp::StackPointer)(::typeof(*), A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}) where {Ta, Tb}
+    T = promote_type(Ta, Tb)
+    sp, C = PtrArray{T}(sp, maybestaticsize(A, Val{1}()), maybestaticsize(B, Val{2}()))
     sp, mul!(C, A, B)
 end
-@inline function StackPointers.stack_pointer_call(::typeof(vnmul), sp::StackPointer, A::AbstractMatrix, B::AbstractMatrix)
-    sp, C = PtrArray(sp, maybestaticsize(A, Val{1}()), maybestaticsize(B, Val{2}()))
+@inline function (sp::StackPointer)(::typeof(vnmul), A::AbstractMatrix, B::AbstractMatrix)
+    T = promote_type(Ta, Tb)
+    sp, C = PtrArray{T}(sp, (maybestaticsize(A, Val{1}()), maybestaticsize(B, Val{2}())))
     sp, mul!(C, A, B, Val{-1}())
 end
 

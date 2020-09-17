@@ -94,15 +94,26 @@ end
 @inline LinearAlgebra.stride1(::AbstractStrideArray{S,T,N,<:Tuple{X,Vararg}}) where {S,T,N,X} = X
 @inline LinearAlgebra.stride1(A::AbstractStrideArray{S,T,N,<:Tuple{-1,Vararg}}) where {S,T,N} = @inbounds A.stride[1]
 
-LinearAlgebra.checksquare(::AbstractStrideMatrix{M,M}) where {M} = M
-LinearAlgebra.checksquare(A::AbstractStrideMatrix{M,-1}) where {M} = ((@assert M == @inbounds size_tuple(A)[1]); M)
-LinearAlgebra.checksquare(A::AbstractStrideMatrix{-1,M}) where {M} = ((@assert M == @inbounds size_tuple(A)[1]); M)
-function LinearAlgebra.checksquare(A::AbstractStrideMatrix{-1,-1})
-    M, N = @inbounds size_tuple(A)[1], size_tuple(A)[2]
-    @assert M == N
-    M
+
+function LinearAlgebra.checksquare(::AbstractStrideArray{S,T,2,X,C,B,O,D,0}) where {S,T,X,C,B,O,D}
+    M, N = S
+    @assert M == N "$M != $N"
+    nothing
 end
-LinearAlgebra.checksquare(::AbstractStrideMatrix{M,N}) where {M,N} = DimensionMismatch("Matrix is not square: dimensions are ($M,$N).")
+
+function LinearAlgebra.checksquare(A::AbstractStrideMatrix{S}) where {S}
+    M, N = S
+    sz = size_tuple(A)
+    i = 0
+    if M == -1
+        M = sz[(i += 1)]
+    end
+    if N == -1
+        N = sz[(i += 1)]
+    end
+    @assert M == N "$M != $N"
+    nothing
+end
 
 # FIXME: Need to clean up this mess
 
@@ -110,61 +121,35 @@ LinearAlgebra.checksquare(::AbstractStrideMatrix{M,N}) where {M,N} = DimensionMi
 @inline is_sized(::Type{<:NTuple}) = true
 @inline is_sized(::Number) = true
 @inline is_sized(::Type{<:Number}) = true
-@inline type_length(::NTuple{N}) where {N} = N
-@inline type_length(::Type{<:NTuple{N}}) where {N} = N
-@inline param_type_length(::NTuple{N}) where {N} = N
-@inline param_type_length(::Type{<:NTuple{N}}) where {N} = N
 @inline type_length(::Number) = 1
 @inline type_length(::Type{<:Number}) = 1
-@inline type_length(x::AbstractArray) = length(x)
 @inline param_type_length(::Number) = 1
 @inline param_type_length(::Type{<:Number}) = 1
+@inline type_length(::NTuple{N,T}) where {N,T} = N * type_length(T)
+@inline type_length(::Type{<:NTuple{N,T}}) where {N,T} = N * type_length(T)
+@inline param_type_length(::NTuple{N,T}) where {N,T} = N * type_length(T)
+@inline param_type_length(::Type{<:NTuple{N,T}}) where {N,T} = N * type_length(T)
+@inline type_length(x::AbstractArray) = length(x)
 
-@generated function type_length(nt::NT) where {NT <: NamedTuple}
-    P = first(NT.parameters)
-    q = quote s = 0 end
-    for p ∈ P
-        push!(q.args, :(s += type_length(nt.$p)))
-    end
-    q
-end
+@inline type_length(t::Tuple) = type_length(first(t)) + type_length(Base.tail(t))
+@inline type_length(t::Tuple{T}) where {T} = type_length(first(t))
+@inline type_length(nt::NamedTuple) = type_length(first(nt)) + type_length(Base.tail(nt))
+@inline type_length(nt::NamedTuple{<:Any,<:Tuple{Vararg{Any,1}}}) = type_length(first(nt))
 
 
 @inline is_sized(::AbstractFixedSizeArray) = true
 @inline is_sized(::Type{<:AbstractFixedSizeArray}) = true
 @generated is_sized(::AbstractStrideArray{S,T,N,X}) where {S,T,N,X} = !(anyneg1(S.parameters) || anyneg1(X.parameters))
 @generated is_sized(::Type{<:AbstractStrideArray{S,T,N,X}}) where {S,T,N,X} = !(anyneg1(S.parameters) || anyneg1(X.parameters))
-function simple_vec_prod(sv::Core.SimpleVector)
-    p = 1
-    for n ∈ 1:length(sv)
-        p *= (sv[n])::Int
-    end
-    p
-end
-anyneg1(sv::Core.SimpleVector) = any(s -> s == -1, tointvec(sv))
-tointvec(sv) = tointvec(sv.parameters)
-function tointvec(sv::Core.SimpleVector)
-    v = Vector{Int}(undef, length(sv))
-    for i ∈ eachindex(v)
-        v[i] = sv[i]
-    end
-    v
-end
-
-# @generated type_length(::AbstractFixedSizeArray{S}) where {S} = simple_vec_prod(S.parameters)
-# @generated type_length(::Type{<:AbstractFixedSizeArray{S}}) where {S} = simple_vec_prod(S.parameters)
-# @generated param_type_length(::AbstractFixedSizeArray{S}) where {S} = simple_vec_prod(S.parameters)
-# @generated param_type_length(::Type{<:AbstractFixedSizeArray{S}}) where {S} = simple_vec_prod(S.parameters)
 
 @generated function memory_length(::Type{<:AbstractFixedSizeArray{S,T,N,X}}) where {S,T,N,X}
-    Xvec = Int[X.parameters...]
-    Xmax, i = findmax(Xvec)
-    (Xmax * S.parameters[i])::Int
+    Xmax, i = findmax(X)
+    Xmax * S[i]
 end
 @inline memory_length(::A) where {A <: AbstractStrideArray} = memory_length(A)
 @generated memory_length_val(::Type{A}) where {A} = Val{memory_length(A)}()
-@generated function number_elements(::Type{<:AbstractFixedSizeArray{S,T,N,X}}) where {S,T,N,X}
-    simple_vec_prod(S.parameters)
+function number_elements(::Type{<:AbstractFixedSizeArray{S,T,N,X}}) where {S,T,N,X}
+    prod(S)
 end
 # @inline number_elements(::A) where {A <: AbstractStrideArray} = number_elements(A)
 @inline number_elements(::AbstractStrideArray) = length(A)

@@ -1,18 +1,23 @@
 @noinline ThrowBoundsError(A, i) = (println("A of length $(length(A))."); throw(BoundsError(A, i)))
-                                
-Base.IndexStyle(::Type{<:AbstractStrideArray}) = IndexCartesian()
-Base.IndexStyle(::Type{<:AbstractStrideVector{<:Any,<:Any,1}}) = IndexLinear()
-@generated function Base.IndexStyle(::Type{<:AbstractStrideArray{S,T,N,X}}) where {S,T,N,X}
-    x = 1
-    for n ∈ 1:N
-        Xₙ = (X.parameters[n])::Int
-        x == Xₙ || return IndexCartesian()
-        Sₙ = (S.parameters[n])::Int
-        Sₙ == -1 && return IndexCartesian()
-        x *= Sₙ
-    end
-    IndexLinear()
+
+function isoneto(x::NTuple{N,Int}) where {N}
+    y = ntuple(identity, Val{N}())
+    x === y
 end
+
+Base.IndexStyle(::Type{<:AbstractStrideArray{S,T,N,X,C,B,O,D}}) where {S,T,N,X,C,B,O,D} = (all(isequal(dense), D) && isoneto(O)) ? IndexLinear() : IndexCartesian()
+Base.IndexStyle(::Type{<:AbstractStrideVector{<:Any,<:Any,1}}) = IndexLinear()
+# @generated function Base.IndexStyle(::Type{<:AbstractStrideArray{S,T,N,X}}) where {S,T,N,X}
+#     x = 1
+#     for n ∈ 1:N
+#         Xₙ = (X.parameters[n])::Int
+#         x == Xₙ || return IndexCartesian()
+#         Sₙ = (S.parameters[n])::Int
+#         Sₙ == -1 && return IndexCartesian()
+#         x *= Sₙ
+#     end
+#     IndexLinear()
+# end
 
 # Avoid method ambiguities
 for AT ∈ [:AbstractStrideArray, :AbstractPtrStrideArray, :StrideArray, :FixedSizeArray]

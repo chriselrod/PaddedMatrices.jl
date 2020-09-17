@@ -5,7 +5,7 @@
 # end
 # if given a pointer, alloc_adjoint defaults to a view-PtrArray
 @inline alloc_adjoint(ptr::Ptr{T}, A::AbstractFixedSizeArray{S,T,N,X}) where {S,T,N,X} = PtrArray{S,T,N,X,true}(ptr)
-@inline stack_pointer_call(::typeof(alloc_adjoint), sptr::StackPointer, A::AbstractFixedSizeArray{S,T,N,X}) where {S,T,N,X} = PtrArray{S,T,N,X,false}(sptr)
+@inline (sp::StackPointer)(::typeof(alloc_adjoint), A::AbstractFixedSizeArray{S,T,N,X}) where {S,T,N,X} = PtrArray{S,T,N,X,false}(sp)
 
 struct UninitializedArray{S,T,N,X,V} <: AbstractMutableFixedSizeArray{S,T,N,X,V}
     ptr::Ptr{T}
