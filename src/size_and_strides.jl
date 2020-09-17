@@ -1,7 +1,6 @@
 
 function sv_pos_product(SV::Core.SimpleVector)
     L = 1
-    SV = S.parameters
     for i in eachindex(SV)
         sv = (SV[i])::Int
         sv > 0 || return -1

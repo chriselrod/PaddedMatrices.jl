@@ -125,7 +125,7 @@ end
     sv = tointvecdt(s.parameters)
     N = length(sv)
     S = Tuple{sv...}
-    any(s -> s == -1, sv) || return Expr(:block, Expr(:meta,:inline), :(StrideArray{$S,$T}(::UndefInitializer)))
+    any(s -> s == -1, sv) || return Expr(:block, Expr(:meta,:inline), :(StrideArray{$S,$T}(undef)))
     q, st, xt, xv, L = partially_sized(sv, pad, T)
     SN = length(st.args); XN = length(xt.args)
     push!(q.args, :(parent = Vector{$T}(undef, $L)))
@@ -134,6 +134,28 @@ end
 end
 @inline StrideArray{T}(::UndefInitializer, s::Tuple) where {T} = StrideArray{T}(undef, s, Val{false}())
 @inline StrideMatrix{T}(::UndefInitializer, s::Tuple{Vararg{<:Any,2}}) where {T} = StrideArray{T}(undef, s, Val{false}())
+
+@generated function StrideArray(parent::Vector{T}, s::Tuple, ::Val{pad}) where {T,pad}
+    sv = tointvecdt(s.parameters)
+    N = length(sv)
+    S = Expr(:curly, :Tuple); foreach(s -> push!(S.args,s), sv)
+    if !any(s -> s == -1, sv)
+        X = Expr(:curly, :Tuple, 1)
+        x = 1
+        for s in @view(sv[1:end-1])
+            push!(X.args, (x *= s))
+        end
+        Expr(:block, Expr(:meta,:inline), :(StrideArray{$S,$T,$N,$X,0,0,false}(align(pointer(parent)), (), (), parent)))
+    end
+    q, st, xt, xv, L = partially_sized(sv, pad, T)
+    SN = length(st.args); XN = length(xt.args)
+    # push!(q.args, :(parent = Vector{$T}(undef, $L)))
+    push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false}(align(pointer(parent)), $st, $xt, parent)))
+    q    
+end
+@inline StrideArray(data::Vector{T}, s::Tuple) where {T} = StrideArray(data, s, Val{false}())
+@inline StrideMatrix(data::Vector{T}, s::Tuple{Vararg{<:Any,2}}) where {T} = StrideArray(data, s, Val{false}())
+
 
 function calc_NPL(SV::Core.SimpleVector, pad::Bool, T)
     nrow = (SV[1])::Int
