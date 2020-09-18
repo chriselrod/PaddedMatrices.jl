@@ -346,3 +346,8 @@ LoopVectorization.vmaterialize!(dest, bc::Base.Broadcast.Broadcasted{<:AbstractS
 LoopVectorization.vmaterialize(bc::StrideArrayProduct) = Base.Broadcast.materialize(bc)
 LoopVectorization.vmaterialize!(dest, bc::StrideArrayProduct) = Base.Broadcast.materialize!(dest, bc)
 
+Base.:(+)(A::AbstractStrideArray, B::AbstractStrideArray) = A .+ B
+Base.:(-)(A::AbstractStrideArray, B::AbstractStrideArray) = A .- B
+
+Base.unaliascopy(A::AbstractStrideArray) = A
+

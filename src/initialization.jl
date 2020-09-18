@@ -97,7 +97,7 @@ end
     q, st, xt, xv, L = partially_sized(sv, pad, T)
     SN = length(st.args); XN = length(xt.args)
     # W = VectorizationBase.pick_vector_width(T)
-    push!(q.args, :(parent = Vector{$T}(undef, $L)))
+    push!(q.args, :(parent = Vector{$T}(undef, $L + $(pick_vector_width(T) - 1))))
     push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false}(align(pointer(parent)), $st, $xt, parent)))
     q
 end
@@ -128,7 +128,7 @@ end
     any(s -> s == -1, sv) || return Expr(:block, Expr(:meta,:inline), :(StrideArray{$S,$T}(undef)))
     q, st, xt, xv, L = partially_sized(sv, pad, T)
     SN = length(st.args); XN = length(xt.args)
-    push!(q.args, :(parent = Vector{$T}(undef, $L)))
+    push!(q.args, :(parent = Vector{$T}(undef, $L + $(VectorizationBase.pick_vector_width(T) - 1))))
     push!(q.args, :(StrideArray{$S,$T,$N,$(ctuple(xv)),$SN,$XN,false}(align(pointer(parent)), $st, $xt, parent)))
     q    
 end
@@ -145,7 +145,8 @@ end
         for s in @view(sv[1:end-1])
             push!(X.args, (x *= s))
         end
-        Expr(:block, Expr(:meta,:inline), :(StrideArray{$S,$T,$N,$X,0,0,false}(align(pointer(parent)), (), (), parent)))
+        # Expr(:block, Expr(:meta,:inline), :(StrideArray{$S,$T,$N,$X,0,0,false}(align(pointer(parent)), (), (), parent)))
+        Expr(:block, Expr(:meta,:inline), :(out = StrideArray{$S,$T,$N,$X,0,0,false}(align(pointer(parent)), (), (), parent)), :(@assert length(out) ≥ length(parent)), :out)
     end
     q, st, xt, xv, L = partially_sized(sv, pad, T)
     SN = length(st.args); XN = length(xt.args)
