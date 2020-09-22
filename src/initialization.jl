@@ -49,12 +49,17 @@ function partially_sized(sv, pad::Bool, ::Type{T}) where {T}
     N = length(sv)
     L = 1
     Lpos = 1
+    lastsize_known::Bool = false
     q = Expr(:block, Expr(:meta,:inline))
     for n ∈ 1:N
         xv[n] = L
         if L == -1
             xn = Symbol(:stride_,n)
-            calcstride = Expr(:call, :vmul, Expr(:ref,:s,n-1), Symbol(:stride_, n-1))
+            calcstride = if lastsize_known
+                Expr(:call, :vmul, sv[n-1], Symbol(:stride_, n-1))
+            else
+                Expr(:call, :vmul, Symbol(:size_,n-1), Symbol(:stride_, n-1))
+            end
             if pad & (n == 2)
                 calcstride = Expr(:call, :calc_padding, calcstride, T)
             end
@@ -63,13 +68,8 @@ function partially_sized(sv, pad::Bool, ::Type{T}) where {T}
             push!(xt.args, xn)
         end
         svₙ = sv[n]
-        if svₙ == -1
-            if L > 0
-                push!(q.args, Expr(:(=), Symbol(:stride_, n), L))
-            end
-            L = -1
-            push!(st.args, Expr(:ref, :s, n))
-        else
+        lastsize_known = svₙ != -1
+        if lastsize_known
             if pad & (n == 1)
                 svₙ = calc_padding(svₙ, T)
             end
@@ -77,6 +77,14 @@ function partially_sized(sv, pad::Bool, ::Type{T}) where {T}
             if L != -1
                 L *= svₙ
             end
+        else
+            if L > 0
+                push!(q.args, Expr(:(=), Symbol(:stride_, n), L))
+            end
+            L = -1
+            sizesym = Symbol(:size_, n)
+            push!(q.args, Expr(:(=), sizesym, Expr(:ref, :s, n)))
+            push!(st.args, sizesym)
         end
     end
     Lexpr = if L == -1
@@ -123,8 +131,8 @@ function tointvecdt(ssv)
 end
 @generated function StrideArray{T}(::UndefInitializer, s::Tuple, ::Val{pad}) where {T,pad}
     sv = tointvecdt(s.parameters)
-    N = length(sv)
     S = Tuple{sv...}
+    N = length(sv)
     any(s -> s == -1, sv) || return Expr(:block, Expr(:meta,:inline), :(StrideArray{$S,$T}(undef)))
     q, st, xt, xv, L = partially_sized(sv, pad, T)
     SN = length(st.args); XN = length(xt.args)

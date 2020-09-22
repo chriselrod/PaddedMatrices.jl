@@ -303,6 +303,7 @@ end
     #     end
     #     ref
     # end
+    ls.isbroadcast[] = true;
     resize!(ls.loop_order, LoopVectorization.num_loops(ls)) # num_loops may be greater than N, eg Product
     # ls.vector_width[] = VectorizationBase.pick_vector_width(T)
     # return ls
