@@ -1,28 +1,28 @@
 
 abstract type AbstractStrideStyle{S,N} <: Base.Broadcast.AbstractArrayStyle{N} end
-struct LinearStyle{S,N,X} <: AbstractStrideStyle{S,N} end
+struct LinearStyle{S,N,R} <: AbstractStrideStyle{S,N} end
 struct CartesianStyle{S,N} <: AbstractStrideStyle{S,N} end
-Base.BroadcastStyle(::Type{A}) where {S,T,N,X,SN,XN,A<:AbstractStrideArray{S,T,N,X,SN,XN,false}} = LinearStyle{S,N,X}()
-Base.BroadcastStyle(::Type{A}) where {S,T,N,X,SN,XN,A<:AbstractStrideArray{S,T,N,X,SN,XN,true}} = CartesianStyle{S,N}()
-function reverse_simplevec(S, N = length(S))
-    Srev = Expr(:curly, :Tuple)
-    for n ∈ 1:N
-        push!(Srev.args, S.parameters[N + 1 - n])
-    end
-    if N == 1
-        N += 1
-        insert!(Srev.args, 2, 1)
-    end
-    Srev, N
-end
-@generated function Base.BroadcastStyle(::Type{Adjoint{T,A}}) where {S,T,N,A<:AbstractStrideArray{S,T,N}}
-    Srev, Nrev = reverse_simplevec(S, N)
-    Expr(:call, Expr(:curly, :CartesianStyle, Srev, Nrev))
-end
-@generated function Base.BroadcastStyle(::Type{Transpose{T,A}}) where {S,T,N,A<:AbstractStrideArray{S,T,N}}
-    Srev, Nrev = reverse_simplevec(S, N)
-    Expr(:call, Expr(:curly, :CartesianStyle, Srev, Nrev))
-end
+Base.BroadcastStyle(::Type{A}) where {S,D,T,N,C,B,R,A<:AbstractStrideArray{S,D,T,N,C,B,R}} = all(D) ? LinearStyle{S,N,R}() : CartesianStyle{S,N}()
+# Base.BroadcastStyle(::Type{A}) where {S,T,N,X,SN,XN,A<:AbstractStrideArray{S,T,N,X,SN,XN,true}} = CartesianStyle{S,N}()
+# function reverse_simplevec(S, N = length(S))
+#     Srev = Expr(:curly, :Tuple)
+#     for n ∈ 1:N
+#         push!(Srev.args, S.parameters[N + 1 - n])
+#     end
+#     if N == 1
+#         N += 1
+#         insert!(Srev.args, 2, 1)
+#     end
+#     Srev, N
+# # end
+# @generated function Base.BroadcastStyle(::Type{Adjoint{T,A}}) where {S,T,N,A<:AbstractStrideArray{S,T,N}}
+#     Srev, Nrev = reverse_simplevec(S, N)
+#     Expr(:call, Expr(:curly, :CartesianStyle, Srev, Nrev))
+# end
+# @generated function Base.BroadcastStyle(::Type{Transpose{T,A}}) where {S,T,N,A<:AbstractStrideArray{S,T,N}}
+#     Srev, Nrev = reverse_simplevec(S, N)
+#     Expr(:call, Expr(:curly, :CartesianStyle, Srev, Nrev))
+# end
 
 const StrideArrayProduct = Union{
     LoopVectorization.Product{<:AbstractStrideArray},
@@ -34,36 +34,43 @@ const StrideArrayProduct = Union{
     # LoopVectorization.Product{<:Any,Transpose{<:Any,<:AbstractFixedSizeArray}}
 }
 
-Base.BroadcastStyle(::Type{P}) where {M,K,A<:AbstractStrideMatrix{M,K},B<:AbstractStrideVector{K},P<:LoopVectorization.Product{A,B}} = CartesianStyle{Tuple{M},1}()
-# Base.BroadcastStyle(::Type{P}) where {K,N,T,A<:AbstractStrideVector{K,T},B<:AbstractStrideMatrix{K,N},P<:LoopVectorization.Product{Adjoint{T,A},B}} = CartesianStyle{Tuple{1,N},2}()
-# Base.BroadcastStyle(::Type{P}) where {K,N,T,A<:AbstractStrideVector{K,T},B<:AbstractStrideMatrix{K,N},P<:LoopVectorization.Product{Transpose{T,A},B}} = CartesianStyle{Tuple{1,N},2}()
 
-Base.BroadcastStyle(::Type{P}) where {M,K,N,A<:AbstractStrideMatrix{M,K},B<:AbstractStrideMatrix{K,N},P<:LoopVectorization.Product{A,B}} = CartesianStyle{Tuple{M,N},2}()
-
-# Base.BroadcastStyle(::Type{P}) where {M,K,N,TA,A<:AbstractStrideMatrix{K,M,TA},B<:AbstractStrideMatrix{K,N},P<:LoopVectorization.Product{Adjoint{TA,A},B}} = CartesianStyle{Tuple{M,N},2}()
-# Base.BroadcastStyle(::Type{P}) where {M,K,N,TA,A<:AbstractStrideMatrix{K,M,TA},B<:AbstractStrideMatrix{K,N},P<:LoopVectorization.Product{Transpose{TA,A},B}} = CartesianStyle{Tuple{M,N},2}()
-
-# Base.BroadcastStyle(::Type{P}) where {M,K,N,A<:AbstractStrideMatrix{M,K},TB,B<:AbstractStrideMatrix{N,K,TB},P<:LoopVectorization.Product{A,Adjoint{TB,B}}} = CartesianStyle{Tuple{M,N},2}()
-# Base.BroadcastStyle(::Type{P}) where {M,K,N,A<:AbstractStrideMatrix{M,K},TB,B<:AbstractStrideMatrix{N,K,TB},P<:LoopVectorization.Product{A,Transpose{TB,B}}} = CartesianStyle{Tuple{M,N},2}()
-
-# Base.BroadcastStyle(::Type{P}) where {M,K,N,TA,A<:AbstractStrideMatrix{K,M,TA},TB,B<:AbstractStrideMatrix{N,K,TB},P<:LoopVectorization.Product{Adjoint{TA,A},Adjoint{TB,B}}} = CartesianStyle{Tuple{M,N},2}()
-# Base.BroadcastStyle(::Type{P}) where {M,K,N,TA,A<:AbstractStrideMatrix{K,M,TA},TB,B<:AbstractStrideMatrix{N,K,TB},P<:LoopVectorization.Product{Adjoint{TA,A},Transpose{TB,B}}} = CartesianStyle{Tuple{M,N},2}()
-# Base.BroadcastStyle(::Type{P}) where {M,K,N,TA,A<:AbstractStrideMatrix{K,M,TA},TB,B<:AbstractStrideMatrix{N,K,TB},P<:LoopVectorization.Product{Transpose{TA,A},Adjoint{TB,B}}} = CartesianStyle{Tuple{M,N},2}()
-# Base.BroadcastStyle(::Type{P}) where {M,K,N,TA,A<:AbstractStrideMatrix{K,M,TA},TB,B<:AbstractStrideMatrix{N,K,TB},P<:LoopVectorization.Product{Transpose{TA,A},Transpose{TB,B}}} = CartesianStyle{Tuple{M,N},2}()
+@generated function Base.BroadcastStyle(::Type{P}) where {SA,A<:AbstractStrideArray{SA}, SB, B<:AbstractStrideArray{SB}, P<:LoopVectorization.Product{A,B}}
+    t = Expr(:curly, :Tuple)
+    M = _extract(SA.parameters[1])
+    if M === nothing
+        push!(t.args, :Int)
+    else
+        push!(t.args, Expr(:curly, :StaticInt, M))
+    end
+    if isone(length(SB.parameters))
+        return :(CartesianStyle{$t,1}())
+    else
+        N = _extract(SB.parameters[2])
+        if N === nothing
+            push!(t.args, :Int)
+        else
+            push!(t.args, Expr(:curly, :StaticInt, N))
+        end
+    end
+    :(CartesianStyle{$t,2}())
+end
 
 @generated Base.BroadcastStyle(a::CartesianStyle{S,N1}, b::Base.Broadcast.DefaultArrayStyle{N2}) where {S,N1,N2} = N2 > N1 ? Base.Broadcast.Unknown() : :a
 @generated Base.BroadcastStyle(a::LinearStyle{S,N1}, b::Base.Broadcast.DefaultArrayStyle{N2}) where {S,N1,N2} = N2 > N1 ? Base.Broadcast.Unknown() : CartesianStyle{S,N1}()
 Base.BroadcastStyle(a::CartesianStyle{S,N}, b::AbstractStrideStyle{S,N}) where {S,N} = a
-Base.BroadcastStyle(a::LinearStyle{S,N,X}, b::LinearStyle{S,N,X}) where {S,N,X} = a
-Base.BroadcastStyle(a::LinearStyle{S,N}, b::LinearStyle{S,N}) where {S,N} = CartesianStyle{S,N}()
+Base.BroadcastStyle(a::LinearStyle{S,N,R}, b::LinearStyle{S,N,R}) where {S,N,R} = a # ranks match
+Base.BroadcastStyle(a::LinearStyle{S,N}, b::LinearStyle{S,N}) where {S,N} = CartesianStyle{S,N}() # ranks don't match
 @generated function Base.BroadcastStyle(a::AbstractStrideStyle{S1,N1}, b::AbstractStrideStyle{S2,N2}) where {S1,S2,N1,N2}
-    S = Expr(:curly, :Tuple)
 #    @show N2, N1
-    N2 > N1 && return Base.Broadcast.Unknown()
+    N2 > N1 && return :(Base.Broadcast.Unknown())
+    S = Expr(:curly, :Tuple)
     # foundfirstdiff = false
     for n ∈ 1:N2#min(N1,N2)
-        s1 = (S1.parameters[n])::Int
-        s2 = (S2.parameters[n])::Int
+        _s1 = _extract(S1.parameters[n])
+        _s2 = _extract(S2.parameters[n])
+        s1 = (_s1 === nothing ? -1 : _s1)::Int
+        s2 = (_s2 === nothing ? -1 : _s2)::Int
         if s1 == s2
             push!(S.args, s1)
         elseif s2 == 1
@@ -97,45 +104,70 @@ end
 # function Base.similar(
     # ::Base.Broadcast.Broadcasted{FS}, ::Type{T}
 # ) where {S,T<:Union{VectorizationBase.FloatingTypes,PaddedMatrices.VectorizationBase.IntTypes,PaddedMatrices.VectorizationBase.UIntTypes},N,FS<:AbstractStrideStyle{S,N}}
+@generated function to_tuple(::Type{S}, s) where {N,S<:Tuple{Vararg{Any,N}}}
+    t = Expr(:tuple)
+    Sp = S.parameters
+    for i in 1:length(Sp)
+        l = _extract(Sp[i])
+        if l === nothing
+            push!(t.args, Expr(:ref, :s, i))
+        else
+            push!(t.args, static_expr(l))
+        end
+    end
+    t
+end
 function Base.similar(
     bc::Base.Broadcast.Broadcasted{FS}, ::Type{T}
 ) where {S,T,N,FS<:AbstractStrideStyle{S,N}}
-    if isfixed(S)
-        FixedSizeArray{S,T}(undef)
-    else
-        StrideArray{S,T}(undef, size(bc))
-    end
+    StrideArray{T}(undef, to_tuple(S,size(bc)))
 end
-Base.similar(sp::StackPointer, ::Base.Broadcast.Broadcasted{FS}, ::Type{T}) where {S,T,FS<:AbstractStrideStyle{S,T},N} = PtrArray{S,T}(sp)
+@generated function to_tuple(::Type{S}) where {N,S<:Tuple{Vararg{StaticInt,N}}}
+    t = Expr(:tuple)
+    Sp = S.parameters
+    for i in 1:N
+        push!(t.args, static_expr(_extract(Sp[i])))
+    end
+    t
+end
+function Base.similar(
+    bc::Base.Broadcast.Broadcasted{FS}, ::Type{T}
+) where {S<:Tuple{Vararg{StaticInt}},T,N,FS<:AbstractStrideStyle{S,N}}
+    StrideArray{T}(undef, to_tuple(S))
+end
+# Base.similar(sp::StackPointer, ::Base.Broadcast.Broadcasted{FS}, ::Type{T}) where {S,T,FS<:AbstractStrideStyle{S,T},N} = PtrArray{S,T}(sp)
 
 
 function add_single_element_array!(ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol, elementbytes)
     LoopVectorization.pushpreamble!(ls, Expr(:(=), Symbol("##", destname), Expr(:call, :first, bcname)))
     LoopVectorization.add_constant!(ls, destname, elementbytes)
 end
-function add_fs_array!(ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol, loopsyms::Vector{Symbol}, indexes, S, X::Vector{Int}, elementbytes)
+function add_fs_array!(ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol, loopsyms::Vector{Symbol}, indexes, S, R, C, elementbytes)
     ref = Symbol[]
     # aref = LoopVectorization.ArrayReference(bcname, ref)
     vptrbc = LoopVectorization.vptr(bcname)
     LoopVectorization.add_vptr!(ls, bcname, vptrbc, true, false) #TODO: is this necessary?
     offset = 0
+    Rnew = Int[]
     for (i,n) ∈ enumerate(indexes)
-        s = (S.parameters[i])::Int
-        stride = X[i]
+        _s = _extract(S.parameters[i])
+        s = (_s === nothing ? -1 : _s)::Int
+        # r = R[i]
         # (isone(n) & (stride != 1)) && pushfirst!(ref, LoopVectorization.DISCONTIGUOUS)
-        if iszero(stride) || s == 1
+        if s == 1
             offset += 1
             bco = bcname
             bcname = Symbol(:_, bcname)
             v = Expr(:call, :view, bco)
             foreach(_ -> push!(v.args, :(:)), 1:i - offset)
-            push!(v.args, Expr(:call, Expr(:curly, :Static, 1)))
+            push!(v.args, :(One()))
             foreach(_ -> push!(v.args, :(:)), i+1:length(indexes))
             LoopVectorization.pushpreamble!(ls, Expr(:(=), bcname, v))
             # vptrbc = LoopVectorization.subset_vptr!(
             #     ls, vptrbc, i - offset, 1, loopsyms, fill(true, length(indexes))
             # )
         else
+            push!(Rnew, R[i])
             push!(ref, loopsyms[n])
         end
     end
@@ -146,14 +178,14 @@ function add_fs_array!(ls::LoopVectorization.LoopSet, destname::Symbol, bcname::
     mref = LoopVectorization.ArrayReferenceMeta(
         LoopVectorization.ArrayReference(bctemp, ref), fill(true, length(ref)), vptrbc
     )
-    sp = sort_indices!(mref, X)
-    if isnothing(sp)
+    sp = sort_indices!(mref, Rnew, C)
+    if sp === nothing
         LoopVectorization.pushpreamble!(ls, Expr(:(=), bctemp,  bcname))
         # LoopVectorization.add_vptr!(ls, bcname, vptrbc, true, false)
     else
         ssp = Expr(:tuple); append!(ssp.args, sp)
-        ssp = Expr(:call, Expr(:curly, :Static, ssp))
-        LoopVectorization.pushpreamble!(ls, Expr(:(=), bctemp,  Expr(:call, :PermutedDimsArray, bcname, ssp)))
+        ssp = Expr(:call, Expr(:curly, :StaticInt, ssp))
+        LoopVectorization.pushpreamble!(ls, Expr(:(=), bctemp,  Expr(:call, :permutedims, bcname, ssp)))
         # LoopVectorization.add_vptr!(ls, bctemp, vptrbc, true, false)
         # vptemp = gensym(vptrbc)
         # LoopVectorization.add_vptr!(ls, bcname, vptemp, true, false)
@@ -162,83 +194,96 @@ function add_fs_array!(ls::LoopVectorization.LoopSet, destname::Symbol, bcname::
     LoopVectorization.add_simple_load!(ls, destname, mref, mref.ref.indices, elementbytes)
 end
 
-function add_broadcast_adjoint_array!(
-    ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol, loopsyms::Vector{Symbol}, ::Type{A}, indices, elementbytes::Int = 8
-) where {S, T, N, A <: AbstractStrideArray{S,T,N}}
-    if N == 1
-        if first(S.parameters)::Int == 1
-            add_single_element_array!(ls, destname, bcname, sizeof(T))
-        else
-            ref = LoopVectorization.ArrayReference(bcname, Symbol[loopsyms[2]])
-            LoopVectorization.add_load!( ls, destname, ref, sizeof(T) )
-        end
-    else
-        add_fs_array!(ls, destname, bcname, loopsyms, indices, S, sizeof(T))
-    end
-end
-function LoopVectorization.add_broadcast!(
-    ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol,
-    loopsyms::Vector{Symbol}, ::Type{Adjoint{T,A}}, elementbytes::Int = 8
-) where {T, S, N, A <: AbstractStrideArray{S, T, N}}
-    # @show @__LINE__, A
-    add_broadcast_adjoint_array!( ls, destname, bcname, loopsyms, A, N:-1:1, sizeof(T) )
-end
-function LoopVectorization.add_broadcast!(
-    ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol,
-    loopsyms::Vector{Symbol}, ::Type{Transpose{T,A}}, elementbytes::Int = 8
-) where {T, S, N, A <: AbstractStrideArray{S, T, N}}
-    # @show @__LINE__, A
-    add_broadcast_adjoint_array!( ls, destname, bcname, loopsyms, A, N:-1:1, sizeof(T) )
-end
-function LoopVectorization.add_broadcast!(
-    ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol,
-    loopsyms::Vector{Symbol}, ::Type{PermutedDimsArray{T,N,I1,I2,A}}, elementbytes::Int = 8
-) where {T, S, N, I1, I2, A <: AbstractStrideArray{S, T, N}}
-    @show @__LINE__, A
-    add_broadcast_adjoint_array!( ls, destname, bcname, loopsyms, A, I2, sizeof(T) )
-end
+# function add_broadcast_adjoint_array!(
+#     ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol, loopsyms::Vector{Symbol}, ::Type{A}, indices
+# ) where {S, T, N, A <: AbstractStrideArray{S,T,N}}
+#     if N == 1
+#         if _extract(first(S.parameters)) == 1
+#             add_single_element_array!(ls, destname, bcname, sizeof(T))
+#         else
+#             ref = LoopVectorization.ArrayReference(bcname, Symbol[loopsyms[2]])
+#             LoopVectorization.add_load!( ls, destname, ref, sizeof(T) )
+#         end
+#     else
+#         add_fs_array!(ls, destname, bcname, loopsyms, indices, S, sizeof(T))
+#     end
+# end
+# function LoopVectorization.add_broadcast!(
+#     ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol,
+#     loopsyms::Vector{Symbol}, ::Type{Adjoint{T,A}}, elementbytes::Int = 8
+# ) where {T, S, N, A <: AbstractStrideArray{S, T, N}}
+#     # @show @__LINE__, A
+#     add_broadcast_adjoint_array!( ls, destname, bcname, loopsyms, A, N:-1:1, sizeof(T) )
+# end
+# function LoopVectorization.add_broadcast!(
+#     ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol,
+#     loopsyms::Vector{Symbol}, ::Type{Transpose{T,A}}, elementbytes::Int = 8
+# ) where {T, S, N, A <: AbstractStrideArray{S, T, N}}
+#     # @show @__LINE__, A
+#     add_broadcast_adjoint_array!( ls, destname, bcname, loopsyms, A, N:-1:1, sizeof(T) )
+# end
+# function LoopVectorization.add_broadcast!(
+#     ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol,
+#     loopsyms::Vector{Symbol}, ::Type{PermutedDimsArray{T,N,I1,I2,A}}, elementbytes::Int = 8
+# ) where {T, S, N, I1, I2, A <: AbstractStrideArray{S, T, N}}
+#     @show @__LINE__, A
+#     add_broadcast_adjoint_array!( ls, destname, bcname, loopsyms, A, I2, sizeof(T) )
+# end
 
-function sort_indices!(ar, Xv)
+rank_sortperm(R::NTuple) = ArrayInterface.rank_to_sortperm(R)
+rank_sortperm(R) = sortperm(R)
+
+function sort_indices!(ar, R, C)
+    any(i -> R[i-1] ≥ R[i], 2:length(R)) || return nothing
     li = ar.loopedindex; NN = length(li)
-    all(n -> ((Xv[n+1]) % UInt) ≥ ((Xv[n]) % UInt), 1:NN-1) && return nothing    
+    # all(n -> ((Xv[n+1]) % UInt) ≥ ((Xv[n]) % UInt), 1:NN-1) && return nothing    
     inds = LoopVectorization.getindices(ar); offsets = ar.ref.offsets;
-    sp = sortperm(reinterpret(UInt,Xv), alg = Base.Sort.DEFAULT_STABLE)
+    sp = rank_sortperm(R)
+    # sp = sortperm(reinterpret(UInt,Xv), alg = Base.Sort.DEFAULT_STABLE)
     lib = copy(li); indsb = copy(inds); offsetsb = copy(offsets);
     for i ∈ eachindex(li, inds)
         li[i] = lib[sp[i]]
         inds[i] = indsb[sp[i]]
         offsets[i] = offsetsb[sp[i]]
     end
-    isone(Xv[sp[1]]) || pushfirst!(inds, LoopVectorization.DISCONTIGUOUS)
+    C > 0 || pushfirst!(inds, LoopVectorization.DISCONTIGUOUS)
     sp
 end
 
 function LoopVectorization.add_broadcast!(
     ls::LoopVectorization.LoopSet, destname::Symbol, bcname::Symbol,
     loopsyms::Vector{Symbol}, ::Type{A}, elementbytes::Int = 8
-) where {T, S, X, N, A <: AbstractStrideArray{S, T, N, X}}
+) where {S,D,T,N,C,B,R, A <: AbstractStrideArray{S,D,T,N,C,B,R}}
     # @show @__LINE__, A
-    Xv = tointvec(X)
+    # Xv = tointvec(X)
     NN = min(N,length(loopsyms))
     op = add_fs_array!(
-        ls, destname, bcname, loopsyms, 1:NN, S, Xv, sizeof(T)
+        ls, destname, bcname, loopsyms, Base.OneTo(NN), S, R, C, sizeof(T)
     )
     op
 end
 
-
+_tuple_type_len(_) = nothing
+function _tuple_type_len(::Type{S}) where {N,S<:Tuple{Vararg{StaticInt,N}}}
+    L = 1
+    for n in 1:N
+        L *= _extract(S.parameters[n])::Int
+    end
+    L
+end
 # function Base.Broadcast.materialize!(
 @generated function Base.Broadcast.materialize!(
-    dest::A, bc::BC
-) where {S, T <: Union{Float32,Float64}, N, X, L, A <: AbstractStrideArray{S,T,N,X,L}, FS <: LinearStyle{S,N,X}, BC <: Base.Broadcast.Broadcasted{FS}}
+    dest::AbstractStrideArray{S,D,T,N,C,B,R}, bc::BC
+) where {S, D, T, N, C, B, R, FS <: LinearStyle{S,N,R}, BC <: Base.Broadcast.Broadcasted{FS}}
     # we have an N dimensional loop.
     # need to construct the LoopSet
     loopsyms = [gensym(:n)]
     ls = LoopVectorization.LoopSet(:PaddedMatrices)
     itersym = first(loopsyms)
-    if L == -1
+    L = _tuple_type_len(S)
+    if L === nothing
         Lsym = gensym(:L)
-        LoopVectorization.pushpreamble!(ls, Expr(:(=), Lsym, Expr(:call, :length, :dest)))
+        LoopVectorization.pushpreamble!(ls, Expr(:(=), Lsym, Expr(:call, :static_length, :dest)))
         LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 1, Lsym))
     else
         LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 1, L))
@@ -258,25 +303,26 @@ end
 end
 @generated function Base.Broadcast.materialize!(
 # function Base.Broadcast.materialize!(
-    dest::A, bc::BC
-) where {S, T <: Union{Float32,Float64}, N, X, A <: AbstractStrideArray{S,T,N,X}, BC <: Union{Base.Broadcast.Broadcasted,StrideArrayProduct}}
-    1+1
+    dest::AbstractStrideArray{S,D,T,N,C,B,R}, bc::BC
+) where {S, D, T, N, C, B, R, BC <: Union{Base.Broadcast.Broadcasted,StrideArrayProduct}}
+    # 1+1
     # we have an N dimensional loop.
     # need to construct the LoopSet
     loopsyms = [gensym(:n) for n ∈ 1:N]
     ls = LoopVectorization.LoopSet(:PaddedMatrices)
     destref = LoopVectorization.ArrayReference(:_dest, copy(loopsyms))
     destmref = LoopVectorization.ArrayReferenceMeta(destref, fill(true, length(LoopVectorization.getindices(destref))))
-    sp = sort_indices!(destmref, tointvec(X))
+    sp = sort_indices!(destmref, R, C)
     for n ∈ 1:N
         itersym = loopsyms[n]#isnothing(sp) ? n : sp[n]]
-        Sₙ = (S.parameters[n])::Int
-        if Sₙ == -1
+        # _s = 
+        Sₙ =_extract(S.parameters[n])# (_s === nothing ? -1 : _s)::Int
+        if Sₙ === nothing
             Sₙsym = gensym(:Sₙ)
             LoopVectorization.pushpreamble!(ls, Expr(:(=), Sₙsym, Expr(:call, :size, :dest, n)))
             LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 1, Sₙsym))
-        else
-            LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 1, Sₙ))
+        else#TODO: handle offsets
+            LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 1, Sₙ::Int))
         end
     end
     elementbytes = sizeof(T)
@@ -291,8 +337,8 @@ end
         LoopVectorization.pushpreamble!(ls, Expr(:(=), :_dest, :dest))
     else
         ssp = Expr(:tuple); append!(ssp.args, sp)
-        ssp = Expr(:call, Expr(:curly, :Static, ssp))
-        LoopVectorization.pushpreamble!(ls, Expr(:(=), :_dest,  Expr(:call, :PermutedDimsArray, :dest, ssp)))
+        ssp = Expr(:call, Expr(:curly, :StaticInt, ssp))
+        LoopVectorization.pushpreamble!(ls, Expr(:(=), :_dest,  Expr(:call, :permutedims, :dest, ssp)))
     end
     storeop = LoopVectorization.add_simple_store!(ls, :destination, destmref, sizeof(T))
     # destref = if destadj

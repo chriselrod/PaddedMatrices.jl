@@ -1,124 +1,72 @@
-# @inline rev(t::NTuple{0}) = t
-# @inline rev(t::NTuple{1}) = t
-# @inline rev(t::NTuple) = reverse(t)
-# reverse_tuple_type(t) = reverse_tuple_type(t.parameters)
-# function reverse_tuple_type(t::Core.SimpleVector)
-#     tnew = Expr(:curly, :Tuple)
-#     N = length(t)
-#     for n ∈ 0:N-1
-#         push!(tnew.args, t[N - n])
-#     end
-#     tnew
-# end
-# @generated function Base.adjoint(A::AbstractStrideArray{S,T,N,X,SN,XN,V}) where {S,T<:Real,N,X,SN,XN,V}
-#     Snew = reverse_tuple_type(S)
-#     Xnew = reverse_tuple_type(X)
-#     Expr(:block, Expr(:meta,:inline), :(PtrArray{$Snew,$T,$N,$Xnew,$SN,$XN,$V}(pointer(A), rev(A.size), rev(A.stride))))
-# end
-# @generated function Base.transpose(A::AbstractStrideArray{S,T,N,X,SN,XN,V}) where {S,T,N,X,SN,XN,V}
-#     Snew = reverse_tuple_type(S)
-#     Xnew = reverse_tuple_type(X)
-#     Expr(:block, Expr(:meta,:inline), :(PtrArray{$Snew,$T,$N,$Xnew,$SN,$XN,$V}(pointer(A), rev(A.size), rev(A.stride))))
-# end
-# @generated function Base.adjoint(A::ConstantArray{S,T,N,X,L}) where {S,T<:Real,N,X,L}
-#     Snew = reverse_tuple_type(S)
-#     Xnew = reverse_tuple_type(X)
-#     Expr(:block, Expr(:meta,:inline), :(ConstantArray{$Snew,$T,$N,$Xnew,$L}(A.data)))
-# end
-# @generated function Base.transpose(A::ConstantArray{S,T,N,X,L}) where {S,T,N,X,L}
-#     Snew = reverse_tuple_type(S)
-#     Xnew = reverse_tuple_type(X)
-#     Expr(:block, Expr(:meta,:inline), :(ConstantArray{$Snew,$T,$N,$Xnew,$L}(A.data)))
-# end
-# @generated function Base.adjoint(A::StrideArray{S,T,N,X,0,0,V}) where {S,T<:Real,N,X,V}
-#     Snew = reverse_tuple_type(S)
-#     Xnew = reverse_tuple_type(X)
-#     Expr(:block, Expr(:meta,:inline), :(StrideArray{$Snew,$T,$N,$Xnew,0,0,$V}(A.ptr, tuple(), tuple(), A.data)))
-# end
-# @generated function Base.transpose(A::StrideArray{S,T,N,X,0,0,V}) where {S,T,N,X,V}
-#     Snew = reverse_tuple_type(S)
-#     Xnew = reverse_tuple_type(X)
-#     Expr(:block, Expr(:meta,:inline), :(StrideArray{$Snew,$T,$N,$Xnew,0,0,$V}(A.ptr, tuple(), tuple(), A.data)))
-# end
-# @generated function Base.adjoint(A::StrideArray{S,T,N,X,SN,XN}) where {S,T<:Real,N,X,SN,XN}
-#     Snew = reverse_tuple_type(S)
-#     Xnew = reverse_tuple_type(X)
-#     Expr(:block, Expr(:meta,:inline), :(StrideArray{$Snew,$T,$N,$Xnew,$SN,$XN}(A.data, rev(A.size), rev(A.stride))))
-# end
-# @generated function Base.transpose(A::StrideArray{S,T,N,X,SN,XN}) where {S,T,N,X,SN,XN}
-#     Snew = reverse_tuple_type(S)
-#     Xnew = reverse_tuple_type(X)
-#     Expr(:block, Expr(:meta,:inline), :(StrideArray{$Snew,$T,$N,$Xnew,$SN,$XN}(A.data, rev(A.size), rev(A.stride))))
-# end
-
 
 # For vectors
-
-@inline function Base.transpose(A::PtrArray{Tuple{S},T,1,Tuple{1},0,0,V}) where {S,T,V}
-    PtrArray{Tuple{1,S},T,2,Tuple{0,1},0,0,V}(pointer(A), tuple(), tuple())
-end
-@inline function Base.transpose(A::PtrArray{Tuple{-1},T,1,Tuple{1},1,0,V}) where {T,V}
-    PtrArray{Tuple{1,-1},T,2,Tuple{0,1},1,0,V}(pointer(A), A.size, tuple())
-end
-
-# @inline function Base.adjoint(A::ConstantArray{Tuple{S},T,1,Tuple{1},L}) where {S,T<:Real,L}
-    # ConstantArray{Tuple{1,S},T,2,Tuple{0,1},L}(A.data)
-# end
-# @inline function Base.transpose(A::ConstantArray{Tuple{S},T,1,Tuple{1},L}) where {S,T,L}
-#     ConstantArray{Tuple{1,S},T,2,Tuple{0,1},L}(A.data)
-# end
-# @inline function Base.adjoint(A::StrideArray{Tuple{S},T,1,Tuple{1},0,0,V}) where {S,T<:Real,V}
-    # StrideArray{Tuple{1,S},T,2,Tuple{0,1},0,0,V}(A.ptr, A.size, 0, A.parent)
-# end
-
-
-Base.PermutedDimsArray(A::AbstractStrideArray{<:Any,<:Any,N}, perm::NTuple{N}) where {N} = PermutedDimsArray(A, Static(perm))
-Base.PermutedDimsArray(A::AbstractArray, ::Static{perm}) where {perm} = PermutedDimsArray(A, perm)
-function permuted_dims_array_expr(Sv,N,Xv,perm)
-    S = tointvec(Sv)::Vector{Int}; X = tointvec(Xv)::Vector{Int}
-    Sunknown = cumsum(S .== -1)
-    Xunknown = cumsum(X .== -1)
-    Sp = Expr(:curly, :Tuple)
-    Xp = Expr(:curly, :Tuple)
-    sp = Expr(:tuple)
-    xp = Expr(:tuple)
-    si = xi = 0;
-    for n in 1:N
+function permute_dims_expr(perm, D, C, B, R)
+    s = Expr(:tuple) # size
+    x = Expr(:tuple) # stride
+    o = Expr(:tuple) # offsets
+    Rnew = Expr(:tuple) # rank
+    Dnew = Expr(:tuple) # dense
+    Cnew = -1
+    Bnew = -1
+    N = length(perm)
+    for n ∈ 1:N
         p = perm[n]
-        Sn = S[p]
-        push!(Sp.args, Sn)
-        if Sn == -1
-            push!(sp.args, Expr(:ref, :st, Sunknown[p]))
+        push!(s.args, Expr(:ref, :s, p))
+        push!(x.args, Expr(:ref, :x, p))
+        push!(o.args, Expr(:ref, :o, p))
+        push!(Rnew.args, R[n])
+        push!(Dnew.args, D[n])
+        if C == p
+            Cnew = n
         end
-        Xn = X[p]
-        push!(Xp.args, Xn)
-        if Xn == -1
-            push!(xp.args, Expr(:ref, :xt, Xunknown[p]))
+        if B == p
+            Bnew = n
         end
     end
-    Sp, Xp, sp, xp
+    Dnew, Cnew, Bnew, Rnew, s, x, o
 end
-@generated function Base.PermutedDimsArray(A::PtrArray{S,T,N,X}, ::Static{perm}) where {S,T,N,X,perm}
-     Sp, Xp, sp, xp = permuted_dims_array_expr(S, N, X, perm)
+@generated function Base.permutedims(A::PtrArray{S,D,T,N,C,B,R}, ::Val{P}) where {S,D,T,N,C,B,R,P}
+    Dnew, Cnew, Bnew, Rnew, s, x, o = permute_dims_expr(P, D, C, B, R)
     quote
         $(Expr(:meta,:inline))
-        st = A.size; xt = A.stride;
-        PtrArray{$Sp,$T,$N,$Xp}(A.ptr, $sp, $xp)
+        s = A.size
+        ptr = A.ptr
+        x = ptr.strd
+        o = ptr.offsets
+        sp = StridedPointer{$T,$N,$Cnew,$Bnew,$Rnew}(ptr.p, $x, $o)
+        PtrArray(sp, $s, DenseDims{$Dnew}())
     end
 end
-@inline Base.PermutedDimsArray(A::FixedSizeArray, ::Static{perm}) where {perm} = FixedSizeArray(PermutedDimsArray(A.ptr, Static{perm}()), A.data)
-@inline Base.PermutedDimsArray(A::StrideArray, ::Static{perm}) where {perm} = StrideArray(PermutedDimsArray(A.ptr, Static{perm}()), A.data)
+@inline function Base.permutedims(A::StrideArray, ::Val{P}) where {P}
+    StrideArray(permutedims(A.ptr, Val{P}()), A.data)
+end
 
-@generated function Base.transpose(A::PtrArray{S,T,N,X}) where {S,T,N,X}
-     Sp, Xp, sp, xp = permuted_dims_array_expr(S, N, X, N:-1:1)
+@inline Base.adjoint(A::AbstractStrideMatrix) = permutedims(A, Val{(2,1)}())
+@inline Base.transpose(A::AbstractStrideMatrix) = permutedims(A, Val{(2,1)}())
+
+
+@generated function Base.adjoint(a::PtrArray{S,D,T,1,C,B,R,X,O}) where {S,D,T,C,B,R,X,O}
+    s = Expr(:tuple, :(One()), Expr(:ref, :s, 1))
+    x₁ = Expr(:ref, :x, 1)
+    x = Expr(:tuple, x₁, x₁)
+    o = Expr(:tuple, :(One()), Expr(:ref, :o, 1))
+    R1 = R[1]
+    Rnew = Expr(:tuple, R1+1, R1)
+    Dnew = Expr(:tuple, true, D[1])
+    Cnew = C == 1 ? 2 : C
     quote
         $(Expr(:meta,:inline))
-        st = A.size; xt = A.stride;
-        PtrArray{$Sp,$T,$N,$Xp}(A.ptr, $sp, $xp)
+        s = a.size
+        ptr = a.ptr
+        x = ptr.strd
+        o = ptr.offsets
+        sp = StridedPointer{$T,2,$Cnew,$B,$Rnew}(ptr.p, $x, $o)
+        PtrArray(sp, $s, DenseDims{$Dnew}())
     end
 end
-@inline Base.transpose(A::FixedSizeArray) = FixedSizeArray(A.ptr', A.data)
-@inline Base.transpose(A::StrideArray) = StrideArray(A.ptr', A.data)
-@inline Base.adjoint(A::AbstractStrideArray{<:Any,<:Real}) = transpose(A)
+@inline Base.adjoint(a::StrideVector) = StrideArray(adjoint(a.ptr), a.data)
+
+@inline Base.transpose(a::AbstractStrideVector) = adjoint(a)
+
 
 

@@ -1,239 +1,97 @@
 
-@inline flatvector(A::AbstractFixedSizeArray{S,T,1,Tuple{1},false}) where {S,T} = A
-@generated function flatvector(A::AbstractFixedSizeArray{S,T,N,X,false}) where {S,T,N,X<:Tuple{1,Vararg}}
-    L = last(S.parameters)::Int * last(X.parameters)::Int
-    Expr(
-        :block,
-        Expr(:meta,:inline),
-        :(PtrArray{Tuple{$L},$T,1,Tuple{1},0,0,false}(pointer(A),tuple(),tuple()))
-    )
-end
-
-@inline flatvector(A::StrideArray{S,T,1,Tuple{1},0,0}) where {S,T} = A
-@generated function flatvector(A::StrideArray{S,T,N,X,0,0}) where {S,T,N,X<:Tuple{1,Vararg}}
-    L = last(S.parameters)::Int * last(X.parameters)::Int
-    Expr(
-        :block,
-        Expr(:meta,:inline),
-        :(StrideArray{Tuple{$L},$T,1,Tuple{1},0,0,false}(A.ptr, tuple(), tuple(), A.data))
-    )
-end
-
-@inline flatvector(A::StrideArray{S,T,1,Tuple{1},SN,XN}) where {S,T,SN,XN} = A
-@inline function flatvector(A::StrideArray{S,T,N,X,SN,XN,false}) where {S,T,N,X,SN,XN}
-    # StrideArray{Tuple{-1},T,1,Tuple{1},1,0,false}(A.ptr, (stride(A,N)*prod(Base.tail(size(A))),), tuple(), A.data)
-    StrideArray{Tuple{-1},T,1,Tuple{1},1,0,false}(A.ptr, (length(A),), tuple(), A.data)
-end
-# @generated function flatvector(A::StrideArray{S,T,N,X,SN,XN}) where {S,T,N,SN,XN}
-    
-#     :(StrideArray{Tuple{-1},$T,1,Tuple{1},1,0}(A.ptr, (stride(A,2)*prod(Base.tail(size(A))),), tuple(), A.data))
+# @inline function gep_no_offset(ptr::VectorizationBase.AbstractStridedPointer, i::Tuple)
+    # VectorizationBase.gep(pointer(ptr), VectorizationBase.tdot(ptr, i, VectorizationBase.strides(ptr), VectorizationBase.nopromote_axis_indicator(ptr)))
 # end
-
-
-@inline flatvector(A::AbstractStrideArray{Tuple{-1},T,1,Tuple{1},1,0,false}) where {T} = A
-@inline function flatvector(A::AbstractStrideArray{S,T,N,<:Tuple{1,Vararg},SN,XN,false}) where {S,T,N,SN,XN}
-    PtrArray{Tuple{-1},T,1,Tuple{1},1,0}(pointer(A), (stride(A,2)*prod(Base.tail(size(A))),), tuple())
-end
-
-@inline flatvector(A::ConstantArray{S,T,1,Tuple{1}}) where {S,T} = A
-@inline function flatvector(A::ConstantArray{S,T,N,X,L}) where {S,T,N,X,L}
-    ConstantArray{Tuple{L},T,1,Tuple{1},L}(A.data)
-end
-
-@inline flatvector(a::Number) = a
-
-
-staticrangelength(::Type{Static{R}}) where {R} = 1 + last(R) - first(R)
-staticrangelength(::Type{VectorizationBase.StaticUnitRange{L,U}}) where {L,U} = 1 + U - L
-
-# struct ViewAdjoint{SP,SV,XP,XV,SN,XN}
-#     offset::Int
-#     size::NTuple{SN,Int}
-#     stride::NTuple{XN,Int}
+# @inline function similar_with_offset(sptr::StridedPointer{T,N,C,B,R,X,O}, ptr::Ptr{T}) where {T,N,C,B,R,X,O}
+#     StridedPointer{T,N,C,B,R,X}(ptr, sptr.strd, zerotuple(Val{N}()))
 # end
+_extract(::Type{StaticInt{N}}) where {N} = N::Int
+_extract(_) = nothing
+@generated function Base.view(A::PtrArray{S,D,T,N,C,B,R,X,O}, i::Vararg{Union{Integer,AbstractRange,Colon},K}) where {K,S,D,T,N,C,B,R,X,O}
+    @assert ((K == N) || isone(K))
 
-_ndims(::Type{CartesianIndex{N}}) where {N} = N::Int
-
-static_type(::Type{StaticUnitRange{L,U}}) where {L,U} = (L,U)
-function generalized_getindex_quote(SV, XV, @nospecialize(inds))
-    N = length(SV)
-    s2 = Int[]
-    x2 = Int[]
-    sti = 0; xti = 0
-    st2 = Expr(:tuple)
-    xt2 = Expr(:tuple)
-    offset::Int = 0
-    offset_expr = Expr[]
-    size_expr = Expr(:tuple)
-    n = 1
-    while n ≤ N
-        svn = (SV[n])::Int
-        svn == -1 && (sti += 1)
-        xvn = (XV[n])::Int
-        xvn == -1 && (xti += 1)
-        if inds[n] <: Integer
-            push!(offset_expr, :($xvn * (inds[$n] - 1)))
-        elseif inds[n] <: Static
-            sind = VectorizationBase.unwrap(inds[n]) - 1
-            push!(offset_expr, :($xvn * $sind))
-        else
-            push!(x2, xvn)
-            if xvn == -1
-                push!(xt2.args, Expr(:ref, :Astride, xti))
+    inds = Expr(:tuple)
+    Nnew = 0
+    s = Expr(:tuple)
+    x = Expr(:tuple)
+    o = Expr(:tuple)
+    Rnew = Expr(:tuple)
+    Dnew = Expr(:tuple)
+    Cnew = -1
+    Bnew = -1
+    sortp = ArrayInterface.rank_to_sortperm(R)
+    still_dense = true
+    densev = Vector{Bool}(undef, K)
+    for k ∈ 1:K
+        iₖ = Expr(:ref, :i, k)
+        if i[k] === Colon
+            Nnew += 1
+            push!(inds.args, Expr(:ref, :o, k))
+            push!(s.args, Expr(:ref, :s, k))
+            push!(x.args, Expr(:ref, :x, k))
+            push!(o.args, :(One()))
+            if k == C
+                Cnew = Nnew
             end
-            if inds[n] == Colon
-                push!(s2, svn)
-                if svn == -1
-                    push!(st2.args, Expr(:ref, :Asize, sti))
+            if k == B
+                Bnew = Nnew
+            end
+            push!(Rnew.args, R[k])
+        else
+            push!(inds.args, Expr(:call, :first, iₖ))
+            if i[k] <: AbstractRange
+                Nnew += 1
+                push!(s.args, Expr(:call, :static_length, iₖ))
+                push!(x.args, Expr(:ref, :x, k))
+                push!(o.args, :(One()))
+                if k == C
+                    Cnew = Nnew
                 end
-            # elseif inds[n] <: Static
-                # push!(s2, staticrangelength(inds[n]))
-                # offset += (first(static_type(inds[n])) - 1) * xvn
-            elseif inds[n] <: VectorizationBase.StaticUnitRange
-                push!(s2, staticrangelength(inds[n]))
-                offset += (first(static_type(inds[n])) - 1) * xvn
-            elseif inds[n] <: AbstractRange{<:Integer}
-                push!(s2, -1)
-                push!(offset_expr, :($xvn * @inbounds( first(inds[$n]) - 1 )))
-                push!(st2.args, Expr(:call, :length, :(@inbounds(inds[$n]))))
-            elseif inds[n] <: Base.OneTo
-                push!(s2, -1)
-                push!(st2.args, Expr(:call, :length, :(@inbounds(inds[$n]))))
-            elseif inds[n] <: CartesianIndex
-                Nd = _ndims(inds[n])
-                if Nd > 0
-                    push!(offset_expr, :($xvn * (inds[$n][1] - 1)))
+                if k == B
+                    Bnew = Nnew
                 end
-                norig = n
-                for nd ∈ 2:Nd
-                    n += 1
-                    svn = (SV[n])::Int
-                    svn == -1 && (sti += 1)
-                    xvn = (XV[n])::Int
-                    xvn == -1 && (xti += 1)
-                    push!(offset_expr, :($xvn * (inds[$norig][$nd] - 1)))
-                end
-            else
-                throw("Indices of type $(inds[n]) not currently supported.")
+                push!(Rnew.args, R[k])
             end
         end
-        n += 1
-    end
-    S2 = Tuple{s2...}
-    X2 = Tuple{x2...}
-    if length(offset_expr) == 0 && offset == 0
-        ex = :(pointer(A))
-    elseif offset == 0
-        if length(offset_expr) == 1
-            ex = Expr(:call, :gep, :(pointer(A)), first(offset_expr))
+        spₙ = sortp[k]
+        if still_dense & D[spₙ]
+            ispₙ = i[spₙ]
+            still_dense = (ispₙ <: AbstractUnitRange) || (ispₙ === Colon)
+            densev[spₙ] = still_dense
+            if still_dense
+                still_dense = (((ispₙ === Colon)::Bool || (ispₙ <: Base.Slice)::Bool) ||
+                               ((ispₙ <:  ArrayInterface.OptionallyStaticUnitRange{<:StaticInt,<:StaticInt})::Bool &&
+                                (static_length(ispₙ) == _extract(S.parameters[spₙ]))::Bool))
+            end
         else
-            ex = Expr(:call, :gep, :(pointer(A)), Expr(:call, :+, offset_expr...))
-        end
-    else
-        ex = Expr(:call, :gep, :(pointer(A)), Expr(:call, :+, offset, offset_expr...))
-    end
-    SN = length(st2.args)
-    XN = length(xt2.args)
-    q = quote
-        $(Expr(:meta,:inline))
-        _offset = $ex
-    end
-    # SN > 0 && push!(q.args, Expr(:(=), :Asize, Expr(:(.), :A, QuoteNode(:size))))
-    # XN > 0 && push!(q.args, Expr(:(=), :Astride, Expr(:(.), :A, QuoteNode(:stride))))
-    SN > 0 && push!(q.args, Expr(:(=), :Asize, Expr(:call, :size_tuple, :A)))
-    XN > 0 && push!(q.args, Expr(:(=), :Astride, Expr(:call, :stride_tuple, :A)))
-    # arraydef = if length(s2) == 0
-    #     scalarview ? :(VectorizationBase.Pointer) : :(VectorizationBase.load)
-    # else
-    #     :(PtrArray{$S2,$T,$(length(s2)),$X2,$SN,$XN,true})
-    # end
-    q, S2, length(s2), X2, SN, XN, st2, xt2
-    # partial_expr = :(ViewAdjoint{$(Tuple{SV...}),$S2,$(Tuple{XV...}),$X2,$SN,$XN}(_offset, $st2, $xt2))
-    # push!(q.args, :(@inbounds $arraydef( _offset, $st2, $xt2), $partial))
-    # push!(q.args, :(@inbounds $arraydef( _offset, $st2, $xt2)))
-    # q
-end
-
-
-function array_inds_quote(S, T, N, X, V, inds, ArrayType, holdsdata, isview)
-    q, S2, Nsub, X2, SN, XN, st2, xt2 = generalized_getindex_quote(S.parameters, X.parameters, inds)
-    call = if (!isview) & iszero(Nsub)
-        Expr(:(.), :VectorizationBase, QuoteNode(:vload))
-        Expr(:call, Expr(:(.), :VectorizationBase, QuoteNode(:vload)), :_offset)
-    else
-        arraydef = Expr(:curly, :PtrArray, S2, T, Nsub, X2, SN, XN, true)
-        call = Expr(:call, arraydef,  :_offset, st2, xt2 )
-        if holdsdata
-            call = Expr(:call, ArrayType, call, :(A.data))
-        end
-        call
-    end
-    push!(q.args, :(@inbounds $call))
-    q
-end
-@generated function Base.getindex(A::AbstractPtrStrideArray{S,T,N,X}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}
-    array_inds_quote(S, T, N, X, V, inds, :PtrArray, false, false)
-end
-@generated function Base.getindex(A::StrideArray{S,T,N,X}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}
-    # 1+1
-    array_inds_quote(S, T, N, X, V, inds, :StrideArray, true, false)
-end
-@generated function Base.getindex(A::FixedSizeArray{S,T,N,X}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}
-    array_inds_quote(S, T, N, X, V, inds, :FixedSizeArray, true, false)
-end
-@generated function Base.view(A::AbstractPtrStrideArray{S,T,N,X}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}
-    array_inds_quote(S, T, N, X, V, inds, :PtrArray, false, true)
-end
-@generated function Base.view(A::StrideArray{S,T,N,X}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}
-    array_inds_quote(S, T, N, X, V, inds, :StrideArray, true, true)
-end
-@generated function Base.view(A::FixedSizeArray{S,T,N,X}, inds::Vararg{<:Any,N}) where {S,T,N,X,V}
-    array_inds_quote(S, T, N, X, V, inds, :FixedSizeArray, true, true)
-end
-
-
-function mixed_const_expr_prod(x, s)
-    c = true
-    e = Union{Symbol,Expr}[]
-    n = 0
-    for xᵢ ∈ x
-        if xᵢ != -1
-            c *= xᵢ
-        else
-            push!(e, Expr(:ref, s, (n += 1)))
+            still_dense = false
         end
     end
-    if iszero(length(e))
-        c
-    else
-        p = Expr(:call, :*, c)
-        append!(p.args, e)
-        p
-    end
-end
-"""
-flatten(A)
-
-Follows the definition from Flux, where it flattens all but the last dimension to output a matrix.
-"""
-@generated function flatten(A::AbstractStrideArray{S,T,N,X,SN,0}) where {S,T,N,X,SN}
-    Sv = tointvec(S)
-    Xv = tointvec(X)
-    leadingx = @view(Xv[1:end-1])
-    lastx = last(Xv)
-    flattened_is_column_major = all(x -> x < lastx, leadingx)
-    flattened_is_row_major = !flattened_is_column_major && all(x -> x > lastx, leadingx)
-    @assert flattened_is_column_major | flattened_is_row_major "Flattening into non row/column major layouts is not yet supported."
-    leading_size = mixed_const_expr_prod(@view(Sv[1:end-1]), :(size_tuple(A)))
-    ls = leading_size isa Integer ? static_expr(leading_size) : leading_size
-    last_sv = last(Sv) == -1 ? :(size(A,$N)) : static_expr(last(Sv))
-    newst = Expr(:tuple, ls, last_sv)
-    newxt = Expr(:tuple, static_expr(minimum(leadingx)), static_expr(lastx))
+    for k ∈ 1:K
+        iₖt = i[k]
+        if (iₖt === Colon) || (iₖt <: AbstractVector)
+            push!(Dnew.args, densev[k])
+        end
+    end    
     quote
-        $(Expr(:meta, :inline))
-        new_view(A, $newst, $newxt)
+        $(Expr(:meta,:inline))
+        sp = A.ptr
+        s = A.size
+        x = sp.strd
+        o = sp.offsets
+        new_sp = StridedPointer{$T,$Nnew,$Cnew,$Bnew,$Rnew}(gep(sp, $inds), $x, $o)
+        PtrArray(new_sp, $s, DenseDims{$Dnew}())
     end
 end
-flatten(a::AbstractStrideVector) = a
-flatten(A::AbstractStrideMatrix) = A
+
+@inline function Base.view(A::StrideArray, i::Vararg{Union{Integer,AbstractRange,Colon},K}) where {K}
+    StrideArray(view(A.ptr, i...), A.data)
+end
+
+
+@inline function Base.vec(A::PtrArray{S,D,T,N,C,0}) where {S,D,T,N,C}
+    @assert all(D) "All dimensions must be dense for a vec view. Try `vec(copy(A))` instead."
+    sp = StridedPointer(pointer(A), (VectorizationBase.static_sizeof(T),), (One(),))
+    PtrArray(sp, (static_length(A),), DenseDims((true,)))
+end
 
