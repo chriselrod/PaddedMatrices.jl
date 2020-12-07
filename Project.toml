@@ -14,10 +14,10 @@ VectorizedRNG = "33b4df10-0173-11e9-2a0c-851a7edac40e"
 
 [compat]
 ArrayInterface = "2.14"
-LoopVectorization = "0.9.2"
+LoopVectorization = "0.9.3"
 SLEEFPirates = "0.6"
 VectorizationBase = "0.13.7"
-VectorizedRNG = "0.2"
+VectorizedRNG = "0.2.1"
 julia = "1.5"
 
 [extras]
