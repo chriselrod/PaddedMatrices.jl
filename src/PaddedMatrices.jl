@@ -131,12 +131,12 @@ function B_pointer(::Type{T} = Float64) where {T}
     Base.unsafe_convert(Ptr{T}, pointer(BCACHE))# + L₃ * (threadid - 1)
 end
 =#
-const ACACHE = Float64[]
-const ASIZE = something(Int(core_cache_size(Float64, Val(2))), 163840);
+# const ACACHE = Float64[]
+# const ASIZE = something(Int(core_cache_size(Float64, Val(2))), 163840);
 const BCACHE = Float64[]
 const BSIZE = something(Int(core_cache_size(Float64, Val(3))), 393216);
 function __init__()
-    resize!(ACACHE, ASIZE * Threads.nthreads())
+    # resize!(ACACHE, ASIZE * Threads.nthreads())
     resize!(BCACHE, BSIZE * Threads.nthreads())
 # #    set_zero_subnormals(true)
 #     page_size = ccall(:jl_getpagesize, Int, ())

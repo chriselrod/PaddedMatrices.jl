@@ -39,9 +39,9 @@ end
 @inline function core_cache_buffer(::Type{T}, ::Val{N}) where {T,N}
     L = core_cache_size(T, Val{N}())
     L === nothing && return nothing
-    # MemoryBuffer{T}(undef, L)
-    ptr = Base.unsafe_convert(Ptr{T}, ACACHE) + (Threads.threadid()-1) * L * static_sizeof(T)
-    ptrarray0(ptr, (L,))
+    MemoryBuffer{T}(undef, L)
+#     ptr = Base.unsafe_convert(Ptr{T}, ACACHE) + (Threads.threadid()-1) * L * static_sizeof(T)
+#     ptrarray0(ptr, (L,))
 end
 
 @inline undef_memory_buffer(::Type{T}, ::StaticInt{L}) where {T,L} = MemoryBuffer{L,T}(undef)

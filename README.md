@@ -2,8 +2,7 @@
 
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://chriselrod.github.io/PaddedMatrices.jl/stable)
 [![Latest](https://img.shields.io/badge/docs-latest-blue.svg)](https://chriselrod.github.io/PaddedMatrices.jl/latest)
-[![Build Status](https://travis-ci.com/chriselrod/PaddedMatrices.jl.svg?branch=master)](https://travis-ci.com/chriselrod/PaddedMatrices.jl)
-[![Build Status](https://ci.appveyor.com/api/projects/status/github/chriselrod/PaddedMatrices.jl?svg=true)](https://ci.appveyor.com/project/chriselrod/PaddedMatrices-jl)
+![CI](https://github.com/chriselrod/PaddedMatrices.jl/workflows/CI/badge.svg)
 [![Codecov](https://codecov.io/gh/chriselrod/PaddedMatrices.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/chriselrod/PaddedMatrices.jl)
 
 # Usage
@@ -115,7 +114,7 @@ julia> @pstats "cpu-cycles,(instructions,branch-instructions,branch-misses),(tas
 The difference in `L1-dcache-load-misses` looks relatively minor between these runs, yet we see nearly an 8% difference in performance and instructions per clock cycle. The first time corresponds to a mean of nearly 107 GFLOPS across the 1 million matrix multiplications, while the second corresponds to less than 100. I'm still investigating the cause. I do not see such erratic performance with MKL, for example.
 
 
-Additionally, the library uses [VectorizedRNG.jl](https://github.com/chriselrod/VectorizedRNG.jl) for random number generation. Unfortunately, here is where we pay the price of GC.
+Additionally, the library uses [VectorizedRNG.jl](https://github.com/chriselrod/VectorizedRNG.jl) for random number generation. While we may pay the price of the `GC` vs `StaticArrays.SMatrix`, we still actually end up faster:
 ```julia
 julia> using PaddedMatrices, StaticArrays, BenchmarkTools
 
@@ -124,110 +123,144 @@ BenchmarkTools.Trial:
   memory estimate:  0 bytes
   allocs estimate:  0
   --------------
-  minimum time:     90.861 ns (0.00% GC)
-  median time:      91.515 ns (0.00% GC)
-  mean time:        91.556 ns (0.00% GC)
-  maximum time:     122.468 ns (0.00% GC)
+  minimum time:     72.999 ns (0.00% GC)
+  median time:      73.078 ns (0.00% GC)
+  mean time:        76.228 ns (0.00% GC)
+  maximum time:     139.795 ns (0.00% GC)
   --------------
   samples:          10000
-  evals/sample:     968
+  evals/sample:     973
 
-julia> @benchmark @FixedSize rand(8,8)
+julia> @benchmark @StrideArray rand(8,8)
 BenchmarkTools.Trial:
-  memory estimate:  576 bytes
+  memory estimate:  544 bytes
   allocs estimate:  1
   --------------
-  minimum time:     52.154 ns (0.00% GC)
-  median time:      169.038 ns (0.00% GC)
-  mean time:        189.961 ns (20.91% GC)
-  maximum time:     18.303 μs (99.10% GC)
+  minimum time:     23.592 ns (0.00% GC)
+  median time:      46.570 ns (0.00% GC)
+  mean time:        54.569 ns (9.42% GC)
+  maximum time:     711.433 ns (91.35% GC)
   --------------
   samples:          10000
-  evals/sample:     986
+  evals/sample:     993
 
 julia> @benchmark @SMatrix randn(8,8)
 BenchmarkTools.Trial:
   memory estimate:  0 bytes
   allocs estimate:  0
   --------------
-  minimum time:     220.342 ns (0.00% GC)
-  median time:      227.329 ns (0.00% GC)
-  mean time:        227.426 ns (0.00% GC)
-  maximum time:     430.583 ns (0.00% GC)
+  minimum time:     176.371 ns (0.00% GC)
+  median time:      187.033 ns (0.00% GC)
+  mean time:        191.685 ns (0.00% GC)
+  maximum time:     370.407 ns (0.00% GC)
   --------------
   samples:          10000
-  evals/sample:     535
+  evals/sample:     728
 
-julia> @benchmark @FixedSize randn(8,8)
+julia> @benchmark @StrideArray randn(8,8)
 BenchmarkTools.Trial:
-  memory estimate:  576 bytes
+  memory estimate:  544 bytes
   allocs estimate:  1
   --------------
-  minimum time:     133.292 ns (0.00% GC)
-  median time:      262.179 ns (0.00% GC)
-  mean time:        280.922 ns (13.84% GC)
-  maximum time:     20.800 μs (99.02% GC)
+  minimum time:     58.704 ns (0.00% GC)
+  median time:      68.225 ns (0.00% GC)
+  mean time:        77.303 ns (8.01% GC)
+  maximum time:     816.444 ns (89.50% GC)
   --------------
   samples:          10000
-  evals/sample:     873
+  evals/sample:     982
 ```
-Thus, it is recomended you either preallocate and mutate existing arrays, or find some other approach to working with these.
-In the future, I'll try to ensure that a large number of basic functions and operations (e.g. matrix multiplication, broadcasting, creation)
-inline for small arrays, so that the compiler will be able to stack-allocate them and avoid the heap and GC altogether, so long as they don't escape.
+Thus, if you're generating a lot of random matrices, you're actually better off (performance-wise) biting the GC-bullet!
+
+Of course, you can still preallocate for even better performance:.
+```julia
+julia> A = StrideArray{Float64}(undef, (StaticInt(8),StaticInt(8)));
+
+julia> @benchmark rand!($A)
+BenchmarkTools.Trial:
+  memory estimate:  0 bytes
+  allocs estimate:  0
+  --------------
+  minimum time:     11.436 ns (0.00% GC)
+  median time:      11.645 ns (0.00% GC)
+  mean time:        12.382 ns (0.00% GC)
+  maximum time:     72.118 ns (0.00% GC)
+  --------------
+  samples:          10000
+  evals/sample:     999
+
+julia> @benchmark randn!($A)
+BenchmarkTools.Trial:
+  memory estimate:  0 bytes
+  allocs estimate:  0
+  --------------
+  minimum time:     55.393 ns (0.00% GC)
+  median time:      63.583 ns (0.00% GC)
+  mean time:        64.500 ns (0.00% GC)
+  maximum time:     464.260 ns (0.00% GC)
+  --------------
+  samples:          10000
+  evals/sample:     984
+```
+
+By preallocating arrays, you can gain additional performance.
+
+In the future, I'll try to ensure that a large number of basic functions and operations (e.g. matrix multiplication, broadcasting, creation) do not force heap-allocation even when they do not inline, to make it easier to write non-allocating code with these mutable arrays.
+
 
 These arrays also use [LoopVectorization.jl](https://github.com/chriselrod/LoopVectorization.jl) for broadcasts:
 ```julia
 julia> using PaddedMatrices, StaticArrays, BenchmarkTools
 
-julia> Afs = @FixedSize randn(13,29); Asm = SMatrix{13,29}(Array(Afs));
+julia> Afs = @StrideArray randn(13,29); Asm = SMatrix{13,29}(Array(Afs));
 
-julia> bfs = @FixedSize rand(13); bsv = SVector{13}(bfs);
+julia> bfs = @StrideArray rand(13); bsv = SVector{13}(bfs);
 
-julia> cfs = @FixedSize rand(29); csv = SVector{29}(cfs);
+julia> cfs = @StrideArray rand(29); csv = SVector{29}(cfs);
 
 julia> Dfs = @. exp(Afs) + bfs * log(cfs');
 
 julia> Dfs ≈ @. exp(Asm) + bsv * log(csv')
 true
 
-julia> @benchmark @. exp($Afs) + $bfs * log($cfs') # FixedSizeArrays, allocating
+julia> @benchmark @. exp($Afs) + $bfs * log($cfs') # StrideArrays, allocating
 BenchmarkTools.Trial:
-  memory estimate:  3.75 KiB
+  memory estimate:  3.12 KiB
   allocs estimate:  1
   --------------
-  minimum time:     659.503 ns (0.00% GC)
-  median time:      715.554 ns (0.00% GC)
-  mean time:        850.659 ns (11.74% GC)
-  maximum time:     51.319 μs (96.06% GC)
+  minimum time:     513.243 ns (0.00% GC)
+  median time:      591.307 ns (0.00% GC)
+  mean time:        774.968 ns (16.80% GC)
+  maximum time:     23.365 μs (74.48% GC)
   --------------
   samples:          10000
-  evals/sample:     149
+  evals/sample:     189
 
 julia> @benchmark @. exp($Asm) + $bsv * log($csv') # StaticArrays, non-allocating but much slower
 BenchmarkTools.Trial:
   memory estimate:  0 bytes
   allocs estimate:  0
   --------------
-  minimum time:     3.676 μs (0.00% GC)
-  median time:      3.686 μs (0.00% GC)
-  mean time:        3.691 μs (0.00% GC)
-  maximum time:     6.073 μs (0.00% GC)
+  minimum time:     2.650 μs (0.00% GC)
+  median time:      2.736 μs (0.00% GC)
+  mean time:        2.881 μs (0.00% GC)
+  maximum time:     13.431 μs (0.00% GC)
   --------------
   samples:          10000
-  evals/sample:     8
+  evals/sample:     9
 
-julia> @benchmark @. $Dfs = exp($Afs) + $bfs * log($cfs') # FixedSizeArrays, using pre-allocated output
+julia> @benchmark @. $Dfs = exp($Afs) + $bfs * log($cfs') # StrideArrays, using pre-allocated output
 BenchmarkTools.Trial:
   memory estimate:  0 bytes
   allocs estimate:  0
   --------------
-  minimum time:     496.433 ns (0.00% GC)
-  median time:      498.995 ns (0.00% GC)
-  mean time:        499.542 ns (0.00% GC)
-  maximum time:     624.820 ns (0.00% GC)
+  minimum time:     344.828 ns (0.00% GC)
+  median time:      386.982 ns (0.00% GC)
+  mean time:        388.061 ns (0.00% GC)
+  maximum time:     785.701 ns (0.00% GC)
   --------------
   samples:          10000
-  evals/sample:     194
-  ```
+  evals/sample:     221
+```
 
 

@@ -105,8 +105,11 @@ end
 
 @inline function StrideArray{T}(::UndefInitializer, s::Tuple{Vararg{Integer,N}}) where {N,T}
     x, L = calc_strides_len(T,s)
-    b = undef_memory_buffer(T, L)
-    ptr = VectorizationBase.align(pointer(b))
+    b = undef_memory_buffer(T, L ÷ static_sizeof(T))
+    # For now, just trust Julia's alignment heuristics are doing the right thing
+    # to save us from having to over-allocate
+    # ptr = VectorizationBase.align(pointer(b))
+    ptr = pointer(b)
     StrideArray(ptr, s, x, b, all_dense(Val{N}()))
 end
 @inline function StrideArray(ptr::Ptr{T}, s::S, x::X, b, ::DenseDims{D}) where {S,X,T,D}

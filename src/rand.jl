@@ -32,11 +32,18 @@ function rand_expr(expr, args...)
         end
     end
     f! = Symbol(expr.args[1], :!)
-    call = Expr(:call, f!, :(PaddedMatrices.StrideArray{$T}(undef, $s)))
+    array = :(StrideArray{$T}(undef, $s))
+    # we call PtrArray so that `rand!` doesn't force heap allocation.
+    call = Expr(:call, f!, Expr(:call, :PtrArray, :array))
     for arg ∈ args
         push!(call.args, esc(arg))
     end
-    call
+    quote
+        array = $array
+        # we add GC.@preserve to save the array.
+        GC.@preserve array $call
+        array
+    end
 end
 
 macro StrideArray(expr, args...)
