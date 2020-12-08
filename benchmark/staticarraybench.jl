@@ -6,43 +6,44 @@ BLAS.set_num_threads(1)
 # BenchmarkTools.DEFAULT_PARAMETERS.samples = 1_000_000
 # BenchmarkTools.DEFAULT_PARAMETERS.seconds = 10
 
+matrix_sizes(x::Integer) = (x,x,x)
+matrix_sizes(x::NTuple{3}) = x
+
 function runbenches(sr, ::Type{T} = Float64) where {T}
-    bench_results = Matrix{T}(undef, length(sr), 6)
+    bench_results = Matrix{T}(undef, length(sr), 5)
     for (i,s) ∈ enumerate(sr)
+        M, N, K = matrix_sizes(s)
         if s ≤ 20
-            Astatic = @SMatrix rand(T, s, s);
-            Bstatic = @SMatrix rand(T, s, s);
+            Astatic = @SMatrix rand(T, M, K);
+            Bstatic = @SMatrix rand(T, K, N);
             bench_results[i,1] = @belapsed $(Ref(Astatic))[] * $(Ref(Bstatic))[]
             Amutable = MArray(Astatic);
             Bmutable = MArray(Bstatic);
             Cmutable = similar(Amutable);
         else
             bench_results[i,1] = Inf
-            Amutable = MMatrix{s,s,T}(undef)
-            Bmutable = MMatrix{s,s,T}(undef)
-            Cmutable = MMatrix{s,s,T}(undef)
+            Amutable = MMatrix{M,K,T}(undef)
+            Bmutable = MMatrix{K,N,T}(undef)
+            Cmutable = MMatrix{M,N,T}(undef)
             @inbounds for i ∈ 1:s^2
                 Amutable[i] = rand()
                 Bmutable[i] = rand()
             end
         end
         bench_results[i,2] = @belapsed mul!($Cmutable, $Amutable, $Bmutable)
-        Afixed = FixedSizeMatrix{s,s,T}(undef) .= Amutable
-        Bfixed = FixedSizeMatrix{s,s,T}(undef) .= Bmutable
-        Cfixed = FixedSizeMatrix{s,s,T}(undef)
+        Afixed = StrideArray{T}(undef, (StaticInt(M),StaticInt(K))) .= Amutable
+        Bfixed = StrideArray{T}(undef, (StaticInt(K),StaticInt(N))) .= Bmutable
+        Cfixed = StrideArray{T}(undef, (StaticInt(M),StaticInt(N)))
         bench_results[i,3] = @belapsed mul!($Cfixed, $Afixed, $Bfixed)
-        Apadded = FixedSizeMatrix{s,s,T}(undef, Val(true)) .= Amutable
-        Bpadded = FixedSizeMatrix{s,s,T}(undef, Val(true)) .= Bmutable
-        Cpadded = FixedSizeMatrix{s,s,T}(undef, Val(true))
-        Cpaddedptr = FixedSizeMatrix{s,s,T}(undef)
-        bench_results[i,4] = @belapsed mul!($Cpadded, $Apadded, $Bpadded)
-        Aptr = PtrArray(Apadded); Bptr = PtrArray(Bpadded); Cptr = PtrArray(Cpaddedptr);
-        GC.@preserve Apadded Bpadded Cpadded begin
-            bench_results[i,5] = @belapsed mul!($Cptr, $Aptr, $Bptr)
+        Cfixed2 = similar(Cfixed);
+        Aptr = PtrArray(Afixed); Bptr = PtrArray(Bfixed); Cptr = PtrArray(Cfixed2);
+        GC.@preserve Afixed Bfixed Cfixed2 begin
+            bench_results[i,4] = @belapsed mul!($Cptr, $Aptr, $Bptr)
         end
-        A = Array(Apadded); B = Array(Bpadded); C = similar(A);
-        bench_results[i,6] = @belapsed PaddedMatrices.jmul!($C, $A, $B)
-        @assert Array(Cmutable) ≈ Cfixed ≈ Cpadded ≈ Cpaddedptr ≈ C
+        A = Array(Afixed); B = Array(Bfixed); C = Matrix{T}(undef, M, N);
+        bench_results[i,5] = @belapsed jmul!($C, $A, $B)
+        # @show Array(Cmutable) Cfixed Cfixed2 C
+        @assert Array(Cmutable) ≈ Cfixed ≈ Cfixed2 ≈ C
         v = @view(bench_results[i,:])'
         @show s, v
     end
@@ -56,13 +57,29 @@ using DataFrames, VegaLite
 gflops = @. 2e-9 * (sizerange) ^ 3 / br;
 
 df = DataFrame(gflops);
-matmulmethodnames = [:SMatrix, :MMatrix, :FixedSizeArray, :PaddedArray, :PtrArray, :DynamicMul];
-names!(df, matmulmethodnames);
+matmulmethodnames = [:SMatrix, :MMatrix, :StrideArray, :PtrArray, :jmul!];
+rename!(df, matmulmethodnames);
 df.Size = sizerange
+
+function pick_suffix(desc = "")
+    suffix = if PaddedMatrices.VectorizationBase.AVX512F
+        "AVX512"
+    elseif PaddedMatrices.VectorizationBase.AVX2
+        "AVX2"
+    elseif PaddedMatrices.VectorizationBase.REGISTER_SIZE == 32
+        "AVX"
+    else
+        "REGSUZE$(PaddedMatrices.VectorizationBase.REGISTER_SIZE)"
+    end
+    if desc != ""
+        suffix *= '_' * desc
+    end
+    "$(Sys.CPU_NAME)_$suffix"
+end
 
 dfs = stack(df, matmulmethodnames, variable_name = :MatMulType, value_name = :GFLOPS);
 p = dfs |> @vlplot(:line, x = :Size, y = :GFLOPS, width = 900, height = 600, color = {:MatMulType});
-save(joinpath(pkgdir(PaddedMatrices), "docs/src/assets/sizedarraybenchmarks.svg"), p)
+save(joinpath(pkgdir(PaddedMatrices), "docs/src/assets/sizedarraybenchmarks_$(pick_suffix()).svg"), p)
 
 
 

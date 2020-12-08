@@ -136,14 +136,14 @@ ti32 = runbench(Int32);
 =#
 
 calcgflops(sz, st) = 2e-9 * sz^3 /st
-using VectorizationBase: REGISTER_SIZE, FMA3
+using VectorizationBase: REGISTER_SIZE, FMA
 # I don't know how to query GHz;
 # Your best bet would be to check your bios
 # Alternatives are to look up your CPU model or `watch -n1 "cat /proc/cpuinfo | grep MHz"`
 # Boosts and avx downclocking complicate it.
 const GHz = 4.1 
 const W64 = REGISTER_SIZE ÷ sizeof(Float64) # vector width
-const FMA_RATIO = FMA3 ? 2 : 1
+const FMA_RATIO = FMA ? 2 : 1
 const INSTR_PER_CLOCK = 2 # I don't know how to query this, but true for most recent CPUs
 const PEAK_DGFLOPS = GHz * W64 * FMA_RATIO * INSTR_PER_CLOCK
 
@@ -159,15 +159,7 @@ function create_df(res)
     dfs
 end
 
-function plot(tf, ::Type{T} = Float64, desc = "") where {T}
-    res = create_df(tf)
-    l, u = extrema(tf.matrix_size)
-    plt = res |> @vlplot(
-        :line, color = :Library,
-       # x = {:Size, scale={type=:log}}, y = {:GFLOPS},#, scale={type=:log}},
-        x = {:Size}, y = {:GFLOPS},#, scale={type=:log}},
-        width = 1200, height = 600
-    )
+function pick_suffix(desc = "")
     suffix = if PaddedMatrices.VectorizationBase.AVX512F
         "AVX512"
     elseif PaddedMatrices.VectorizationBase.AVX2
@@ -180,8 +172,21 @@ function plot(tf, ::Type{T} = Float64, desc = "") where {T}
     if desc != ""
         suffix *= '_' * desc
     end
-    save(joinpath(pkgdir(PaddedMatrices), "docs/src/assets/gemm$(string(T))_$(l)_$(u)_$(Sys.CPU_NAME)_$(suffix).svg"), plt)
-    save(joinpath(pkgdir(PaddedMatrices), "docs/src/assets/gemm$(string(T))_$(l)_$(u)_$(Sys.CPU_NAME)_$(suffix).png"), plt)
+    "$(Sys.CPU_NAME)_$suffix"
+end
+
+function plot(tf, ::Type{T} = Float64, desc = "") where {T}
+    res = create_df(tf)
+    l, u = extrema(tf.matrix_size)
+    plt = res |> @vlplot(
+        :line, color = :Library,
+       # x = {:Size, scale={type=:log}}, y = {:GFLOPS},#, scale={type=:log}},
+        x = {:Size}, y = {:GFLOPS},#, scale={type=:log}},
+        width = 1200, height = 600
+    )
+    suffix = pick_suffix(desc)
+    save(joinpath(pkgdir(PaddedMatrices), "docs/src/assets/gemm$(string(T))_$(l)_$(u)_$(suffix).svg"), plt)
+    save(joinpath(pkgdir(PaddedMatrices), "docs/src/assets/gemm$(string(T))_$(l)_$(u)_$(suffix).png"), plt)
 end
 
 
