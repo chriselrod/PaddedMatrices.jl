@@ -40,8 +40,9 @@ function rand_expr(expr, args...)
     end
     quote
         array = $array
+        b = array.data
         # we add GC.@preserve to save the array.
-        GC.@preserve array $call
+        GC.@preserve b $call
         array
     end
 end

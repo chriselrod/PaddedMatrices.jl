@@ -291,7 +291,8 @@ end
     pB = PtrArray(B)
     pC = PtrArray(C)
     M = static_length(Ma); K = static_length(Ka); N = static_length(Na);
-    GC.@preserve C A B begin
+    Cb = preserve_buffer(C); Ab = preserve_buffer(A); Bb = preserve_buffer(B);
+    GC.@preserve Cb Ab Bb begin
         if VectorizationBase.CACHE_SIZE[2] === nothing || ((nᵣ ≥ N) || (contiguousstride1(A) && dontpack(pointer(pA), M, K, stride(A,2), StaticInt{mc}(), StaticInt{kc}(), Tc)))
             loopmul!(pC, pA, pB, α, β, (Ma,Ka,Na))
         elseif VectorizationBase.CACHE_SIZE[3] === nothing || ((contiguousstride1(B) && (kc * nc < K * N)) || firststride(B) < 240)
@@ -845,6 +846,7 @@ end
     TC = promote_type(TA,TB)
     C = StrideArray{TC}(undef, (size(A, StaticInt{1}()),size(B, StaticInt{2}())))
     jmul!(C, A, B)
+    C
 end
 
 @inline extract_λ(a) = a

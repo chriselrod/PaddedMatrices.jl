@@ -9,7 +9,7 @@ using Test
 
 @testset "PaddedMatrices.jl" begin
     @test isempty(detect_unbound_args(PaddedMatrices))
+    @time include("misc.jl")
     @time include("matmul_tests.jl")
     @time include("broadcast_tests.jl")
-    @time include("misc.jl")
 end

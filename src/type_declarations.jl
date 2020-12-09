@@ -86,6 +86,42 @@ const StrideMatrix{S,D,T,C,B,R,X,O,A} = StrideArray{S,D,T,2,C,B,R,X,O,A}
 const AbstractStrideVector{S,D,T,C,B,R,X,O} = AbstractStrideArray{S,D,T,1,C,B,R,X,O}
 const AbstractStrideMatrix{S,D,T,C,B,R,X,O} = AbstractStrideArray{S,D,T,2,C,B,R,X,O}
 
+@inline StrideArray(A::AbstractArray) = StrideArray(PtrArray(A), A)
+
+
+@inline LoopVectorization.preserve_buffer(A::MemoryBuffer) = A
+@inline LoopVectorization.preserve_buffer(A::StrideArray) = LoopVectorization.preserve_buffer(A.data)
+@inline LoopVectorization.preserve_buffer(A::PtrArray) = nothing
+
+@inline maybe_ptr_array(A) = A
+@inline maybe_ptr_array(A::AbstractArray) = maybe_ptr_array(ArrayInterface.device(A), A)
+@inline maybe_ptr_array(::ArrayInterface.CPUPointer, A::AbstractArray) = PtrArray(A)
+@inline maybe_ptr_array(_, A::AbstractArray) = A
+
+
+macro gc_preserve(ex)
+    @assert ex.head === :call
+    q = Expr(:block)
+    call = Expr(:call, esc(ex.args[1]))
+    gcp = Expr(:gc_preserve, call)
+    for i ∈ 2:length(ex.args)
+        arg = ex.args[i]
+        A = gensym(:A); buffer = gensym(:buffer);
+        if arg isa Expr && arg.head === :kw
+            push!(call.args, Expr(:kw, arg.args[1], Expr(:call, :maybe_ptr_array, A)))
+            arg = arg.args[2]
+        else
+            push!(call.args, Expr(:call, :maybe_ptr_array, A))
+        end
+        push!(q.args, :($A = $(esc(arg))))
+        push!(q.args, Expr(:(=), buffer, Expr(:call, :preserve_buffer, A)))
+        push!(gcp.args, buffer)
+    end
+    push!(q.args, gcp)
+    q
+end
+
+
 # const FVector{L,T} = StrideVector{Tuple{StaticInt{L}},(true,),T,1,0,(1,)}
 
 # @inline function StrideArray{S,T,N,C,B,R,X,O,D}(ptr, sz, sx, data) where {S,T,N,C,B,R,X,O,D}

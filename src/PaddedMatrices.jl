@@ -10,7 +10,7 @@ using VectorizationBase, ArrayInterface,
 
 using VectorizationBase: align, gep, AbstractStridedPointer, AbstractSIMDVector, vnoaliasstore!, staticm1,
     static_sizeof, lazymul, vmul, vadd, vsub, StridedPointer, gesp
-using LoopVectorization: maybestaticsize, mᵣ, nᵣ
+using LoopVectorization: maybestaticsize, mᵣ, nᵣ, preserve_buffer
 using ArrayInterface: StaticInt, Zero, One, OptionallyStaticUnitRange, size, strides, offsets, indices,
     static_length, static_first, static_last, axes,
     dense_dims, DenseDims, stride_rank, StrideRank
@@ -21,7 +21,7 @@ using ArrayInterface: StaticInt, Zero, One, OptionallyStaticUnitRange, size, str
 
 # using Parameters: @unpack
 
-export @StrideArray, # @Constant,
+export @StrideArray, @gc_preserve, # @Constant,
     AbstractStrideArray, AbstractStrideVector, AbstractStrideMatrix,
     StrideArray, StrideVector, StrideMatrix,
     PtrArray,# PtrVector, PtrMatrix,
