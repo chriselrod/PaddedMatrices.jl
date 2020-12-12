@@ -26,6 +26,8 @@ end
     @test A == @inferred(vcat(A_u, A_l))
     @test PaddedMatrices.size(A) === PaddedMatrices.size(vcat(A_u, A_l))
 
+    # On 1.5 tests fail if you don't do this first.
+    @test pointer(view(A, 1:StaticInt(6), :)) == pointer(A)
     A_u = view(A, 1:StaticInt(6), :)
     A_l = view(A, StaticInt(7):StaticInt(10), :)
     @test A == @inferred(vcat(A_u, A_l))

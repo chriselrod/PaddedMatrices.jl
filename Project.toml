@@ -16,7 +16,7 @@ VectorizedRNG = "33b4df10-0173-11e9-2a0c-851a7edac40e"
 ArrayInterface = "2.14.4"
 LoopVectorization = "0.9.4"
 SLEEFPirates = "0.6"
-VectorizationBase = "0.13.7"
+VectorizationBase = "0.13.11"
 VectorizedRNG = "0.2.1"
 julia = "1.5"
 
