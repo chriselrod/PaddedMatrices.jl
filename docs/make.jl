@@ -1,21 +1,22 @@
-using Documenter, PaddedMatrices
+using PaddedMatrices
+using Documenter
 
 makedocs(;
     modules=[PaddedMatrices],
-    format=:html,
+    authors="Chris Elrod",
+    repo="https://github.com/chriselrod/PaddedMatrices.jl/blob/{commit}{path}#L{line}",
+    sitename="PaddedMatrices.jl",
+    format=Documenter.HTML(;
+        prettyurls=get(ENV, "CI", "false") == "true",
+        canonical="https://chriselrod.github.io/PaddedMatrices.jl",
+        assets=String[],
+    ),
     pages=[
         "Home" => "index.md",
     ],
-    repo="https://github.com/chriselrod/PaddedMatrices.jl/blob/{commit}{path}#L{line}",
-    sitename="PaddedMatrices.jl",
-    authors="Chris Elrod",
-    assets=[],
+    strict=false,
 )
 
 deploydocs(;
     repo="github.com/chriselrod/PaddedMatrices.jl",
-    target="build",
-    julia="1.0",
-    deps=nothing,
-    make=nothing,
 )
