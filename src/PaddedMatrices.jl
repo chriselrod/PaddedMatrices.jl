@@ -134,7 +134,7 @@ end
 # const ACACHE = Float64[]
 # const ASIZE = something(Int(core_cache_size(Float64, Val(2))), 163840);
 const BCACHE = Float64[]
-const BSIZE = something(Int(core_cache_size(Float64, Val(3))), 393216);
+const BSIZE = Int(something(core_cache_size(Float64, Val(3)), 393216));
 function __init__()
     # resize!(ACACHE, ASIZE * Threads.nthreads())
     resize!(BCACHE, BSIZE * Threads.nthreads())

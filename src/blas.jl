@@ -129,7 +129,8 @@ function jmulpackAonly!(
     Bptr = VectorizationBase.zero_offsets(stridedpointer(B))
     Cptr = VectorizationBase.zero_offsets(stridedpointer(C))
     _Mrem, _mreps_per_iter = promote(Mrem, mreps_per_iter)
-    GC.@preserve C A B begin
+    Cb = preserve_buffer(C); Ab = preserve_buffer(A); Bb = preserve_buffer(B);
+    GC.@preserve Cb Ab Bb begin
         # Krem
         # pack kreps_per_iter x nc block of B
         Bpacked = PtrArray(Bptr, (Krem, N), dense_dims_subset(dense_dims(B), stride_rank(B)))
@@ -214,7 +215,8 @@ function jmulpackAB!(
     noffset = 0
     _Nrem, _nreps_per_iter = promote(Nrem, nreps_per_iter)
     _Mrem, _mreps_per_iter = promote(Mrem, mreps_per_iter)
-    GC.@preserve C A B BCACHE begin
+    Cb = preserve_buffer(C); Ab = preserve_buffer(A); Bb = preserve_buffer(B);
+    GC.@preserve Cb Ab Bb BCACHE begin
         for no in 0:Niter
             # Krem
             # pack kc x nc block of B

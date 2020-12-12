@@ -15,25 +15,45 @@ Base.IndexStyle(::Type{<:AbstractStrideVector{<:Any,<:Any,<:Any,1}}) = IndexLine
     end          
 end
 
-@inline function Base.getindex(A::PtrArray, i::Vararg{Integer,K}) where {K}
+Base.@propagate_inbounds Base.getindex(A::AbstractStrideVector, i::Int, j::Int) = A[i]
+@inline function Base.getindex(A::PtrArray{S,D,T,K}, i::Vararg{Integer,K}) where {S,D,T,K}
     @boundscheck checkbounds(A, i...)
     vload(stridedpointer(A), i)
 end
-@inline function Base.getindex(A::AbstractStrideArray, i::Vararg{Integer,K}) where {K}
+@inline function Base.getindex(A::AbstractStrideArray{S,D,T,K}, i::Vararg{Integer,K}) where {S,D,T,K}
     @boundscheck checkbounds(A, i...)
     b = preserve_buffer(A)
     GC.@preserve b vload(stridedpointer(A), i)
 end
-Base.@propagate_inbounds Base.getindex(A::AbstractStrideVector, i::Int, j::Int) = A[i]
-@inline function Base.setindex!(A::PtrArray, v, i::Vararg{Integer,K}) where {K}
+@inline function Base.setindex!(A::PtrArray{S,D,T,K}, v, i::Vararg{Integer,K}) where {S,D,T,K}
     @boundscheck checkbounds(A, i...)
     vstore!(stridedpointer(A), v, i)
     v
 end
-@inline function Base.setindex!(A::AbstractStrideArray, v, i::Vararg{Integer,K}) where {K}
+@inline function Base.setindex!(A::AbstractStrideArray{S,D,T,K}, v, i::Vararg{Integer,K}) where {S,D,T,K}
     @boundscheck checkbounds(A, i...)
     b = preserve_buffer(A)
     GC.@preserve b vstore!(stridedpointer(A), v, i)
+    v
+end
+@inline function Base.getindex(A::PtrArray, i::Integer)
+    @boundscheck checkbounds(A, i)
+    vload(stridedpointer(A), (i - one(i),))
+end
+@inline function Base.getindex(A::AbstractStrideArray, i::Integer)
+    @boundscheck checkbounds(A, i)
+    b = preserve_buffer(A)
+    GC.@preserve b vload(stridedpointer(A), (i - one(i),))
+end
+@inline function Base.setindex!(A::PtrArray, v, i::Integer)
+    @boundscheck checkbounds(A, i...)
+    vstore!(stridedpointer(A), v, (i - one(i),))
+    v
+end
+@inline function Base.setindex!(A::AbstractStrideArray, v, i::Integer)
+    @boundscheck checkbounds(A, i...)
+    b = preserve_buffer(A)
+    GC.@preserve b vstore!(stridedpointer(A), v, (i - one(i),))
     v
 end
 
