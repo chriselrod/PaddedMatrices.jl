@@ -42,15 +42,7 @@ include("rand.jl")
 include("kernels.jl")
 include("blas.jl")
 include("broadcast.jl")
-
-# include("zeroinitialized.jl")
-# include("stack_pointers.jl")
-# include("mappedtypes.jl")
-# include("lazy_maps.jl")
-
 include("miscellaneous.jl")
-# include("gradsupport.jl")
-# include("linear_algebra.jl")
 
 
 """
@@ -148,6 +140,8 @@ function __init__()
 #     # @require ForwardDiff="f6369f11-7733-5829-9624-2563aa707210" @eval using PaddedMatricesForwardDiff
 end
 
+# include("precompile.jl")
+# _precompile_()
 
 
 

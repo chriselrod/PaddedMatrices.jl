@@ -1,6 +1,7 @@
 using PaddedMatrices, LinearAlgebra
 using Test
 
+@show PaddedMatrices.VectorizationBase.REGISTER_COUNT
 const START_TIME = time()
 
 @inferred PaddedMatrices.matmul_params_static(Float32)

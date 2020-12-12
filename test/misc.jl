@@ -26,8 +26,6 @@ end
     @test A == @inferred(vcat(A_u, A_l))
     @test PaddedMatrices.size(A) === PaddedMatrices.size(vcat(A_u, A_l))
 
-    @test A[1,1] == A[1]
-
     A_u = view(A, 1:StaticInt(6), :)
     A_l = view(A, StaticInt(7):StaticInt(10), :)
     @test A == @inferred(vcat(A_u, A_l))
@@ -38,5 +36,13 @@ end
     @test sum(A) ≈ sum(Aa)
     @test maximum(A) == maximum(Aa) == maximum(abs, @. -A)
     @test mapreduce(abs2, +, A) ≈ mapreduce(abs2, +, Aa)
+
+    @test A[1,1] == A[1] == vec(A)[1]
+    A[1,1] = 3
+    @test A[1,1] == A[1] == vec(A)[1] == 3
+    A[2] = 4
+    @test A[2,1] == A[2] == vec(A)[2] == 4
+    vec(A)[3] = 5
+    @test A[3,1] == A[3] == vec(A)[3] == 5
 end
 
