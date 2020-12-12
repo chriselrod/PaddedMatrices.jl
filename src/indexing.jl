@@ -21,7 +21,8 @@ end
 end
 @inline function Base.getindex(A::AbstractStrideArray, i::Vararg{Integer,K}) where {K}
     @boundscheck checkbounds(A, i...)
-    GC.@preserve A vload(stridedpointer(A), i)
+    b = preserve_buffer(A)
+    GC.@preserve b vload(stridedpointer(A), i)
 end
 Base.@propagate_inbounds Base.getindex(A::AbstractStrideVector, i::Int, j::Int) = A[i]
 @inline function Base.setindex!(A::PtrArray, v, i::Vararg{Integer,K}) where {K}
@@ -31,7 +32,8 @@ Base.@propagate_inbounds Base.getindex(A::AbstractStrideVector, i::Int, j::Int) 
 end
 @inline function Base.setindex!(A::AbstractStrideArray, v, i::Vararg{Integer,K}) where {K}
     @boundscheck checkbounds(A, i...)
-    GC.@preserve A vstore!(stridedpointer(A), v, i)
+    b = preserve_buffer(A)
+    GC.@preserve b vstore!(stridedpointer(A), v, i)
     v
 end
 
