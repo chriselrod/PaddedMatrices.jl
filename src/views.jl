@@ -66,8 +66,6 @@ function view_quote(i, K, S, D, T, N, C, B, R, X, O)
                     if _sz <: StaticInt
                         ip = getfield(ispₙ, :parameters)
                         sz = getfield(_sz, :parameters)[1]
-                        # @show 1 + (getfield(ip[2], :parameters)[1])::Int - (getfield(ip[1], :parameters)[1])::Int, sz
-                        # @show D
                         1 + (getfield(ip[2], :parameters)[1])::Int - (getfield(ip[1], :parameters)[1])::Int === sz
                     else
                         false
@@ -77,7 +75,7 @@ function view_quote(i, K, S, D, T, N, C, B, R, X, O)
                 end
             end
         else
-            still_dense = false
+            densev[spₙ] = false
         end
     end
     for k ∈ 1:K
@@ -97,7 +95,6 @@ function view_quote(i, K, S, D, T, N, C, B, R, X, O)
     end
 end
 @generated function Base.view(A::PtrArray{S,D,T,N,C,B,R,X,O}, i::Vararg{Union{Integer,AbstractRange,Colon},K}) where {K,S,D,T,N,C,B,R,X,O}
-    # 1+1
     view_quote(i, K, S, D, T, N, C, B, R, X, O)
 end
 
