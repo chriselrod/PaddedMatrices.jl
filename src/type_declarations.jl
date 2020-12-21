@@ -8,6 +8,7 @@ end
 @inline Base.unsafe_convert(::Type{Ptr{T}}, d::MemoryBuffer) where {T} = Base.unsafe_convert(Ptr{T}, Base.pointer_from_objref(d))
 @inline MemoryBuffer{T}(::UndefInitializer, ::StaticInt{L}) where {L,T} = MemoryBuffer{L,T}(undef)
 Base.size(::MemoryBuffer{L}) where L = (L,)
+@inline Base.similar(::MemoryBuffer{L,T}) where {L,T} = MemoryBuffer{L,T}(undef)
 # Base.IndexStyle(::Type{<:MemoryBuffer}) = Base.IndexLinear()
 @inline function Base.getindex(m::MemoryBuffer{L,T}, i::Int) where {L,T}
     @boundscheck checkbounds(m, i)

@@ -85,6 +85,28 @@ end
         B = @StrideArray rand(K,N);
         C = StrideArray{Float64}(undef, (StaticInt(M),StaticInt(N)));
         M, K, N = 23, 37, 19
+        @views begin
+            Av = A[1:M, 1:K]; 
+            Bv = B[1:K, 1:N]; 
+            Cv = C[1:M, 1:N]; 
+            Avsl = A[StaticInt(1):M, StaticInt(1):K]; 
+            Bvsl = B[StaticInt(1):K, StaticInt(1):N]; 
+            Cvsl = C[StaticInt(1):M, StaticInt(1):N]; 
+            Avsr = A[StaticInt(1):StaticInt(M), StaticInt(1):StaticInt(K)]; 
+            Bvsr = B[StaticInt(1):StaticInt(K), StaticInt(1):StaticInt(N)]; 
+            Cvsr = C[StaticInt(1):StaticInt(M), StaticInt(1):StaticInt(N)]; 
+        end
+        Creference = Array(Av) * Array(Bvsl);
+        time = @elapsed mul!(Cv, Av, Bv)
+        @test Creference ≈ Cv
+        @show M, K, N, time
+        time = @elapsed mul!(Cvsl, Avsl, Bvsl)
+        @test Creference ≈ Cv
+        @show M, K, N, time
+        time = @elapsed mul!(Cvsr, Avsr, Bvsr)
+        @test Creference ≈ Cv
+        @show M, K, N, time
+
         Av = A[1:M, 1:K]; 
         Bv = B[1:K, 1:N]; 
         Cv = C[1:M, 1:N]; 
@@ -94,7 +116,6 @@ end
         Avsr = A[StaticInt(1):StaticInt(M), StaticInt(1):StaticInt(K)]; 
         Bvsr = B[StaticInt(1):StaticInt(K), StaticInt(1):StaticInt(N)]; 
         Cvsr = C[StaticInt(1):StaticInt(M), StaticInt(1):StaticInt(N)]; 
-
         Creference = Array(Av) * Array(Bvsl);
         time = @elapsed mul!(Cv, Av, Bv)
         @test Creference ≈ Cv

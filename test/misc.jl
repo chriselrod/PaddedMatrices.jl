@@ -20,7 +20,7 @@ end
     @test maximum(abs, y) == maximum(abs, Array(y))
     @test iszero(@allocated gc_preserve_test())
 
-    A = @StrideArray rand(10,8)
+    A = @StrideArray rand(10,8);
     A_u = view(A, StaticInt(1):StaticInt(6), :)
     A_l = view(A, StaticInt(7):StaticInt(10), :)
     @test A == @inferred(vcat(A_u, A_l))
@@ -28,8 +28,8 @@ end
 
     # On 1.5 tests fail if you don't do this first.
     @test pointer(view(A, 1:StaticInt(6), :)) == pointer(A)
-    A_u = view(A, 1:StaticInt(6), :)
-    A_l = view(A, StaticInt(7):StaticInt(10), :)
+    A_u = view(A, 1:StaticInt(6), :);
+    A_l = view(A, StaticInt(7):StaticInt(10), :);
     @test A == @inferred(vcat(A_u, A_l))
     @test PaddedMatrices.size(A) == PaddedMatrices.size(vcat(A_u, A_l))
     @test PaddedMatrices.size(A) !== PaddedMatrices.size(vcat(A_u, A_l))
@@ -46,5 +46,10 @@ end
     @test A[2,1] == A[2] == vec(A)[2] == 4
     vec(A)[3] = 5
     @test A[3,1] == A[3] == vec(A)[3] == 5
+
+    @test PaddedMatrices.stride_rank(PaddedMatrices.similar_layout(A')) === PaddedMatrices.stride_rank(PaddedMatrices.similar_layout(Aa')) === PaddedMatrices.StrideRank{(2,1)}()
+    @test PaddedMatrices.ArrayInterface.contiguous_axis(PaddedMatrices.similar_layout(A')) === PaddedMatrices.ArrayInterface.contiguous_axis(PaddedMatrices.similar_layout(Aa')) === PaddedMatrices.ArrayInterface.Contiguous{2}()
+    
+    
 end
 

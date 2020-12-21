@@ -88,7 +88,6 @@ end
     StrideArray(view(A.ptr, i...), A.data)
 end
 
-
 @inline function Base.vec(A::PtrArray{S,D,T,N,C,0}) where {S,D,T,N,C}
     @assert all(D) "All dimensions must be dense for a vec view. Try `vec(copy(A))` instead."
     sp = StridedPointer(pointer(A), (VectorizationBase.static_sizeof(T),), (One(),))

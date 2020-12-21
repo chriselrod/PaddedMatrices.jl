@@ -14,8 +14,8 @@ function permute_dims_expr(perm, D, C, B, R)
         push!(s.args, Expr(:ref, :s, p))
         push!(x.args, Expr(:ref, :x, p))
         push!(o.args, Expr(:ref, :o, p))
-        push!(Rnew.args, R[n])
-        push!(Dnew.args, D[n])
+        push!(Rnew.args, R[p])
+        push!(Dnew.args, D[p])
         if C == p
             Cnew = n
         end

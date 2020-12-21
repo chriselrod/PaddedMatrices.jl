@@ -40,7 +40,6 @@ end
 #     q = Expr(:block, Expr(:meta,:inline))
     
 # end
-@inline PtrArray(A::AbstractArray) = PtrArray(stridedpointer(A), size(A), dense_dims(A))
 
 function ptrarray_densestride_quote(::Type{T}, N, stridedpointer_offsets) where {T}
     last_sx = :s_0
@@ -117,8 +116,19 @@ end
 end
 
 @inline PtrArray(A::StrideArray) = A.ptr
+@inline PtrArray(A::AbstractArray) = PtrArray(stridedpointer(A), size(A), dense_dims(A))
 
 
+@generated rank_to_sortperm_val(::Val{R}) where {R} = :(Val{$(ArrayInterface.rank_to_sortperm(R))}())
+@inline function similar_layout(A::AbstractStrideArray{S,D,T,N,C,B,R}) where {S,D,T,N,C,B,R}
+    permutedims(similar(permutedims(A, rank_to_sortperm_val(Val{R}()))), Val{R}())
+end
+@inline function similar_layout(A::AbstractArray)
+    b = preserve_buffer(A)
+    GC.@preserve b begin
+        similar_layout(PtrArray(A))
+    end
+end
 @inline function Base.similar(A::AbstractStrideArray{S,D,T}) where {S,D,T}
     StrideArray{T}(undef, size(A))
 end
