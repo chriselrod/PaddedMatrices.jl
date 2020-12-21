@@ -5,9 +5,7 @@
 # @inline function similar_with_offset(sptr::StridedPointer{T,N,C,B,R,X,O}, ptr::Ptr{T}) where {T,N,C,B,R,X,O}
 #     StridedPointer{T,N,C,B,R,X}(ptr, sptr.strd, zerotuple(Val{N}()))
 # end
-_extract(::Type{StaticInt{N}}) where {N} = N::Int
-_extract(_) = missing
-@generated function Base.view(A::PtrArray{S,D,T,N,C,B,R,X,O}, i::Vararg{Union{Integer,AbstractRange,Colon},K}) where {K,S,D,T,N,C,B,R,X,O}
+function view_quote(i, K, S, D, T, N, C, B, R, X, O)
     @assert ((K == N) || isone(K))
 
     inds = Expr(:tuple)
@@ -54,14 +52,29 @@ _extract(_) = missing
             end
         end
         spₙ = sortp[k]
-        if still_dense & D[spₙ]
+        still_dense &= D[spₙ]
+        if still_dense# && (D[spₙ])
             ispₙ = i[spₙ]
             still_dense = (ispₙ <: AbstractUnitRange) || (ispₙ === Colon)
             densev[spₙ] = still_dense
+            # @show ispₙ ArrayInterface.known_length(ispₙ) _extract(S.parameters[spₙ]) S.parameters[spₙ]
             if still_dense
-                still_dense = (((ispₙ === Colon)::Bool || (ispₙ <: Base.Slice)::Bool) ||
-                               ((ispₙ <:  ArrayInterface.OptionallyStaticUnitRange{<:StaticInt,<:StaticInt})::Bool &&
-                                (ArrayInterface.known_length(ispₙ) === _extract(S.parameters[spₙ]))::Bool))
+                still_dense = if ((ispₙ === Colon)::Bool || (ispₙ <: Base.Slice)::Bool)
+                    true
+                elseif (ispₙ <:  ArrayInterface.OptionallyStaticUnitRange{<:StaticInt,<:StaticInt})::Bool
+                    _sz = getfield(S, :parameters)[spₙ]
+                    if _sz <: StaticInt
+                        ip = getfield(ispₙ, :parameters)
+                        sz = getfield(_sz, :parameters)[1]
+                        # @show 1 + (getfield(ip[2], :parameters)[1])::Int - (getfield(ip[1], :parameters)[1])::Int, sz
+                        # @show D
+                        1 + (getfield(ip[2], :parameters)[1])::Int - (getfield(ip[1], :parameters)[1])::Int === sz
+                    else
+                        false
+                    end
+                else
+                    false
+                end
             end
         else
             still_dense = false
@@ -82,6 +95,10 @@ _extract(_) = missing
         new_sp = StridedPointer{$T,$Nnew,$Cnew,$Bnew,$Rnew}(gep(sp, $inds), $x, $o)
         PtrArray(new_sp, $s, DenseDims{$Dnew}())
     end
+end
+@generated function Base.view(A::PtrArray{S,D,T,N,C,B,R,X,O}, i::Vararg{Union{Integer,AbstractRange,Colon},K}) where {K,S,D,T,N,C,B,R,X,O}
+    # 1+1
+    view_quote(i, K, S, D, T, N, C, B, R, X, O)
 end
 
 @inline function Base.view(A::StrideArray, i::Vararg{Union{Integer,AbstractRange,Colon},K}) where {K}

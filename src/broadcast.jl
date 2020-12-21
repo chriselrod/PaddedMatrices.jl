@@ -1,3 +1,5 @@
+_extract(::Type{StaticInt{N}}) where {N} = N::Int
+_extract(_) = nothing
 
 abstract type AbstractStrideStyle{S,N} <: Base.Broadcast.AbstractArrayStyle{N} end
 struct LinearStyle{S,N,R} <: AbstractStrideStyle{S,N} end
