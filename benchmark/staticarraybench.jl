@@ -3,6 +3,9 @@ using PaddedMatrices, StaticArrays, LinearAlgebra, BenchmarkTools
 
 BLAS.set_num_threads(1)
 
+# For laptops that thermally throttle, you can set the `JULIA_SLEEP_BENCH` environment variable for #seconds to sleep before each `@belapsed`
+const SLEEPTIME = parse(Float64, get(ENV, "JULIA_SLEEP_BENCH", "0"))
+maybe_sleep() = iszero(SLEEPTIME) || sleep(SLEEPTIME)
 # BenchmarkTools.DEFAULT_PARAMETERS.samples = 1_000_000
 # BenchmarkTools.DEFAULT_PARAMETERS.seconds = 10
 
@@ -16,6 +19,7 @@ function runbenches(sr, ::Type{T} = Float64) where {T}
         if s ≤ 20
             Astatic = @SMatrix rand(T, M, K);
             Bstatic = @SMatrix rand(T, K, N);
+            maybe_sleep()
             bench_results[i,1] = @belapsed $(Ref(Astatic))[] * $(Ref(Bstatic))[]
             Amutable = MArray(Astatic);
             Bmutable = MArray(Bstatic);
@@ -30,17 +34,21 @@ function runbenches(sr, ::Type{T} = Float64) where {T}
                 Bmutable[i] = rand()
             end
         end
+        maybe_sleep()
         bench_results[i,2] = @belapsed mul!($Cmutable, $Amutable, $Bmutable)
         Afixed = StrideArray{T}(undef, (StaticInt(M),StaticInt(K))) .= Amutable
         Bfixed = StrideArray{T}(undef, (StaticInt(K),StaticInt(N))) .= Bmutable
         Cfixed = StrideArray{T}(undef, (StaticInt(M),StaticInt(N)))
+        maybe_sleep()
         bench_results[i,3] = @belapsed mul!($Cfixed, $Afixed, $Bfixed)
         Cfixed2 = similar(Cfixed);
         Aptr = PtrArray(Afixed); Bptr = PtrArray(Bfixed); Cptr = PtrArray(Cfixed2);
+        maybe_sleep()
         GC.@preserve Afixed Bfixed Cfixed2 begin
             bench_results[i,4] = @belapsed mul!($Cptr, $Aptr, $Bptr)
         end
         A = Array(Afixed); B = Array(Bfixed); C = Matrix{T}(undef, M, N);
+        maybe_sleep()
         bench_results[i,5] = @belapsed jmul!($C, $A, $B)
         # @show Array(Cmutable) Cfixed Cfixed2 C
         @assert Array(Cmutable) ≈ Cfixed ≈ Cfixed2 ≈ C

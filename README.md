@@ -20,8 +20,8 @@ All matrices were square; the `x`-axis reports size of each dimension. Benchmark
 
 10980XE, a Cascadelake-X CPU with AVX512:
 ![Cascadelake-X SizedArrayBenchmarks](docs/src/assets/sizedarraybenchmarks_cascadelake_AVX512.svg)
-i5 8350U, a Skylake CPU with AVX2:
-![Skylake SizedArrayBenchmarks](docs/src/assets/sizedarraybenchmarksAVX2_skylake.svg)
+i7 1165G7, a Tigerlake laptop CPU with AVX512:
+![Skylake SizedArrayBenchmarks](docs/src/assets/sizedarraybenchmarks_tigerlake_AVX512.svg)
 i3-4010U, a Haswell CPU with AVX2:
 ![Haswell SizedArrayBenchmarks](docs/src/assets/sizedarraybenchmarksAVX2_haswell.svg)
 
@@ -39,14 +39,14 @@ One of the goals of PaddedMatrices.jl is to provide good performance across a ra
 
 How does the dynamic `jmul!` compare with OpenBLAS and MKL at larger sizes? Below are more single-threaded `Float64` benchmarks on the 10980XE. Size range from `2`x`2` through `256`x`256`:
 ![dgemmbenchmarkssmall](docs/src/assets/gemmFloat64_2_256_cascadelake_AVX512.svg)
-Skylake laptop (same as earlier):
-![dgemmbenchmarkssmall](docs/src/assets/gemmFloat64_2_256_skylake_AVX2.svg)
+Tigerlake laptop (same as earlier):
+![dgemmbenchmarkssmall](docs/src/assets/gemmFloat64_2_256_tigerlake_AVX512.svg)
 
 Performance is quite strong over this size range, especially compared the the default OpenBLAS, which does not adaptively change packing strategy as a function of size.
 
 Extending the benchmarks from `256`x`256` through `2000`x`2000`, we see that performance does start to fall behind after a few hundred:
 ![dgemmbenchmarksmedium](docs/src/assets/gemmFloat64_256_2000_cascadelake_AVX512.svg)
-![dgemmbenchmarksmedium](docs/src/assets/gemmFloat64_256_2000_skylake_AVX2.svg)
+![dgemmbenchmarksmedium](docs/src/assets/gemmFloat64_256_2000_tigerlake_AVX512.svg)
 
 Performance still needs work. In particular
 1) Tuning of blocking parameters at larger sizes

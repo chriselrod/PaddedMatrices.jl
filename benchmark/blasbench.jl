@@ -5,6 +5,9 @@
 # using MaBLAS, PaddedMatrices, StructArrays, LinearAlgebra, BenchmarkTools
 using PaddedMatrices, StructArrays, LinearAlgebra, BenchmarkTools, Libdl
 # BLAS.set_num_threads(1); Base.Threads.nthreads()
+# For laptops that thermally throttle, you can set the `JULIA_SLEEP_BENCH` environment variable for #seconds to sleep before each `@belapsed`
+const SLEEPTIME = parse(Float64, get(ENV, "JULIA_SLEEP_BENCH", "0"))
+maybe_sleep() = iszero(SLEEPTIME) || sleep(SLEEPTIME)
 
 # function check_if_should_pack(C, A, cache_params)
 #     M, K = size(A)
@@ -83,12 +86,16 @@ openblas_set_num_threads(N::Integer) = ccall(OPENBLAS_SET_NUM_THREADS, Cvoid, (I
 openblas_set_num_threads(1)
 
 function benchmark_fun!(f!, C, A, B, force_belapsed = false, reference = nothing)
+    maybe_sleep()
     tmin = @elapsed f!(C, A, B)
     if force_belapsed || 2tmin < BenchmarkTools.DEFAULT_PARAMETERS.seconds
+        maybe_sleep()
         tmin = min(tmin, @belapsed $f!($C, $A, $B))
     elseif tmin < BenchmarkTools.DEFAULT_PARAMETERS.seconds
+        maybe_sleep()
         tmin = min(tmin, @elapsed f!(C, A, B))
         if tmin < 2BenchmarkTools.DEFAULT_PARAMETERS.seconds
+            maybe_sleep()
             tmin = min(tmin, @elapsed f!(C, A, B))
         end
     end
@@ -189,7 +196,11 @@ function plot(tf, ::Type{T} = Float64, desc = "") where {T}
     save(joinpath(pkgdir(PaddedMatrices), "docs/src/assets/gemm$(string(T))_$(l)_$(u)_$(suffix).png"), plt)
 end
 
-
+#= 
+tf64 = runbench(Float64);
+plot(tf64[begin:255])
+plot(tf64[255:end])
+=#
 
 #=
 using MaBLAS
