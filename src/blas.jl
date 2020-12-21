@@ -64,7 +64,7 @@ function matmul_params_calc(::Type{T}, mᵣ = mᵣ, nᵣ = nᵣ) where {T}
     mc = mcrep * mᵣW 
     kc = round(Int, 1.2L₂ratio / mc)
     #    kc = round(Int, (L₂ ÷ sizeof(T)) / mc)
-    L₃ = something(core_cache_size(T, Val(3)), StaticInt{393216}())
+    L₃ = something(cache_size(T, Val(3)), StaticInt{393216}())
     ncrep = L₃ ÷ (2kc * nᵣ)
     # ncrep = L₃ ÷ (sizeof(T) * 2kc * nᵣ)
     nc = ncrep * nᵣ

@@ -28,6 +28,15 @@ function core_cache_size(::Type{T}, ::Val{N}) where {T,N}
         (StaticInt{CS}() * CC) ÷ (static_sizeof(T) * NC)
     end
 end
+function cache_size(::Type{T}, ::Val{N}) where {T,N}
+    CS = VectorizationBase.CACHE_SIZE[N]
+    if CS === nothing
+        nothing
+    else
+        CC = StaticInt{VectorizationBase.CACHE_COUNT[N]}()
+        (StaticInt{CS}() * CC) ÷ (static_sizeof(T))
+    end
+end
 @inline function cache_buffer(::Type{T}, ::Val{N}) where {T,N}
     CS = VectorizationBase.CACHE_SIZE[N]
     if CS === nothing
