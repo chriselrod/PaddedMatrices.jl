@@ -6,7 +6,7 @@
 #     StridedPointer{T,N,C,B,R,X}(ptr, sptr.strd, zerotuple(Val{N}()))
 # end
 _extract(::Type{StaticInt{N}}) where {N} = N::Int
-_extract(_) = nothing
+_extract(_) = missing
 @generated function Base.view(A::PtrArray{S,D,T,N,C,B,R,X,O}, i::Vararg{Union{Integer,AbstractRange,Colon},K}) where {K,S,D,T,N,C,B,R,X,O}
     @assert ((K == N) || isone(K))
 
@@ -61,7 +61,7 @@ _extract(_) = nothing
             if still_dense
                 still_dense = (((ispₙ === Colon)::Bool || (ispₙ <: Base.Slice)::Bool) ||
                                ((ispₙ <:  ArrayInterface.OptionallyStaticUnitRange{<:StaticInt,<:StaticInt})::Bool &&
-                                (static_length(ispₙ) == _extract(S.parameters[spₙ]))::Bool))
+                                (ArrayInterface.known_length(ispₙ) === _extract(S.parameters[spₙ]))::Bool))
             end
         else
             still_dense = false
