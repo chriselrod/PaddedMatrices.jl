@@ -18,7 +18,8 @@ However, beyond this size, performance begins to fall behind:
 ![dgemmbenchmarksmedium](../assets/gemmFloat64_256_2000_cascadelake_AVX512.svg)
 `OpenBLAS` eventually ascends to about 120 GFLOPS, but PaddedMatrices seems stuck at around 100 GFLOPS.
 
-Given that `LoopVectorization` by itself [does better than PaddedMatrices](https://chriselrod.github.io/LoopVectorization.jl/latest/examples/matrix_multiplication/#Matrix-Multiplication) over the 2-256 size range, PaddedMatrices.jl currently needs extensive tuning work.
+The packing and blocking need work.
 
+Multithreading is coming.
 
 

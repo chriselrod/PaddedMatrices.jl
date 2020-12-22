@@ -102,6 +102,9 @@ end
 end
 @inline zrange(N) = Zero():N-One()
 
+"""
+Only packs `A`. Primitively does column-major packing: it packs blocks of `A` into a column-major temporary.
+"""
 function jmulpackAonly!(
     C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::StaticInt{mc}, ::StaticInt{kc}, ::StaticInt{nc}, (Ma, Ka, Na) = matmul_axes(C, A, B)
 ) where {Tc, Ta, Tb, mc, kc, nc}
@@ -165,6 +168,15 @@ function jmulpackAonly!(
     end # GC.@preserve
     nothing
 end
+"""
+Packs both arrays `A` and `B`.
+Primitely packs both `A` and `B` into column major temporaries.
+
+Column-major `B` is preferred over row-major, because without packing the stride across `k` iterations of `B` becomes excessive, and without `nᵣ` being a multiple of the cacheline size, we would fail to make use of 100% of the loaded cachelines.
+Unfortunately, using column-major `B` does mean that we are starved on integer registers within the macrokernel.
+
+Once `LoopVectorization` adds a few features to make it easy to abstract away tile-major memory layouts, we will switch to those, probably improving performance for larger matrices.
+"""
 function jmulpackAB!(
     C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::StaticInt{mc}, ::StaticInt{kc}, ::StaticInt{nc}, (Ma, Ka, Na) = matmul_sizes(C, A, B)
 ) where {Tc, Ta, Tb, mc, kc, nc}
@@ -285,7 +297,19 @@ end
     (mc_mult > M) || (vectormultiple(Xa, T) && ((M * K) ≤ (mc * kc)) && iszero(reinterpret(Int, ptrA) & (VectorizationBase.REGISTER_SIZE - 1)))
 end
 
+"""
+  jmul!(C, A, B[, α = 1, β = 0])
 
+Calculates `C = α * (A * B) + β * C` in place.
+
+A single threaded matrix-matrix-multiply implementation.
+Supports dynamically and statically sized arrays.
+
+Organizationally, `jmul!` checks the arrays properties to try and dispatch to an appropriate implementation.
+If the arrays are small and statically sized, it will dispatch to an inlined multiply.
+
+Otherwise, based on the array's size, whether they are transposed, and whether the columns are already aligned, it decides to not pack at all, to pack only `A`, or to pack both arrays `A` and `B`.
+"""
 @inline function jmul!(
     C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::StaticInt{mc}, ::StaticInt{kc}, ::StaticInt{nc}, (Ma, Ka, Na) = matmul_axes(C, A, B)
 ) where {Tc, Ta, Tb, mc, kc, nc}
