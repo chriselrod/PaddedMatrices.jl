@@ -1,0 +1,3 @@
+var documenterSearchIndex = {"docs":
+[{"location":"#PaddedMatrices.jl","page":"Home","title":"PaddedMatrices.jl","text":"","category":"section"},{"location":"","page":"Home","title":"Home","text":"","category":"page"},{"location":"","page":"Home","title":"Home","text":"Modules = [PaddedMatrices]","category":"page"},{"location":"#PaddedMatrices.logdensity","page":"Home","title":"PaddedMatrices.logdensity","text":"To find a mode, define methods for logdensity and logdensityandgradient!dispatching on obj, and evaluating at the positionq`.\n\nlogdensity(obj, q, [::StackPointer]) ∂logdensity!(∇, obj, q, [::StackPointer])\n\nThese must return a value (eg, a logdensity). logdensityandgradient! should store the gradient in ∇.\n\n\n\n\n\n","category":"function"}]
+}
