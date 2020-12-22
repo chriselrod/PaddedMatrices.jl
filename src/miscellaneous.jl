@@ -4,11 +4,17 @@
 @inline Base.map(f::F, A::AbstractStrideArray, args::Vararg{Any,K}) where {F,K} = vmap(f, A, args...)
 @inline Base.reduce(op::O, A::AbstractStrideArray) where {O} = vreduce(op, A)
 @inline Base.mapreduce(f::F, op::O, A::AbstractStrideArray, args::Vararg{Any,K}) where {F, O, K} = vmapreduce(f, op, A, args...)
-@inline Base.mapreduce(f::F, op::O, A::AbstractStrideArray) where {F, O} = vmapreduce(f, op, A)
-
-for op ∈ (:+, :max, :min)
-    @eval @inline Base.reduce(::typeof($op), A::AbstractStrideArray; dims = nothing) = vreduce($op, A, dims = dims)
+@inline function Base.mapreduce(f::F, op::O, A::AbstractStrideArray) where {F, O}
+    @gc_preserve vmapreduce(f, op, A)
 end
+
+for (op,r) ∈ ((:+,:sum), (:max,:maximum), (:min,:minimum))
+    @eval begin
+        @inline Base.reduce(::typeof($op), A::AbstractStrideArray; dims = nothing) = @gc_preserve vreduce($op, A, dims = dims)
+        @inline Base.$r(A::AbstractStrideArray; dims = nothing) = @gc_preserve vreduce($op, A, dims = dims)
+    end
+end
+
 
 function maximum(::typeof(abs), A::AbstractStrideArray{S,T}) where {S,T}
     s = typemin(T)

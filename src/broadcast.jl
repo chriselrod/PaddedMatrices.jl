@@ -384,7 +384,7 @@ end
 #     q
 #     # ls
 # end
-@inline function Base.Broadcast.materialize(bc::Base.Broadcast.Broadcasted{S}) where {S <: CartesianStyle}
+@inline function Base.Broadcast.materialize(bc::Base.Broadcast.Broadcasted{S}) where {S <: AbstractStrideStyle}
     ElType = Base.Broadcast.combine_eltypes(bc.f, bc.args)
     Base.Broadcast.materialize!(similar(bc, ElType), bc)
 end
