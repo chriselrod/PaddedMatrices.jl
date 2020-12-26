@@ -1,20 +1,23 @@
 
 @inline cld_fast(x, y) = cld(x, y)
-@inline function cld_fast(x::I, y::I) where {I <: Integer}
+@inline function cld_fast(x::I, y) where {I <: Integer}
     x32 = x % UInt32; y32 = y % UInt32
     d = Base.udiv_int(x32, y32)
     (d * y32 == x32 ? d : d + one(UInt32)) % I
 end
-
-@inline function divrem_fast(x::I, y::I) where {I <: Integer}
+cld_fast(::StaticInt{N}, ::StaticInt{M}) where {N,M}= (StaticInt{N}() + StaticInt{M}() + One()) ÷ StaticInt{M}()
+@inline function divrem_fast(x::I, y) where {I <: Integer}
     x32 = x % UInt32; y32 = y % UInt32
     d = Base.udiv_int(x32, y32)
     r = vsub(x32, vmul(d, y32))
     d % I, r % I
 end
 @inline divrem_fast(::StaticInt{x}, y::I) where {x, I <: Integer} = divrem_fast(x % I, y)
-@inline div_fast(x::I, y::I) where {I <: Integer} = Base.udiv_int(x % UInt32, y % UInt32) % I
+@inline div_fast(x::I, y::Integer) where {I <: Integer} = Base.udiv_int(x % UInt32, y % UInt32) % I
 @inline div_fast(::StaticInt{x}, y::I) where {x, I <: Integer} = Base.udiv_int(x % UInt32, y % UInt32) % I
+# @inline div_fast(x::I, ::StaticInt{x}) where {x, I <: Integer} = Base.udiv_int(x % UInt32, y % UInt32) % I
+divrem_fast(::StaticInt{N}, ::StaticInt{M}) where {N,M}= divrem(StaticInt{N}(), StaticInt{M}())
+div_fast(::StaticInt{N}, ::StaticInt{M}) where {N,M}= StaticInt{N}() ÷ StaticInt{M}()
 
 function Base.copyto!(B::AbstractStrideArray{<:Any,<:Any,<:Any,N}, A::AbstractStrideArray{<:Any,<:Any,<:Any,N}) where {N}
     @avx for I ∈ eachindex(A, B)
@@ -59,10 +62,12 @@ end
 # heuristically assume that if the L₃-per core is at least twice as large as the L₂, that it is inclusive of the L₂
 const INCLUSIVE_L₃ = VectorizationBase.CACHE_COUNT[3] > 0 ? ((VectorizationBase.CACHE_SIZE[2] * VectorizationBase.CACHE_COUNT[2] / (VectorizationBase.CACHE_SIZE[3] * VectorizationBase.CACHE_COUNT[3])) < 0.5) : nothing
 
-function matmul_params(::Type{T}, mᵣ = StaticInt{mᵣ}(), nᵣ = StaticInt{nᵣ}()) where {T}
+function matmul_params(::Type{T}) where {T}
+    Mᵣ = StaticInt{mᵣ}()
+    Nᵣ = StaticInt{nᵣ}()
     W = VectorizationBase.pick_vector_width_val(T)
-    mᵣW = mᵣ * W
-    mc = mᵣW * (VectorizationBase.REGISTER_SIZE === 64 ? StaticInt{4}() : StaticInt{9}())
+    MᵣW = Mᵣ * W
+    mc = MᵣW * (VectorizationBase.REGISTER_SIZE === 64 ? StaticInt{4}() : StaticInt{9}())
     L₁ = something(core_cache_size(T, Val(1)), StaticInt{32768}() ÷ static_sizeof(T))
     L₂ = something(core_cache_size(T, Val(2)), StaticInt{262144}() ÷ static_sizeof(T))
     ΔL₂₁ = L₂ - L₁ # assume caches are inclusive
@@ -74,21 +79,7 @@ function matmul_params(::Type{T}, mᵣ = StaticInt{mᵣ}(), nᵣ = StaticInt{n�
     else
         something(cache_size(T, Val(3)), StaticInt{3145728}() ÷ static_sizeof(T))
     end
-    # kc = (StaticInt{5}() * L₂) ÷ (StaticInt{7}() * mc)
-    # L₂ratio = 0.5 * L₂ 
-    # L₂ratio = 0.5 * (L₂ ÷ sizeof(T));
-    # M_K = Base.FastMath.sqrt_fast(L₂ratio)
-    # mcrep = round(Int, M_K) ÷ mᵣW
-    # mc = mcrep * mᵣW 
-    # kc = round(Int, 1.2L₂ratio / mc)
-    #    kc = round(Int, (L₂ ÷ sizeof(T)) / mc)
-    
-    # nc = (StaticInt{40}() * L₃) ÷ (StaticInt{41}() * kc)
-    nc = ((((StaticInt{132}() * L₃) ÷ StaticInt{125}()) - StaticInt{256651}()) ÷ (kc * nᵣ)) * nᵣ
-    # nc = ((StaticInt{44}() * L₃) ÷ (StaticInt{45}() * kc * nᵣ)) * nᵣ
-    # ncrep = L₃ ÷ (2kc * nᵣ)
-    # ncrep = L₃ ÷ (sizeof(T) * 2kc * nᵣ)
-    # nc = ncrep * nᵣ
+    nc = ((((StaticInt{132}() * L₃) ÷ StaticInt{125}()) - StaticInt{256651}()) ÷ (kc * Nᵣ)) * Nᵣ
     mc, kc, nc
 end
 # @generated matmul_params(::Type{T}) where {T} = matmul_params_calc(T, mᵣ, nᵣ)
@@ -129,64 +120,87 @@ Only packs `A`. Primitively does column-major packing: it packs blocks of `A` in
 function jmulpackAonly!(
     C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::StaticInt{mc}, ::StaticInt{kc}, ::StaticInt{nc}, (Ma, Ka, Na) = matmul_axes(C, A, B)
 ) where {Tc, Ta, Tb, mc, kc, nc}
-    W = VectorizationBase.pick_vector_width(Tc)
-    mᵣW = mᵣ * W
+    W = VectorizationBase.pick_vector_width_val(Tc)
+    mᵣW = StaticInt{mᵣ}() * W
 
     M = static_length(Ma);
     K = static_length(Ka);
     N = static_length(Na);
     
-    num_m_iter = cld_fast(M, mc)
-    mreps_per_iter = div_fast(M, num_m_iter)
-    mreps_per_iter += mᵣW - 1
-    mcrepetitions = mreps_per_iter ÷ mᵣW
+    num_m_iter = cld_fast(M, StaticInt{mc}())
+    _mreps_per_iter = div_fast(M, num_m_iter) + mᵣW - One()
+    mcrepetitions = _mreps_per_iter ÷ mᵣW
     mreps_per_iter = mᵣW * mcrepetitions
-    Miter = num_m_iter - 1
+    Miter = num_m_iter - One()
     Mrem = M - Miter * mreps_per_iter
     #(iszero(Miter) && iszero(Niter)) && return loopmul!(C, A, B)
-    num_k_iter = cld_fast(K, kc)
+    num_k_iter = cld_fast(K, StaticInt{kc}())
     kreps_per_iter = vadd((div_fast(K, num_k_iter)), 3) & -4
-    Krem = vsub(K, vmul(vsub(num_k_iter, 1), kreps_per_iter))
-    Kiter = vsub(num_k_iter, 1)
+    Krem = vsub(K, vmul(vsub(num_k_iter, One()), kreps_per_iter))
+    Kiter = vsub(num_k_iter, One())
     # LCACHEARRAY = core_cache_buffer(Ta, Val(2))
     Aptr = VectorizationBase.zero_offsets(stridedpointer(A))
     Bptr = VectorizationBase.zero_offsets(stridedpointer(B))
     Cptr = VectorizationBase.zero_offsets(stridedpointer(C))
     _Mrem, _mreps_per_iter = promote(Mrem, mreps_per_iter)
-    Cb = preserve_buffer(C); Ab = preserve_buffer(A); Bb = preserve_buffer(B);
-    GC.@preserve Cb Ab Bb begin
-        # Krem
-        # pack kreps_per_iter x nc block of B
-        Bpacked = PtrArray(Bptr, (Krem, N), dense_dims_subset(dense_dims(B), stride_rank(B)))
-        # Bpacked = PtrArray(B)
+    # Cb = preserve_buffer(C); Ab = preserve_buffer(A); Bb = preserve_buffer(B);
+    # GC.@preserve Cb Ab Bb begin
+        # # Krem
+        # # pack kreps_per_iter x nc block of B
+        # Bpacked = PtrArray(Bptr, (Krem, N), dense_dims_subset(dense_dims(B), stride_rank(B)))
+        # # Bpacked = PtrArray(B)
+        # moffset = 0
+        # for mo in 0:Miter
+        #     msize = ifelse(mo == Miter, _Mrem, _mreps_per_iter)
+        #     # pack mreps_per_iter x kreps_per_iter block of A
+            
+        #     Asubset = PtrArray(gesp(Aptr, (moffset, Zero())), (msize, Krem), dense_dims_subset(dense_dims(A), stride_rank(A)))
+
+        #     Cpmat = PtrArray(gesp(Cptr, (moffset, Zero())), (msize, N), dense_dims_subset(dense_dims(C), stride_rank(C)))
+        #     packaloopmul!(Cpmat, Asubset, Bpacked, α, β, (zrange(msize), zrange(Krem), zrange(N)))
+        #     moffset += mreps_per_iter
+        # end
+        # koffset = Krem
+        # for ko in 1:Kiter
+        #     # pack kreps_per_iter x nc block of B
+        #     Bpacked = PtrArray(gesp(Bptr, (koffset, Zero())), (kreps_per_iter, N), dense_dims_subset(dense_dims(B), stride_rank(B)))
+        #     moffset = 0
+        #     for mo in 0:Miter
+        #         msize = ifelse(mo == Miter, _Mrem, _mreps_per_iter)
+        #         # pack mreps_per_iter x kreps_per_iter block of A
+        #         Asubset = PtrArray(gesp(Aptr, (moffset, koffset)), (msize, kreps_per_iter), dense_dims_subset(dense_dims(A), stride_rank(A)))
+                
+        #         Cpmat = PtrArray(gesp(Cptr, (moffset, Zero())), (msize, N), dense_dims_subset(dense_dims(C), stride_rank(C)))
+        #         packaloopmul!(Cpmat, Asubset, Bpacked, α, One(), (zrange(msize), zrange(kreps_per_iter), zrange(N)))
+        #         moffset += mreps_per_iter
+        #     end
+        #     koffset += kreps_per_iter
+        # end
+    koffset = 0
+    _Krem, _kreps_per_iter = promote(Krem, kreps_per_iter)
+    for ko ∈ 0:Kiter
+        ksize = ifelse(ko == 0, _Krem, _kreps_per_iter)
+        _β = ifelse(ko == 0, convert(Tc, β), one(Tc))
+        Bpacked = PtrArray(gesp(Bptr, (koffset, Zero())), (ksize, N), dense_dims_subset(dense_dims(B), stride_rank(B)))
+
         moffset = 0
         for mo in 0:Miter
             msize = ifelse(mo == Miter, _Mrem, _mreps_per_iter)
             # pack mreps_per_iter x kreps_per_iter block of A
+            Asubset = PtrArray(gesp(Aptr, (moffset, koffset)), (msize, ksize), dense_dims_subset(dense_dims(A), stride_rank(A)))
             
-            Asubset = PtrArray(gesp(Aptr, (moffset, Zero())), (msize, Krem), dense_dims_subset(dense_dims(A), stride_rank(A)))
-
             Cpmat = PtrArray(gesp(Cptr, (moffset, Zero())), (msize, N), dense_dims_subset(dense_dims(C), stride_rank(C)))
-            packaloopmul!(Cpmat, Asubset, Bpacked, α, β, (zrange(msize), zrange(Krem), zrange(N)))
+            packaloopmul!(Cpmat, Asubset, Bpacked, α, _β, (zrange(msize), zrange(ksize), zrange(N)))
+            # if ko == 0
+            #     packaloopmul!(Cpmat, Asubset, Bpacked, α, β, (zrange(msize), zrange(ksize), zrange(N)))
+            # else
+            #     packaloopmul!(Cpmat, Asubset, Bpacked, α, One(), (zrange(msize), zrange(ksize), zrange(N)))
+            # end
             moffset += mreps_per_iter
         end
-        koffset = Krem
-        for ko in 1:Kiter
-            # pack kreps_per_iter x nc block of B
-            Bpacked = PtrArray(gesp(Bptr, (koffset, Zero())), (kreps_per_iter, N), dense_dims_subset(dense_dims(B), stride_rank(B)))
-            moffset = 0
-            for mo in 0:Miter
-                msize = ifelse(mo == Miter, _Mrem, _mreps_per_iter)
-                # pack mreps_per_iter x kreps_per_iter block of A
-                Asubset = PtrArray(gesp(Aptr, (moffset, koffset)), (msize, kreps_per_iter), dense_dims_subset(dense_dims(A), stride_rank(A)))
-                
-                Cpmat = PtrArray(gesp(Cptr, (moffset, Zero())), (msize, N), dense_dims_subset(dense_dims(C), stride_rank(C)))
-                packaloopmul!(Cpmat, Asubset, Bpacked, α, StaticInt{1}(), (zrange(msize), zrange(kreps_per_iter), zrange(N)))
-                moffset += mreps_per_iter
-            end
-            koffset += kreps_per_iter
-        end
-    end # GC.@preserve
+        koffset += ksize
+    end
+    # end # GC.@preserve
     nothing
 end
 """
@@ -201,33 +215,31 @@ Once `LoopVectorization` adds a few features to make it easy to abstract away ti
 function jmulpackAB!(
     C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::StaticInt{mc}, ::StaticInt{kc}, ::StaticInt{nc}, (Ma, Ka, Na) = matmul_axes(C, A, B)
 ) where {Tc, Ta, Tb, mc, kc, nc}
-    W = VectorizationBase.pick_vector_width(Tc)
-    mᵣW = mᵣ * W
+    W = VectorizationBase.pick_vector_width_val(Tc)
+    mᵣW = StaticInt{mᵣ}() * W
 
     M = static_length(Ma);
     K = static_length(Ka);
     N = static_length(Na);
     
-    num_n_iter = cld_fast(N, nc)
-    nreps_per_iter = div_fast(N, num_n_iter)
-    nreps_per_iter += nᵣ - 1
-    ncrepetitions = div_fast(nreps_per_iter, nᵣ)
-    nreps_per_iter = nᵣ * ncrepetitions
-    Niter = num_n_iter - 1
+    num_n_iter = cld_fast(N, StaticInt{nc}())
+    _nreps_per_iter = div_fast(N, num_n_iter) + StaticInt{nᵣ}() - One()
+    ncrepetitions = div_fast(_nreps_per_iter, StaticInt{nᵣ}())
+    nreps_per_iter = StaticInt{nᵣ}() * ncrepetitions
+    Niter = num_n_iter - One()
     Nrem = N - Niter * nreps_per_iter
 
-    num_m_iter = cld_fast(M, mc)
-    mreps_per_iter = div_fast(M, num_m_iter)
-    mreps_per_iter += mᵣW - 1
-    mcrepetitions = div_fast(mreps_per_iter, mᵣW)
+    num_m_iter = cld_fast(M, StaticInt{mc}())
+    _mreps_per_iter = div_fast(M, num_m_iter) + mᵣW - One()
+    mcrepetitions = div_fast(_mreps_per_iter, mᵣW)
     mreps_per_iter = mᵣW * mcrepetitions
-    Miter = num_m_iter - 1
+    Miter = num_m_iter - One()
     Mrem = M - Miter * mreps_per_iter
     
-    num_k_iter = cld_fast(K, kc)
+    num_k_iter = cld_fast(K, StaticInt{kc}())
     kreps_per_iter = ((div_fast(K, num_k_iter)) + 3) & -4
-    Krem = K - (num_k_iter - 1) * kreps_per_iter
-    Kiter = num_k_iter - 1
+    Krem = K - (num_k_iter - One()) * kreps_per_iter
+    Kiter = num_k_iter - One()
 
     # @show mreps_per_iter, kreps_per_iter, nreps_per_iter
     # @show Miter, Kiter, Niter
@@ -248,36 +260,20 @@ function jmulpackAB!(
     noffset = 0
     _Nrem, _nreps_per_iter = promote(Nrem, nreps_per_iter)
     _Mrem, _mreps_per_iter = promote(Mrem, mreps_per_iter)
-    Cb = preserve_buffer(C); Ab = preserve_buffer(A); Bb = preserve_buffer(B);
-    GC.@preserve Cb Ab Bb BCACHE begin
+    _Krem, _kreps_per_iter = promote(Krem, kreps_per_iter)
+    # Cb = preserve_buffer(C); Ab = preserve_buffer(A); Bb = preserve_buffer(B);
+    # GC.@preserve Cb Ab Bb BCACHE begin
+    GC.@preserve BCACHE begin
         for no in 0:Niter
             # Krem
             # pack kc x nc block of B
             nsize = ifelse(no == Niter, _Nrem, _nreps_per_iter)
-            Bsubset = PtrArray(gesp(Bptr, (Zero(), noffset)), (Krem, nsize), dense_dims_subset(dense_dims(B), stride_rank(B)))
-            Bpacked = ptrarray0(L3ptr, (Krem, nsize))
-            # @show offsets(Bpacked), offsets(Bsubset)
-            copyto!(Bpacked, Bsubset)
-            # @show eltype(Bpacked, Bsubset)
-            # @show no, (all(isone, Bpacked),all(isone, Bsubset)) noffset (Krem,nsize) size(Bpacked) axes(Bpacked)
-            # findall(!isone, Bpacked)
-            # copyto!(view(Bpacked,:,:), view(Bsubset,:,:))
-            # Bpacked = pack_B(Bptr, Krem, nsize, Tc, 0, noffset)
-            moffset = 0
-            for mo in 0:Miter
-                msize = ifelse(mo == Miter, _Mrem, _mreps_per_iter)
-                # pack mreps_per_iter x kreps_per_iter block of A
-                Asubset = PtrArray(gesp(Aptr, (moffset, Zero())), (msize, Krem), dense_dims_subset(dense_dims(A), stride_rank(A)))
-
-                Cpmat = PtrArray(gesp(Cptr, (moffset, noffset)), (msize, nsize), dense_dims_subset(dense_dims(C), stride_rank(C)))
-                packaloopmul!(Cpmat, Asubset, Bpacked, α, β, (zrange(msize), zrange(Krem), zrange(nsize)))
-                moffset += mreps_per_iter
-            end
-            koffset = Krem
-            for ko in 1:Kiter
-                # pack kreps_per_iter x nc block of B
-                Bsubset2 = PtrArray(gesp(Bptr, (koffset, noffset)), (kreps_per_iter, nsize), dense_dims_subset(dense_dims(B), stride_rank(B)))
-                Bpacked2 = ptrarray0(L3ptr, (kreps_per_iter, nsize))
+            koffset = 0
+            for ko ∈ 0:Kiter
+                ksize = ifelse(ko == 0, _Krem, _kreps_per_iter)
+                _β = ifelse(ko == 0, convert(Tc, β), one(Tc))
+                Bsubset2 = PtrArray(gesp(Bptr, (koffset, noffset)), (ksize, nsize), dense_dims_subset(dense_dims(B), stride_rank(B)))
+                Bpacked2 = ptrarray0(L3ptr, (ksize, nsize))
                 # @show offsets(Bpacked2), offsets(Bsubset2)
                 copyto!(Bpacked2, Bsubset2)
                 # @show no, ko, (all(isone, Bpacked2),all(isone, Bsubset2)) (noffset, koffset), (kreps_per_iter, nsize) size(Bpacked2) axes(Bpacked2)
@@ -288,13 +284,61 @@ function jmulpackAB!(
                 for mo in 0:Miter
                     msize = ifelse(mo == Miter, _Mrem, _mreps_per_iter)
                     # pack mreps_per_iter x kreps_per_iter block of A
-                    Asubset = PtrArray(gesp(Aptr, (moffset, koffset)), (msize, kreps_per_iter), dense_dims_subset(dense_dims(A), stride_rank(A)))
+                    Asubset = PtrArray(gesp(Aptr, (moffset, koffset)), (msize, ksize), dense_dims_subset(dense_dims(A), stride_rank(A)))
 
                     Cpmat = PtrArray(gesp(Cptr, (moffset, noffset)), (msize, nsize), dense_dims_subset(dense_dims(C), stride_rank(C)))
-                    packaloopmul!(Cpmat, Asubset, Bpacked2, α, StaticInt{1}(), (zrange(msize), zrange(kreps_per_iter), zrange(nsize)))
+                    packaloopmul!(Cpmat, Asubset, Bpacked2, α, _β, (zrange(msize), zrange(ksize), zrange(nsize)))
+                    # if ko == 0
+                    #     packaloopmul!(Cpmat, Asubset, Bpacked2, α, β, (zrange(msize), zrange(ksize), zrange(nsize)))
+                    # else
+                    #     packaloopmul!(Cpmat, Asubset, Bpacked2, α, One(), (zrange(msize), zrange(ksize), zrange(nsize)))
+                    # end
                     moffset += mreps_per_iter
                 end
-                koffset += kreps_per_iter
+                koffset += ksize
+
+                
+            # Bsubset = PtrArray(gesp(Bptr, (Zero(), noffset)), (Krem, nsize), dense_dims_subset(dense_dims(B), stride_rank(B)))
+            # Bpacked = ptrarray0(L3ptr, (Krem, nsize))
+            # # @show offsets(Bpacked), offsets(Bsubset)
+            # copyto!(Bpacked, Bsubset)
+            # # @show eltype(Bpacked, Bsubset)
+            # # @show no, (all(isone, Bpacked),all(isone, Bsubset)) noffset (Krem,nsize) size(Bpacked) axes(Bpacked)
+            # # findall(!isone, Bpacked)
+            # # copyto!(view(Bpacked,:,:), view(Bsubset,:,:))
+            # # Bpacked = pack_B(Bptr, Krem, nsize, Tc, 0, noffset)
+            # moffset = 0
+            # for mo in 0:Miter
+            #     msize = ifelse(mo == Miter, _Mrem, _mreps_per_iter)
+            #     # pack mreps_per_iter x kreps_per_iter block of A
+            #     Asubset = PtrArray(gesp(Aptr, (moffset, Zero())), (msize, Krem), dense_dims_subset(dense_dims(A), stride_rank(A)))
+
+            #     Cpmat = PtrArray(gesp(Cptr, (moffset, noffset)), (msize, nsize), dense_dims_subset(dense_dims(C), stride_rank(C)))
+            #     packaloopmul!(Cpmat, Asubset, Bpacked, α, β, (zrange(msize), zrange(Krem), zrange(nsize)))
+            #     moffset += mreps_per_iter
+            # end
+            # koffset = Krem
+            # for ko in 1:Kiter
+            #     # pack kreps_per_iter x nc block of B
+            #     Bsubset2 = PtrArray(gesp(Bptr, (koffset, noffset)), (kreps_per_iter, nsize), dense_dims_subset(dense_dims(B), stride_rank(B)))
+            #     Bpacked2 = ptrarray0(L3ptr, (kreps_per_iter, nsize))
+            #     # @show offsets(Bpacked2), offsets(Bsubset2)
+            #     copyto!(Bpacked2, Bsubset2)
+            #     # @show no, ko, (all(isone, Bpacked2),all(isone, Bsubset2)) (noffset, koffset), (kreps_per_iter, nsize) size(Bpacked2) axes(Bpacked2)
+            #     # findall(!isone, Bpacked2)
+            #     # copyto!(view(Bpacked2,:,:), view(Bsubset2,:,:))
+            #     # Bpacked = pack_B(Bptr, kreps_per_iter, nsize, Tc, koffset, noffset)
+            #     moffset = 0
+            #     for mo in 0:Miter
+            #         msize = ifelse(mo == Miter, _Mrem, _mreps_per_iter)
+            #         # pack mreps_per_iter x kreps_per_iter block of A
+            #         Asubset = PtrArray(gesp(Aptr, (moffset, koffset)), (msize, kreps_per_iter), dense_dims_subset(dense_dims(A), stride_rank(A)))
+
+            #         Cpmat = PtrArray(gesp(Cptr, (moffset, noffset)), (msize, nsize), dense_dims_subset(dense_dims(C), stride_rank(C)))
+            #         packaloopmul!(Cpmat, Asubset, Bpacked2, α, StaticInt{1}(), (zrange(msize), zrange(kreps_per_iter), zrange(nsize)))
+            #         moffset += mreps_per_iter
+            #     end
+            #     koffset += kreps_per_iter
             end
             noffset += nreps_per_iter
         end

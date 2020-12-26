@@ -1,11 +1,11 @@
-function matmul_axes(C, A, B)
-    M = indices((C,A), (StaticInt(1),StaticInt(1)))
-    K = indices((A,B), (StaticInt(2),StaticInt(1)))
-    N = indices((C,B), (StaticInt(2),StaticInt(2)))
+@inline function matmul_axes(C, A, B)
+    M = indices((C,A), (StaticInt{1}(),StaticInt{1}()))
+    K = indices((A,B), (StaticInt{2}(),StaticInt{1}()))
+    N = indices((C,B), (StaticInt{2}(),StaticInt{2}()))
     M, K, N
 end
 
-function loopmul!(C, A, B, ::StaticInt{1}, ::StaticInt{0}, (M, K, N) = matmul_axes(C, A, B))
+@inline function loopmul!(C, A, B, ::StaticInt{1}, ::StaticInt{0}, (M, K, N))
     # @avx for n ∈ N, m ∈ M
     @avx for m ∈ M, n ∈ N
         Cₘₙ = zero(eltype(C))
@@ -16,7 +16,7 @@ function loopmul!(C, A, B, ::StaticInt{1}, ::StaticInt{0}, (M, K, N) = matmul_ax
     end
     nothing
 end
-function loopmul!(C, A, B, ::StaticInt{1}, ::StaticInt{1}, (M, K, N) = matmul_axes(C, A, B))
+@inline function loopmul!(C, A, B, ::StaticInt{1}, ::StaticInt{1}, (M, K, N))
     # @avx for n ∈ N, m ∈ M
     @avx for m ∈ M, n ∈ N
         Cₘₙ = zero(eltype(C))
@@ -27,7 +27,7 @@ function loopmul!(C, A, B, ::StaticInt{1}, ::StaticInt{1}, (M, K, N) = matmul_ax
     end
     nothing
 end
-function loopmul!(C, A, B, ::StaticInt{1}, β, (M, K, N) = matmul_axes(C, A, B))
+@inline function loopmul!(C, A, B, ::StaticInt{1}, β, (M, K, N))
     # @avx for n ∈ N, m ∈ M
     @avx for m ∈ M, n ∈ N
         Cₘₙ = zero(eltype(C))
@@ -38,7 +38,7 @@ function loopmul!(C, A, B, ::StaticInt{1}, β, (M, K, N) = matmul_axes(C, A, B))
     end
     nothing
 end
-function loopmul!(C, A, B, ::StaticInt{-1}, ::StaticInt{0}, (M, K, N) = matmul_axes(C, A, B))
+@inline function loopmul!(C, A, B, ::StaticInt{-1}, ::StaticInt{0}, (M, K, N))
     # @avx for n ∈ N, m ∈ M
     @avx for m ∈ M, n ∈ N
         Cₘₙ = zero(eltype(C))
@@ -49,7 +49,7 @@ function loopmul!(C, A, B, ::StaticInt{-1}, ::StaticInt{0}, (M, K, N) = matmul_a
     end
     nothing
 end
-function loopmul!(C, A, B, ::StaticInt{-1}, ::StaticInt{1}, (M, K, N) = matmul_axes(C, A, B))
+@inline function loopmul!(C, A, B, ::StaticInt{-1}, ::StaticInt{1}, (M, K, N))
     # @avx for n ∈ N, m ∈ M
     @avx for m ∈ M, n ∈ N
         Cₘₙ = zero(eltype(C))
@@ -60,7 +60,7 @@ function loopmul!(C, A, B, ::StaticInt{-1}, ::StaticInt{1}, (M, K, N) = matmul_a
     end
     nothing
 end
-function loopmul!(C, A, B, ::StaticInt{-1}, β, (M, K, N) = matmul_axes(C, A, B))
+@inline function loopmul!(C, A, B, ::StaticInt{-1}, β, (M, K, N))
     # @avx for n ∈ N, m ∈ M
     @avx for m ∈ M, n ∈ N
         Cₘₙ = zero(eltype(C))
@@ -71,7 +71,7 @@ function loopmul!(C, A, B, ::StaticInt{-1}, β, (M, K, N) = matmul_axes(C, A, B)
     end
     nothing
 end
-function loopmul!(C, A, B, α, ::StaticInt{0}, (M, K, N) = matmul_axes(C, A, B))
+@inline function loopmul!(C, A, B, α, ::StaticInt{0}, (M, K, N))
     # @avx for n ∈ N, m ∈ M
     @avx for m ∈ M, n ∈ N
         Cₘₙ = zero(eltype(C))
@@ -83,7 +83,7 @@ function loopmul!(C, A, B, α, ::StaticInt{0}, (M, K, N) = matmul_axes(C, A, B))
     nothing
 end
 
-function loopmul!(C, A, B, α, ::StaticInt{1}, (M, K, N) = matmul_axes(C, A, B))
+@inline function loopmul!(C, A, B, α, ::StaticInt{1}, (M, K, N))
     # @avx for n ∈ N, m ∈ M
     @avx for m ∈ M, n ∈ N
         Cₘₙ = zero(eltype(C))
@@ -94,7 +94,7 @@ function loopmul!(C, A, B, α, ::StaticInt{1}, (M, K, N) = matmul_axes(C, A, B))
     end
     nothing
 end
-function loopmul!(C, A, B, α, β, (M, K, N) = matmul_axes(C, A, B))
+@inline function loopmul!(C, A, B, α, β, (M, K, N))
     # @avx for n ∈ N, m ∈ M
     @avx for m ∈ M, n ∈ N
         Cₘₙ = zero(eltype(C))
@@ -107,11 +107,8 @@ function loopmul!(C, A, B, α, β, (M, K, N) = matmul_axes(C, A, B))
 end
 
 
-function packamul!(
-    C::AbstractStrideMatrix,
-    Ãₚ::AbstractStrideMatrix,
-    A::AbstractStrideMatrix,
-    B::AbstractStrideMatrix,
+@inline function packamul!(
+    C, Ãₚ, A, B,
     ::StaticInt{1}, ::StaticInt{0},
     M, K, N
 )
@@ -126,11 +123,8 @@ function packamul!(
         C[m,n] = Cₘₙ
     end
 end
-function packamul!(
-    C::AbstractStrideMatrix,
-    Ãₚ::AbstractStrideMatrix,
-    A::AbstractStrideMatrix,
-    B::AbstractStrideMatrix,
+@inline function packamul!(
+    C, Ãₚ, A, B,
     ::StaticInt{1}, ::StaticInt{1},
     M, K, N
 )
@@ -145,11 +139,8 @@ function packamul!(
         C[m,n] += Cₘₙ
     end
 end
-function packaloopmul!(
-    C::AbstractStrideMatrix,
-    Ãₚ::AbstractStrideMatrix,
-    A::AbstractStrideMatrix,
-    B::AbstractStrideMatrix,
+@inline function packamul!(
+    C, Ãₚ, A, B,
     ::StaticInt{1}, β,
     M, K, N
 )
@@ -164,11 +155,8 @@ function packaloopmul!(
         C[m,n] = Cₘₙ + β * C[m,n]
     end
 end
-function packaloopmul!(
-    C::AbstractStrideMatrix,
-    Ãₚ::AbstractStrideMatrix,
-    A::AbstractStrideMatrix,
-    B::AbstractStrideMatrix,
+@inline function packamul!(
+    C, Ãₚ, A, B,
     ::StaticInt{-1}, ::StaticInt{0},
     M, K, N
 )
@@ -183,11 +171,8 @@ function packaloopmul!(
         C[m,n] = Cₘₙ
     end
 end
-function packaloopmul!(
-    C::AbstractStrideMatrix,
-    Ãₚ::AbstractStrideMatrix,
-    A::AbstractStrideMatrix,
-    B::AbstractStrideMatrix,
+@inline function packamul!(
+    C, Ãₚ, A, B,
     ::StaticInt{-1}, ::StaticInt{1},
     M, K, N
 )
@@ -202,11 +187,8 @@ function packaloopmul!(
         C[m,n] += Cₘₙ
     end
 end
-function packaloopmul!(
-    C::AbstractStrideMatrix,
-    Ãₚ::AbstractStrideMatrix,
-    A::AbstractStrideMatrix,
-    B::AbstractStrideMatrix,
+@inline function packamul!(
+    C, Ãₚ, A, B,
     ::StaticInt{-1}, β,
     M, K, N
 )
@@ -221,11 +203,8 @@ function packaloopmul!(
         C[m,n] = Cₘₙ + β * C[m,n]
     end
 end
-function packaloopmul!(
-    C::AbstractStrideMatrix,
-    Ãₚ::AbstractStrideMatrix,
-    A::AbstractStrideMatrix,
-    B::AbstractStrideMatrix,
+@inline function packamul!(
+    C, Ãₚ, A, B,
     α, ::StaticInt{0},
     M, K, N
 )
@@ -240,11 +219,8 @@ function packaloopmul!(
         C[m,n] = α * Cₘₙ
     end
 end
-function packaloopmul!(
-    C::AbstractStrideMatrix,
-    Ãₚ::AbstractStrideMatrix,
-    A::AbstractStrideMatrix,
-    B::AbstractStrideMatrix,
+@inline function packamul!(
+    C, Ãₚ, A, B,
     α, ::StaticInt{1},
     M, K, N
 )
@@ -259,11 +235,8 @@ function packaloopmul!(
         C[m,n] += α * Cₘₙ
     end
 end
-function packaloopmul!(
-    C::AbstractStrideMatrix,
-    Ãₚ::AbstractStrideMatrix,
-    A::AbstractStrideMatrix,
-    B::AbstractStrideMatrix,
+@inline function packamul!(
+    C, Ãₚ, A, B,
     α, β, M, K, N
 )
     # @avx for n ∈ N, m ∈ M
@@ -286,7 +259,7 @@ end
     Apack, buffer
 end
 
-function packaloopmul!(
+@inline function packaloopmul!(
     C::AbstractStrideMatrix,
     A::AbstractStrideMatrix,
     B::AbstractStrideMatrix,
@@ -297,20 +270,21 @@ function packaloopmul!(
         # Nᵣrange = VectorizationBase.StaticUnitRange{1,nᵣ}()
         # Nrange = VectorizationBase.StaticLowerUnitRange{1+nᵣ}(N)
         Nᵣrange = static_first(N):(static_first(N)+StaticInt{nᵣ}()-One())
-        packamul!(C, Ãₚ, A, B, α, β, M, K, Nᵣrange) # pack A
+        packamul!(stridedpointer(C), stridedpointer(Ãₚ), stridedpointer(A), stridedpointer(B), α, β, M, K, Nᵣrange) # pack A
         # @show size.((Ãₚ, A)) strides.((Ãₚ, A)) view(Ãₚ, 1:8, 1:8) #view(A, 1:8, 1:8)
         Nrange = (static_first(N)+StaticInt{nᵣ}()):static_last(N)
-        Crem = view(C, :, Nrange)
-        Arem = view(Ãₚ, :, :) # hack to get them all on the same page in terms of offsets (1-based indexing...)
-        Brem = view(B, :, Nrange)
-        Mnew = One():static_length(M)
-        Knew = One():static_length(K)
-        Nnew = One():static_length(Nrange)
+        Crem = zview(C, :, Nrange)
+        # Arem = view(Ãₚ, :, :) # hack to get them all on the same page in terms of offsets (1-based indexing...)
+        Brem = zview(B, :, Nrange)
+        # Mnew = One():static_length(M)
+        # Knew = One():static_length(K)
+        # Nnew = One():static_length(Nrange)
+        Nnew = Zero():(static_length(Nrange) - One())
         # @show eltype.((C,A,B, Ãₚ, Crem, Arem, Brem))
         # @show all(isone, B)
         # all(isone, Brem) || @show findall(!isone, Brem)
         # @show view(Arem, 2:9, 2:9)
-        loopmul!(Crem, Arem, Brem, α, β, (Mnew, Knew, Nnew))
+        loopmul!(stridedpointer(Crem), stridedpointer(Ãₚ), stridedpointer(Brem), α, β, (M, K, Nnew))
     end
     nothing
 end
