@@ -180,7 +180,7 @@ function jmulpackAonly!(
     _Krem, _kreps_per_iter = promote(Krem, kreps_per_iter)
     for ko ∈ 0:Kiter
         ksize = ifelse(ko == 0, _Krem, _kreps_per_iter)
-        _β = ifelse(ko == 0, convert(Tc, β), one(Tc))
+        # _β = ifelse(ko == 0, convert(Tc, β), one(Tc))
         Bpacked = PtrArray(gesp(Bptr, (koffset, Zero())), (ksize, N), dense_dims_subset(dense_dims(B), stride_rank(B)))
 
         moffset = 0
@@ -191,11 +191,11 @@ function jmulpackAonly!(
             
             Cpmat = PtrArray(gesp(Cptr, (moffset, Zero())), (msize, N), dense_dims_subset(dense_dims(C), stride_rank(C)))
             packaloopmul!(Cpmat, Asubset, Bpacked, α, _β, (zrange(msize), zrange(ksize), zrange(N)))
-            # if ko == 0
-            #     packaloopmul!(Cpmat, Asubset, Bpacked, α, β, (zrange(msize), zrange(ksize), zrange(N)))
-            # else
-            #     packaloopmul!(Cpmat, Asubset, Bpacked, α, One(), (zrange(msize), zrange(ksize), zrange(N)))
-            # end
+            if ko == 0
+                packaloopmul!(Cpmat, Asubset, Bpacked, α, β, (zrange(msize), zrange(ksize), zrange(N)))
+            else
+                packaloopmul!(Cpmat, Asubset, Bpacked, α, One(), (zrange(msize), zrange(ksize), zrange(N)))
+            end
             moffset += mreps_per_iter
         end
         koffset += ksize
@@ -271,7 +271,7 @@ function jmulpackAB!(
             koffset = 0
             for ko ∈ 0:Kiter
                 ksize = ifelse(ko == 0, _Krem, _kreps_per_iter)
-                _β = ifelse(ko == 0, convert(Tc, β), one(Tc))
+                # _β = ifelse(ko == 0, convert(Tc, β), one(Tc))
                 Bsubset2 = PtrArray(gesp(Bptr, (koffset, noffset)), (ksize, nsize), dense_dims_subset(dense_dims(B), stride_rank(B)))
                 Bpacked2 = ptrarray0(L3ptr, (ksize, nsize))
                 # @show offsets(Bpacked2), offsets(Bsubset2)
@@ -287,12 +287,12 @@ function jmulpackAB!(
                     Asubset = PtrArray(gesp(Aptr, (moffset, koffset)), (msize, ksize), dense_dims_subset(dense_dims(A), stride_rank(A)))
 
                     Cpmat = PtrArray(gesp(Cptr, (moffset, noffset)), (msize, nsize), dense_dims_subset(dense_dims(C), stride_rank(C)))
-                    packaloopmul!(Cpmat, Asubset, Bpacked2, α, _β, (zrange(msize), zrange(ksize), zrange(nsize)))
-                    # if ko == 0
-                    #     packaloopmul!(Cpmat, Asubset, Bpacked2, α, β, (zrange(msize), zrange(ksize), zrange(nsize)))
-                    # else
-                    #     packaloopmul!(Cpmat, Asubset, Bpacked2, α, One(), (zrange(msize), zrange(ksize), zrange(nsize)))
-                    # end
+                    # packaloopmul!(Cpmat, Asubset, Bpacked2, α, _β, (zrange(msize), zrange(ksize), zrange(nsize)))
+                    if ko == 0
+                        packaloopmul!(Cpmat, Asubset, Bpacked2, α, β, (zrange(msize), zrange(ksize), zrange(nsize)))
+                    else
+                        packaloopmul!(Cpmat, Asubset, Bpacked2, α, One(), (zrange(msize), zrange(ksize), zrange(nsize)))
+                    end
                     moffset += mreps_per_iter
                 end
                 koffset += ksize

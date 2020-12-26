@@ -16,7 +16,7 @@ function runbenches(sr, ::Type{T} = Float64) where {T}
     bench_results = Matrix{T}(undef, length(sr), 5)
     for (i,s) ∈ enumerate(sr)
         M, N, K = matrix_sizes(s)
-        if s ≤ 20
+        if true#s ≤ 20
             Astatic = @SMatrix rand(T, M, K);
             Bstatic = @SMatrix rand(T, K, N);
             maybe_sleep()
