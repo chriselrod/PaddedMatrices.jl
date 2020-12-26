@@ -59,7 +59,7 @@ end
 # heuristically assume that if the L₃-per core is at least twice as large as the L₂, that it is inclusive of the L₂
 const INCLUSIVE_L₃ = VectorizationBase.CACHE_COUNT[3] > 0 ? ((VectorizationBase.CACHE_SIZE[2] * VectorizationBase.CACHE_COUNT[2] / (VectorizationBase.CACHE_SIZE[3] * VectorizationBase.CACHE_COUNT[3])) < 0.5) : nothing
 
-function matmul_params_calc(::Type{T}, mᵣ = StaticInt{mᵣ}(), nᵣ = StaticInt{nᵣ}()) where {T}
+function matmul_params(::Type{T}, mᵣ = StaticInt{mᵣ}(), nᵣ = StaticInt{nᵣ}()) where {T}
     W = VectorizationBase.pick_vector_width_val(T)
     mᵣW = mᵣ * W
     mc = mᵣW * (VectorizationBase.REGISTER_SIZE === 64 ? StaticInt{4}() : StaticInt{9}())
@@ -91,11 +91,11 @@ function matmul_params_calc(::Type{T}, mᵣ = StaticInt{mᵣ}(), nᵣ = StaticIn
     # nc = ncrep * nᵣ
     mc, kc, nc
 end
-@generated matmul_params(::Type{T}) where {T} = matmul_params_calc(T, mᵣ, nᵣ)
-@generated function matmul_params_static(::Type{T}) where {T}
-    mc, kc, nc = matmul_params_calc(T)
-    Expr(:tuple, static_expr(mc), static_expr(kc), static_expr(nc))
-end
+# @generated matmul_params(::Type{T}) where {T} = matmul_params_calc(T, mᵣ, nᵣ)
+# @generated function matmul_params_static(::Type{T}) where {T}
+#     mc, kc, nc = matmul_params_calc(T)
+#     Expr(:tuple, static_expr(mc), static_expr(kc), static_expr(nc))
+# end
 
 # function pack_B(Bptr, kc, nc, ::Type{Tb}, koffset::Int, noffset::Int) where {Tb}
 #     # Bpacked = PtrMatrix(threadlocal_L3CACHE_pointer(Tb), kc, nc, kc*sizeof(Tb))
@@ -521,17 +521,17 @@ end
 
 @inline function jmul!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}) where {Tc, Ta, Tb}
     maybeinline(C, A) && return inlineloopmul!(C, A, B, StaticInt{1}(), StaticInt{0}())
-    mc, kc, nc = matmul_params_static(Tc)
+    mc, kc, nc = matmul_params(Tc)
     jmul!(C, A, B, StaticInt{1}(), StaticInt{0}(), mc, kc, nc)
 end
 @inline function jmul!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α) where {Tc, Ta, Tb}
     maybeinline(C, A) && return inlineloopmul!(C, A, B, α, StaticInt{0}())
-    mc, kc, nc = matmul_params_static(Tc)
+    mc, kc, nc = matmul_params(Tc)
     jmul!(C, A, B, α, StaticInt{0}(), mc, kc, nc)
 end
 @inline function jmul!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β) where {Tc, Ta, Tb}
     maybeinline(C, A) && return inlineloopmul!(C, A, B, α, β)
-    mc, kc, nc = matmul_params_static(Tc)
+    mc, kc, nc = matmul_params(Tc)
     jmul!(C, A, B, α, β, mc, kc, nc)
 end
 # function jmult!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}) where {Tc, Ta, Tb}
