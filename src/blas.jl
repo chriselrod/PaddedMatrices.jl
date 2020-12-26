@@ -121,7 +121,43 @@ end
     end
     Expr(:call, Expr(:curly, :DenseDims, t))
 end
+@generated function dense_dims_subset(::DenseDims{D}, ::StrideRank{R}, ::Val{N}) where {D,R,N}
+    t = Expr(:tuple)
+    for n in eachindex(R)
+        d = D[n] & (R[n] == 1)
+        push!(t.args, d)
+        n == N && push!(t.args, d)
+    end
+    Expr(:call, Expr(:curly, :DenseDims, t))
+end
 @inline zrange(N) = Zero():N-One()
+
+@generated function splitdim(sp::StridedPointer{T,N,C,B,R}, ::Val{M}, x) where {T,N,C,B,R,M}
+    Cnew = C > M ? C + 1 : C
+    Bnew = B > M ? B + 1 : B
+    Rnew = Expr(:tuple)
+    sx = Expr(:tuple)
+    off = Expr(:tuple)
+    Rₘ = R[M]
+    for n ∈ 1:N
+        Rₙ = R[n]
+        Rₙ += Rₙ > Rₘ
+        push!(Rnew.args, Rₙ)
+        push!(off.args, Expr(:ref, :offsets, n))
+        push!(sx.args, Expr(:ref, :strd, n))
+        if Rₙ == Rₘ
+            push!(Rnew.args, Rₙ + 1)
+            push!(off.args, Expr(:ref, :offsets, n)) # duplicate offset
+            push!(sx.args, Expr(:call, :vmul, Expr(:ref, :strd, n), :x))
+        end
+    end
+    quote
+        $(Expr(:meta,:inline))
+        strd = sp.strd
+        offsets = sp.offsets
+        StridedPointer{$T,$(N+1),$Cnew,$Bnew,$Rnew}(sp.p, $sx, $off)
+    end
+end
 
 """
 Only packs `A`. Primitively does column-major packing: it packs blocks of `A` into a column-major temporary.
@@ -129,8 +165,8 @@ Only packs `A`. Primitively does column-major packing: it packs blocks of `A` in
 function jmulpackAonly!(
     C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::StaticInt{mc}, ::StaticInt{kc}, ::StaticInt{nc}, (Ma, Ka, Na) = matmul_axes(C, A, B)
 ) where {Tc, Ta, Tb, mc, kc, nc}
-    W = VectorizationBase.pick_vector_width(Tc)
-    mᵣW = mᵣ * W
+    W = VectorizationBase.pick_vector_width_val(Tc)
+    mᵣW = StaticInt{mᵣ}() * W
 
     M = static_length(Ma);
     K = static_length(Ka);
@@ -163,12 +199,25 @@ function jmulpackAonly!(
         for mo in 0:Miter
             msize = ifelse(mo == Miter, _Mrem, _mreps_per_iter)
             # pack mreps_per_iter x kreps_per_iter block of A
-            
-            Asubset = PtrArray(gesp(Aptr, (moffset, Zero())), (msize, Krem), dense_dims_subset(dense_dims(A), stride_rank(A)))
+            if msize == _mreps_per_iter
+                Asubsetarray = PtrArray(splitdim(gesp(Aptr, (moffset, Zero())), Val{1}(), mᵣW), (mᵣW, mcrepetitions, Krem), dense_dims_subset(dense_dims(A), stride_rank(A), Val{1}()))
 
-            Cpmat = PtrArray(gesp(Cptr, (moffset, Zero())), (msize, N), dense_dims_subset(dense_dims(C), stride_rank(C)))
-            packaloopmul!(Cpmat, Asubset, Bpacked, α, β, (zrange(msize), zrange(Krem), zrange(N)))
-            moffset += mreps_per_iter
+                Carray = PtrArray(splitdim(gesp(Cptr, (moffset, Zero())), Val{1}(), mᵣW), (mᵣW, mcrepetitions, N), dense_dims_subset(dense_dims(C), stride_rank(C), Val{1}()))
+                # @show size.((Cparray, Asubsetarray, Bpacked))
+                # @show strides.((Cparray, Asubsetarray, Bpacked))
+                # @show strides.(stridedpointer.((Cparray, Asubsetarray, Bpacked)))
+                # @show offsets.(stridedpointer.((Cparray, Asubsetarray, Bpacked)))
+                # @show pointer.((Cparray, Asubsetarray, Bpacked))
+                # @assert false
+                packaloopmul!(Carray, Asubsetarray, Bpacked, α, β)
+                # @assert false
+                moffset += mreps_per_iter
+            else
+                Asubset = PtrArray(gesp(Aptr, (moffset, Zero())), (msize, Krem), dense_dims_subset(dense_dims(A), stride_rank(A)))
+
+                Cpmat = PtrArray(gesp(Cptr, (moffset, Zero())), (msize, N), dense_dims_subset(dense_dims(C), stride_rank(C)))
+                packaloopmul!(Cpmat, Asubset, Bpacked, α, β, (zrange(msize), zrange(Krem), zrange(N)))
+            end
         end
         koffset = Krem
         for ko in 1:Kiter
@@ -177,12 +226,19 @@ function jmulpackAonly!(
             moffset = 0
             for mo in 0:Miter
                 msize = ifelse(mo == Miter, _Mrem, _mreps_per_iter)
-                # pack mreps_per_iter x kreps_per_iter block of A
-                Asubset = PtrArray(gesp(Aptr, (moffset, koffset)), (msize, kreps_per_iter), dense_dims_subset(dense_dims(A), stride_rank(A)))
+                if msize == _mreps_per_iter
+                    Asubsetarray = PtrArray(splitdim(gesp(Aptr, (moffset, koffset)), Val{1}(), mᵣW), (mᵣW, mcrepetitions, kreps_per_iter), dense_dims_subset(dense_dims(A), stride_rank(A), Val{1}()))
                 
-                Cpmat = PtrArray(gesp(Cptr, (moffset, Zero())), (msize, N), dense_dims_subset(dense_dims(C), stride_rank(C)))
-                packaloopmul!(Cpmat, Asubset, Bpacked, α, StaticInt{1}(), (zrange(msize), zrange(kreps_per_iter), zrange(N)))
-                moffset += mreps_per_iter
+                    Carray = PtrArray(splitdim(gesp(Cptr, (moffset, Zero())), Val{1}(), mᵣW), (mᵣW, mcrepetitions, N), dense_dims_subset(dense_dims(C), stride_rank(C), Val{1}()))
+                    packaloopmul!(Carray, Asubsetarray, Bpacked, α, StaticInt{1}())
+                    moffset += mreps_per_iter
+                else
+                # pack mreps_per_iter x kreps_per_iter block of A
+                    Asubset = PtrArray(gesp(Aptr, (moffset, koffset)), (msize, kreps_per_iter), dense_dims_subset(dense_dims(A), stride_rank(A)))
+                
+                    Cpmat = PtrArray(gesp(Cptr, (moffset, Zero())), (msize, N), dense_dims_subset(dense_dims(C), stride_rank(C)))
+                    packaloopmul!(Cpmat, Asubset, Bpacked, α, StaticInt{1}(), (zrange(msize), zrange(kreps_per_iter), zrange(N)))
+                end
             end
             koffset += kreps_per_iter
         end

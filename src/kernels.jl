@@ -5,7 +5,7 @@ function matmul_axes(C, A, B)
     M, K, N
 end
 
-function loopmul!(C, A, B, ::StaticInt{1}, ::StaticInt{0}, (M, K, N) = matmul_axes(C, A, B))
+function loopmul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, ::StaticInt{1}, ::StaticInt{0}, (M, K, N) = matmul_axes(C, A, B))
     # @avx for n ∈ N, m ∈ M
     @avx for m ∈ M, n ∈ N
         Cₘₙ = zero(eltype(C))
@@ -16,7 +16,7 @@ function loopmul!(C, A, B, ::StaticInt{1}, ::StaticInt{0}, (M, K, N) = matmul_ax
     end
     nothing
 end
-function loopmul!(C, A, B, ::StaticInt{1}, ::StaticInt{1}, (M, K, N) = matmul_axes(C, A, B))
+function loopmul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, ::StaticInt{1}, ::StaticInt{1}, (M, K, N) = matmul_axes(C, A, B))
     # @avx for n ∈ N, m ∈ M
     @avx for m ∈ M, n ∈ N
         Cₘₙ = zero(eltype(C))
@@ -27,7 +27,7 @@ function loopmul!(C, A, B, ::StaticInt{1}, ::StaticInt{1}, (M, K, N) = matmul_ax
     end
     nothing
 end
-function loopmul!(C, A, B, ::StaticInt{1}, β, (M, K, N) = matmul_axes(C, A, B))
+function loopmul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, ::StaticInt{1}, β, (M, K, N) = matmul_axes(C, A, B))
     # @avx for n ∈ N, m ∈ M
     @avx for m ∈ M, n ∈ N
         Cₘₙ = zero(eltype(C))
@@ -38,7 +38,7 @@ function loopmul!(C, A, B, ::StaticInt{1}, β, (M, K, N) = matmul_axes(C, A, B))
     end
     nothing
 end
-function loopmul!(C, A, B, ::StaticInt{-1}, ::StaticInt{0}, (M, K, N) = matmul_axes(C, A, B))
+function loopmul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, ::StaticInt{-1}, ::StaticInt{0}, (M, K, N) = matmul_axes(C, A, B))
     # @avx for n ∈ N, m ∈ M
     @avx for m ∈ M, n ∈ N
         Cₘₙ = zero(eltype(C))
@@ -49,7 +49,7 @@ function loopmul!(C, A, B, ::StaticInt{-1}, ::StaticInt{0}, (M, K, N) = matmul_a
     end
     nothing
 end
-function loopmul!(C, A, B, ::StaticInt{-1}, ::StaticInt{1}, (M, K, N) = matmul_axes(C, A, B))
+function loopmul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, ::StaticInt{-1}, ::StaticInt{1}, (M, K, N) = matmul_axes(C, A, B))
     # @avx for n ∈ N, m ∈ M
     @avx for m ∈ M, n ∈ N
         Cₘₙ = zero(eltype(C))
@@ -60,7 +60,7 @@ function loopmul!(C, A, B, ::StaticInt{-1}, ::StaticInt{1}, (M, K, N) = matmul_a
     end
     nothing
 end
-function loopmul!(C, A, B, ::StaticInt{-1}, β, (M, K, N) = matmul_axes(C, A, B))
+function loopmul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, ::StaticInt{-1}, β, (M, K, N) = matmul_axes(C, A, B))
     # @avx for n ∈ N, m ∈ M
     @avx for m ∈ M, n ∈ N
         Cₘₙ = zero(eltype(C))
@@ -71,7 +71,7 @@ function loopmul!(C, A, B, ::StaticInt{-1}, β, (M, K, N) = matmul_axes(C, A, B)
     end
     nothing
 end
-function loopmul!(C, A, B, α, ::StaticInt{0}, (M, K, N) = matmul_axes(C, A, B))
+function loopmul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, α, ::StaticInt{0}, (M, K, N) = matmul_axes(C, A, B))
     # @avx for n ∈ N, m ∈ M
     @avx for m ∈ M, n ∈ N
         Cₘₙ = zero(eltype(C))
@@ -83,7 +83,7 @@ function loopmul!(C, A, B, α, ::StaticInt{0}, (M, K, N) = matmul_axes(C, A, B))
     nothing
 end
 
-function loopmul!(C, A, B, α, ::StaticInt{1}, (M, K, N) = matmul_axes(C, A, B))
+function loopmul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, α, ::StaticInt{1}, (M, K, N) = matmul_axes(C, A, B))
     # @avx for n ∈ N, m ∈ M
     @avx for m ∈ M, n ∈ N
         Cₘₙ = zero(eltype(C))
@@ -94,7 +94,7 @@ function loopmul!(C, A, B, α, ::StaticInt{1}, (M, K, N) = matmul_axes(C, A, B))
     end
     nothing
 end
-function loopmul!(C, A, B, α, β, (M, K, N) = matmul_axes(C, A, B))
+function loopmul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, α, β, (M, K, N) = matmul_axes(C, A, B))
     # @avx for n ∈ N, m ∈ M
     @avx for m ∈ M, n ∈ N
         Cₘₙ = zero(eltype(C))
@@ -277,7 +277,8 @@ function packaloopmul!(
         C[m,n] = α * Cₘₙ + β * C[m,n]
     end
 end
-@inline function alloc_a_pack(A::AbstractArray{T}) where {T}
+
+@inline function alloc_a_pack(A::AbstractMatrix{T}) where {T}
     M, K = size(A)
     buffer = core_cache_buffer(T, Val(2))
     # _buffer = core_cache_buffer(T, Val(2))
@@ -290,7 +291,7 @@ function packaloopmul!(
     C::AbstractStrideMatrix,
     A::AbstractStrideMatrix,
     B::AbstractStrideMatrix,
-    α, β, (M, K, N) = matmul_axes(C, A, B)
+    α, β, (M,K,N)
 )
     Ãₚ, buffer = alloc_a_pack(A)
     GC.@preserve buffer begin
@@ -300,17 +301,14 @@ function packaloopmul!(
         packamul!(C, Ãₚ, A, B, α, β, M, K, Nᵣrange) # pack A
         # @show size.((Ãₚ, A)) strides.((Ãₚ, A)) view(Ãₚ, 1:8, 1:8) #view(A, 1:8, 1:8)
         Nrange = (static_first(N)+StaticInt{nᵣ}()):static_last(N)
-        Crem = view(C, :, Nrange)
-        Arem = view(Ãₚ, :, :) # hack to get them all on the same page in terms of offsets (1-based indexing...)
-        Brem = view(B, :, Nrange)
-        Mnew = One():static_length(M)
-        Knew = One():static_length(K)
-        Nnew = One():static_length(Nrange)
+        Crem = zview(C, :, Nrange)
+        # Arem = zview(Ãₚ, :, :) # hack to get them all on the same page in terms of offsets (1-based indexing...)
+        Brem = zview(B, :, Nrange)
         # @show eltype.((C,A,B, Ãₚ, Crem, Arem, Brem))
         # @show all(isone, B)
         # all(isone, Brem) || @show findall(!isone, Brem)
         # @show view(Arem, 2:9, 2:9)
-        loopmul!(Crem, Arem, Brem, α, β, (Mnew, Knew, Nnew))
+        loopmul!(Crem, Ãₚ, Brem, α, β, (M, K, axes(Brem,StaticInt{2}())))
     end
     nothing
 end
@@ -655,102 +653,178 @@ end
 #     nothing
 # end
 
-# function loopmul!(
-#     C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ}},
-#     A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
-#     B::AbstractStrideArray{Tuple{Nᵣ,K}},
-#     ::StaticInt{1}, ::StaticInt{0}
-# ) where {Mᵣ,Mᵢ,K,Nᵣ}
-#     Mᵣrange = VectorizationBase.StaticUnitRange{1,Mᵣ}();
-#     @avx for mᵢ ∈ axes(A,3), mᵣ ∈ Mᵣrange, nᵣ ∈ axes(C,3)
-#         Cₘₙ = zero(eltype(C))
-#         for k ∈ axes(A,2)
-#             Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k]
-#         end
-#         C[mᵣ,mᵢ,nᵣ] = Cₘₙ
-#     end
-#     nothing
-# end
-# function loopmul!(
-#     C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ}},
-#     A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
-#     B::AbstractStrideArray{Tuple{Nᵣ,K}},
-#     ::StaticInt{1}, ::StaticInt{1}
-# ) where {Mᵣ,Mᵢ,K,Nᵣ}
-#     Mᵣrange = VectorizationBase.StaticUnitRange{1,Mᵣ}();
-#     @avx for mᵢ ∈ axes(A,3), mᵣ ∈ Mᵣrange, nᵣ ∈ axes(C,3)
-#         Cₘₙ = zero(eltype(C))
-#         for k ∈ axes(A,2)
-#             Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k]
-#         end
-#         C[mᵣ,mᵢ,nᵣ] += Cₘₙ
-#     end
-#     nothing
-# end
-# function loopmul!(
-#     C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ}},
-#     A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
-#     B::AbstractStrideArray{Tuple{Nᵣ,K}},
-#     ::StaticInt{1}, β
-# ) where {Mᵣ,Mᵢ,K,Nᵣ}
-#     Mᵣrange = VectorizationBase.StaticUnitRange{1,Mᵣ}();
-#     @avx for mᵢ ∈ axes(A,3), mᵣ ∈ Mᵣrange, nᵣ ∈ axes(C,3)
-#         Cₘₙ = zero(eltype(C))
-#         for k ∈ axes(A,2)
-#             Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k]
-#         end
-#         C[mᵣ,mᵢ,nᵣ] = Cₘₙ + β * C[mᵣ,mᵢ,nᵣ]
-#     end
-#     nothing
-# end
-# function loopmul!(
-#     C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ}},
-#     A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
-#     B::AbstractStrideArray{Tuple{Nᵣ,K}},
-#     α, ::StaticInt{0}
-# ) where {Mᵣ,Mᵢ,K,Nᵣ}
-#     Mᵣrange = VectorizationBase.StaticUnitRange{1,Mᵣ}();
-#     @avx for mᵢ ∈ axes(A,3), mᵣ ∈ Mᵣrange, nᵣ ∈ axes(C,3)
-#         Cₘₙ = zero(eltype(C))
-#         for k ∈ axes(A,2)
-#             Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k]
-#         end
-#         C[mᵣ,mᵢ,nᵣ] = α * Cₘₙ
-#     end
-#     nothing
-# end
-# function loopmul!(
-#     C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ}},
-#     A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
-#     B::AbstractStrideArray{Tuple{Nᵣ,K}},
-#     α, ::StaticInt{1}
-# ) where {Mᵣ,Mᵢ,K,Nᵣ}
-#     Mᵣrange = VectorizationBase.StaticUnitRange{1,Mᵣ}();
-#     @avx for mᵢ ∈ axes(A,3), mᵣ ∈ Mᵣrange, nᵣ ∈ axes(C,3)
-#         Cₘₙ = zero(eltype(C))
-#         for k ∈ axes(A,2)
-#             Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k]
-#         end
-#         C[mᵣ,mᵢ,nᵣ] += α * Cₘₙ
-#     end
-#     nothing
-# end
-# function loopmul!(
-#     C::AbstractStrideArray{Tuple{Mᵣ,Mᵢ,Nᵣ}},
-#     A::AbstractStrideArray{Tuple{Mᵣ,K,Mᵢ}},
-#     B::AbstractStrideArray{Tuple{Nᵣ,K}},
-#     α, β
-# ) where {Mᵣ,Mᵢ,K,Nᵣ}
-#     Mᵣrange = VectorizationBase.StaticUnitRange{1,Mᵣ}();
-#     @avx for mᵢ ∈ axes(A,3), mᵣ ∈ Mᵣrange, nᵣ ∈ axes(C,3)
-#         Cₘₙ = zero(eltype(C))
-#         for k ∈ axes(A,2)
-#             Cₘₙ += A[mᵣ,k,mᵢ] * B[nᵣ,k]
-#         end
-#         C[mᵣ,mᵢ,nᵣ] = α * Cₘₙ + β * C[mᵣ,mᵢ,nᵣ]
-#     end
-#     nothing
-# end
+function loopmul!(
+    C::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    A::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    B::AbstractStrideMatrix,
+    ::StaticInt{1}, ::StaticInt{0}
+)
+    @avx for mᵢ ∈ axes(A,3), mᵣ ∈ axes(A,1), nᵣ ∈ axes(C,3)
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[mᵣ,k,mᵢ] * B[k,nᵣ]
+        end
+        C[mᵣ,mᵢ,nᵣ] = Cₘₙ
+    end
+    nothing
+end
+function loopmul!(
+    C::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    A::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    B::AbstractStrideMatrix,
+    ::StaticInt{1}, β
+)
+    @avx for mᵢ ∈ axes(A,3), mᵣ ∈ axes(A,1), nᵣ ∈ axes(C,3)
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[mᵣ,k,mᵢ] * B[k,nᵣ]
+        end
+        C[mᵣ,mᵢ,nᵣ] = Cₘₙ + β * C[mᵣ,mᵢ,nᵣ]
+    end
+    nothing
+end
+function loopmul!(
+    C::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    A::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    B::AbstractStrideMatrix,
+    α, ::StaticInt{0}
+)
+    @avx for mᵢ ∈ axes(A,3), mᵣ ∈ axes(A,1), nᵣ ∈ axes(C,3)
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[mᵣ,k,mᵢ] * B[k,nᵣ]
+        end
+        C[mᵣ,mᵢ,nᵣ] = α * Cₘₙ
+    end
+    nothing
+end
+function loopmul!(
+    C::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    A::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    B::AbstractStrideMatrix,
+    α, β
+)
+    @avx for mᵢ ∈ axes(A,3), mᵣ ∈ axes(A,1), nᵣ ∈ axes(C,3)
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,2)
+            Cₘₙ += A[mᵣ,k,mᵢ] * B[k,nᵣ]
+        end
+        C[mᵣ,mᵢ,nᵣ] = α * Cₘₙ + β * C[mᵣ,mᵢ,nᵣ]
+    end
+    nothing
+end
+function packamul!(
+    C::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    Ãₚ::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    A::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    B::AbstractStrideMatrix,
+    ::StaticInt{1}, ::StaticInt{0}, ::StaticInt{Nᵣ}
+) where {Nᵣ}
+    @avx for mᵢ ∈ axes(A,2), mᵣ ∈ axes(A,1), nᵣ ∈ Zero():StaticInt{Nᵣ}()-One()
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,3)
+            Aₘₖ = A[mᵣ,mᵢ,k]
+            Cₘₙ += Aₘₖ * B[k,nᵣ]
+            Ãₚ[mᵣ,k,mᵢ] = Aₘₖ
+        end
+        C[mᵣ,mᵢ,nᵣ] = Cₘₙ
+    end
+    nothing
+end
+function packamul!(
+    C::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    Ãₚ::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    A::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    B::AbstractStrideMatrix,
+    ::StaticInt{1}, β, ::StaticInt{Nᵣ}
+) where {Nᵣ}
+    @avx for mᵢ ∈ axes(A,2), mᵣ ∈ axes(A,1), nᵣ ∈ Zero():StaticInt{Nᵣ}()-One()
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,3)
+            Aₘₖ = A[mᵣ,mᵢ,k]
+            Cₘₙ += Aₘₖ * B[k,nᵣ]
+            Ãₚ[mᵣ,k,mᵢ] = Aₘₖ
+        end
+        C[mᵣ,mᵢ,nᵣ] = Cₘₙ + β * C[mᵣ,mᵢ,nᵣ]
+    end
+    nothing
+end
+function packamul!(
+    C::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    Ãₚ::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    A::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    B::AbstractStrideMatrix,
+    α, ::StaticInt{0}, ::StaticInt{Nᵣ}
+) where {Nᵣ}
+    @avx for mᵢ ∈ axes(A,2), mᵣ ∈ axes(A,1), nᵣ ∈ Zero():StaticInt{Nᵣ}()-One()
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,3)
+            Aₘₖ = A[mᵣ,mᵢ,k]
+            Cₘₙ += Aₘₖ * B[k,nᵣ]
+            Ãₚ[mᵣ,k,mᵢ] = Aₘₖ
+        end
+        C[mᵣ,mᵢ,nᵣ] = α * Cₘₙ
+    end
+    nothing
+end
+function packamul!(
+    C::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    Ãₚ::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    A::AbstractStrideArray{<:Any,<:Any,<:Any,3},
+    B::AbstractStrideMatrix,
+    α, β, ::StaticInt{Nᵣ}
+) where {Nᵣ}
+    @avx for mᵢ ∈ axes(A,2), mᵣ ∈ axes(A,1), nᵣ ∈ Zero():StaticInt{Nᵣ}()-One()
+        Cₘₙ = zero(eltype(C))
+        for k ∈ axes(A,3)
+            Aₘₖ = A[mᵣ,mᵢ,k]
+            Cₘₙ += Aₘₖ * B[k,nᵣ]
+            Ãₚ[mᵣ,k,mᵢ] = Aₘₖ
+        end
+        C[mᵣ,mᵢ,nᵣ] = α * Cₘₙ + β * C[mᵣ,mᵢ,nᵣ]
+    end
+    nothing
+end
+
+@inline function alloc_a_pack(A::AbstractArray{T,3}) where {T}
+    Mᵣ, Mᵢ, K = size(A)
+    buffer = core_cache_buffer(T, Val(2))
+    # _buffer = core_cache_buffer(T, Val(2))
+    # buffer = Vector{T}(undef, length(_buffer))
+    stMᵣ = static_sizeof(T) * Mᵣ
+    Apack = ptrarray0(align(pointer(buffer)), (Mᵣ, K, Mᵢ), (static_sizeof(T), stMᵣ, stMᵣ * K), DenseDims{(true,true,true)}())
+    Apack, buffer
+end
+
+function packaloopmul!(
+    C::AbstractStrideArray,
+    A::AbstractStrideArray,
+    B::AbstractStrideMatrix,
+    α, β
+)
+    Ãₚ, buffer = alloc_a_pack(A)
+    GC.@preserve buffer begin
+        packamul!(C, Ãₚ, A, B, α, β, StaticInt{nᵣ}()) # pack A
+
+        N = axes(B,2)
+        Nrange = (static_first(N)+StaticInt{nᵣ}()):static_last(N)
+        Crem = zview(C, :, :, Nrange)
+        # Arem = zview(Ãₚ, :, :) # hack to get them all on the same page in terms of offsets (1-based indexing...)
+        Brem = zview(B, :, Nrange)
+        # Mnew = One():static_length(M)
+        # Knew = One():static_length(K)
+        # Nnew = One():static_length(Nrange)
+        # @show eltype.((C,A,B, Ãₚ, Crem, Arem, Brem))
+        # @show all(isone, B)
+        # all(isone, Brem) || @show findall(!isone, Brem)
+        # @show view(Arem, 2:9, 2:9)
+        loopmul!(Crem, Ãₚ, Brem, α, β)
+    end
+    nothing
+end
+
+
+
 
 @inline function inlineloopmul!(C, A, B, ::StaticInt{1}, ::StaticInt{0})
     M, K, N = matmul_axes(C, A, B)

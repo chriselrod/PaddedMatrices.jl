@@ -5,7 +5,7 @@
 # @inline function similar_with_offset(sptr::StridedPointer{T,N,C,B,R,X,O}, ptr::Ptr{T}) where {T,N,C,B,R,X,O}
 #     StridedPointer{T,N,C,B,R,X}(ptr, sptr.strd, zerotuple(Val{N}()))
 # end
-function view_quote(i, K, S, D, T, N, C, B, R, X, O)
+function view_quote(i, K, S, D, T, N, C, B, R, X, O, zero_offsets::Bool = false)
     @assert ((K == N) || isone(K))
 
     inds = Expr(:tuple)
@@ -27,7 +27,7 @@ function view_quote(i, K, S, D, T, N, C, B, R, X, O)
             push!(inds.args, Expr(:ref, :o, k))
             push!(s.args, Expr(:ref, :s, k))
             push!(x.args, Expr(:ref, :x, k))
-            push!(o.args, :(One()))
+            push!(o.args, zero_offsets ? :(Zero()) : :(One()))
             if k == C
                 Cnew = Nnew
             end
@@ -41,7 +41,7 @@ function view_quote(i, K, S, D, T, N, C, B, R, X, O)
                 Nnew += 1
                 push!(s.args, Expr(:call, :static_length, iₖ))
                 push!(x.args, Expr(:ref, :x, k))
-                push!(o.args, :(One()))
+                push!(o.args, zero_offsets ? :(Zero()) : :(One()))
                 if k == C
                     Cnew = Nnew
                 end
@@ -97,9 +97,14 @@ end
 @generated function Base.view(A::PtrArray{S,D,T,N,C,B,R,X,O}, i::Vararg{Union{Integer,AbstractRange,Colon},K}) where {K,S,D,T,N,C,B,R,X,O}
     view_quote(i, K, S, D, T, N, C, B, R, X, O)
 end
-
 @inline function Base.view(A::StrideArray, i::Vararg{Union{Integer,AbstractRange,Colon},K}) where {K}
     StrideArray(view(A.ptr, i...), A.data)
+end
+@generated function zview(A::PtrArray{S,D,T,N,C,B,R,X,O}, i::Vararg{Union{Integer,AbstractRange,Colon},K}) where {K,S,D,T,N,C,B,R,X,O}
+    view_quote(i, K, S, D, T, N, C, B, R, X, O, true)
+end
+@inline function zview(A::StrideArray, i::Vararg{Union{Integer,AbstractRange,Colon},K}) where {K}
+    StrideArray(zview(A.ptr, i...), A.data)
 end
 
 @inline function Base.vec(A::PtrArray{S,D,T,N,C,0}) where {S,D,T,N,C}
