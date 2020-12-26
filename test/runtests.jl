@@ -4,11 +4,11 @@ using Test
 @show PaddedMatrices.VectorizationBase.REGISTER_COUNT
 const START_TIME = time()
 
-@inferred PaddedMatrices.matmul_params_static(Float32)
-@inferred PaddedMatrices.matmul_params_static(Float64)
-@inferred PaddedMatrices.matmul_params_static(Int16)
-@inferred PaddedMatrices.matmul_params_static(Int32)
-@inferred PaddedMatrices.matmul_params_static(Int64)
+@inferred PaddedMatrices.matmul_params(Float32)
+@inferred PaddedMatrices.matmul_params(Float64)
+@inferred PaddedMatrices.matmul_params(Int16)
+@inferred PaddedMatrices.matmul_params(Int32)
+@inferred PaddedMatrices.matmul_params(Int64)
 
 @time @testset "PaddedMatrices.jl" begin
     @test isempty(detect_unbound_args(PaddedMatrices))
