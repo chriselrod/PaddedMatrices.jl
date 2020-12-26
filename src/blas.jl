@@ -53,21 +53,42 @@ end
 #    nc = round(Int, 0.4ncrep * nᵣ) #* VectorizationBase.NUM_CORES
 #    mc, kc, nc
 # end
-function matmul_params_calc(::Type{T}, mᵣ = mᵣ, nᵣ = nᵣ) where {T}
-    W = VectorizationBase.pick_vector_width(T)
+
+# assume L₂ is inclusive of L₁
+# const INCLUSIVE_L₂ = VectorizationBase.CACHE_COUNT[2] > 0 ? true : nothing
+# heuristically assume that if the L₃-per core is at least twice as large as the L₂, that it is inclusive of the L₂
+const INCLUSIVE_L₃ = VectorizationBase.CACHE_COUNT[3] > 0 ? ((VectorizationBase.CACHE_SIZE[2] * VectorizationBase.CACHE_COUNT[2] / (VectorizationBase.CACHE_SIZE[3] * VectorizationBase.CACHE_COUNT[3])) < 0.5) : nothing
+
+function matmul_params_calc(::Type{T}, mᵣ = StaticInt{mᵣ}(), nᵣ = StaticInt{nᵣ}()) where {T}
+    W = VectorizationBase.pick_vector_width_val(T)
     mᵣW = mᵣ * W
-    L₂ = something(core_cache_size(T, Val(2)), StaticInt{163840}())
-    L₂ratio = 0.5 * L₂
+    mc = mᵣW * (VectorizationBase.REGISTER_SIZE === 64 ? StaticInt{4}() : StaticInt{9}())
+    L₁ = something(core_cache_size(T, Val(1)), StaticInt{32768}() ÷ static_sizeof(T))
+    L₂ = something(core_cache_size(T, Val(2)), StaticInt{262144}() ÷ static_sizeof(T))
+    ΔL₂₁ = L₂ - L₁ # assume caches are inclusive
+    kc = ((StaticInt{795}() * ΔL₂₁) ÷ StaticInt{1024}() - StaticInt{4980}()) ÷ mc
+    L₃ = if INCLUSIVE_L₃ === nothing
+        StaticInt{3145728}() ÷ static_sizeof(T)
+    elseif INCLUSIVE_L₃
+        something(cache_size(T, Val(3)), StaticInt{3145728}() ÷ static_sizeof(T)) - L₂
+    else
+        something(cache_size(T, Val(3)), StaticInt{3145728}() ÷ static_sizeof(T))
+    end
+    # kc = (StaticInt{5}() * L₂) ÷ (StaticInt{7}() * mc)
+    # L₂ratio = 0.5 * L₂ 
     # L₂ratio = 0.5 * (L₂ ÷ sizeof(T));
-    M_K = Base.FastMath.sqrt_fast(L₂ratio)
-    mcrep = round(Int, M_K) ÷ mᵣW
-    mc = mcrep * mᵣW 
-    kc = round(Int, 1.2L₂ratio / mc)
+    # M_K = Base.FastMath.sqrt_fast(L₂ratio)
+    # mcrep = round(Int, M_K) ÷ mᵣW
+    # mc = mcrep * mᵣW 
+    # kc = round(Int, 1.2L₂ratio / mc)
     #    kc = round(Int, (L₂ ÷ sizeof(T)) / mc)
-    L₃ = something(cache_size(T, Val(3)), StaticInt{393216}())
-    ncrep = L₃ ÷ (2kc * nᵣ)
+    
+    # nc = (StaticInt{40}() * L₃) ÷ (StaticInt{41}() * kc)
+    nc = ((((StaticInt{132}() * L₃) ÷ StaticInt{125}()) - StaticInt{256651}()) ÷ (kc * nᵣ)) * nᵣ
+    # nc = ((StaticInt{44}() * L₃) ÷ (StaticInt{45}() * kc * nᵣ)) * nᵣ
+    # ncrep = L₃ ÷ (2kc * nᵣ)
     # ncrep = L₃ ÷ (sizeof(T) * 2kc * nᵣ)
-    nc = ncrep * nᵣ
+    # nc = ncrep * nᵣ
     mc, kc, nc
 end
 @generated matmul_params(::Type{T}) where {T} = matmul_params_calc(T, mᵣ, nᵣ)
@@ -178,7 +199,7 @@ Unfortunately, using column-major `B` does mean that we are starved on integer r
 Once `LoopVectorization` adds a few features to make it easy to abstract away tile-major memory layouts, we will switch to those, probably improving performance for larger matrices.
 """
 function jmulpackAB!(
-    C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::StaticInt{mc}, ::StaticInt{kc}, ::StaticInt{nc}, (Ma, Ka, Na) = matmul_sizes(C, A, B)
+    C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::StaticInt{mc}, ::StaticInt{kc}, ::StaticInt{nc}, (Ma, Ka, Na) = matmul_axes(C, A, B)
 ) where {Tc, Ta, Tb, mc, kc, nc}
     W = VectorizationBase.pick_vector_width(Tc)
     mᵣW = mᵣ * W
@@ -321,7 +342,7 @@ Otherwise, based on the array's size, whether they are transposed, and whether t
     GC.@preserve Cb Ab Bb begin
         if VectorizationBase.CACHE_SIZE[2] === nothing || ((nᵣ ≥ N) || (contiguousstride1(A) && dontpack(pointer(pA), M, K, stride(A,2), StaticInt{mc}(), StaticInt{kc}(), Tc)))
             loopmul!(pC, pA, pB, α, β, (Ma,Ka,Na))
-        elseif VectorizationBase.CACHE_SIZE[3] === nothing || ((contiguousstride1(B) && (kc * nc < K * N)) || firststride(B) < 240)
+        elseif VectorizationBase.CACHE_SIZE[3] === nothing || (((contiguousstride1(B) && (kc * nc < K * N))) || firststride(B) < 240)
             # println("Pack A mul")
             jmulpackAonly!(pC, pA, pB, α, β, StaticInt{mc}(), StaticInt{kc}(), StaticInt{nc}(), (Ma,Ka,Na))
         else
