@@ -190,7 +190,7 @@ function jmulpackAonly!(
             Asubset = PtrArray(gesp(Aptr, (moffset, koffset)), (msize, ksize), dense_dims_subset(dense_dims(A), stride_rank(A)))
             
             Cpmat = PtrArray(gesp(Cptr, (moffset, Zero())), (msize, N), dense_dims_subset(dense_dims(C), stride_rank(C)))
-            packaloopmul!(Cpmat, Asubset, Bpacked, α, _β, (zrange(msize), zrange(ksize), zrange(N)))
+            # packaloopmul!(Cpmat, Asubset, Bpacked, α, _β, (zrange(msize), zrange(ksize), zrange(N)))
             if ko == 0
                 packaloopmul!(Cpmat, Asubset, Bpacked, α, β, (zrange(msize), zrange(ksize), zrange(N)))
             else
