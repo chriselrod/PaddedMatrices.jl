@@ -13,7 +13,7 @@ The `SMatrix` and `MMatrix` are the immutable and immutable matrix types from `S
 
 The fully dynamic multiplication is competitive with `MKL` and `OpenBLAS` from around `2`x`2` to `256`x`256`:
 ![dgemmbenchmarkssmall](../assets/gemmFloat64_2_256_haswell_AVX2.svg)
-![dgemmbenchmarksmedium](../assets/gemmFloat64_256_2000_haswell_AVX2.svg)
+![dgemmbenchmarksmedium](../assets/gemmFloat64_256_1000_haswell_AVX2.svg)
 
 Benchmarks will be added later.
 

@@ -110,7 +110,7 @@ function runbench(::Type{T}, sizes = [2:255..., round.(Int, range(57.16281374121
         n, k, m = sz, sz, sz
         C1 = Matrix{T}(undef, n, m)
         C2 = similar(C1);
-        C3 = similar(C1);
+#        C3 = similar(C1);
         # C4 = similar(C1);
         # C5 = similar(C1);
         # C6 = similar(C1);
@@ -127,7 +127,7 @@ function runbench(::Type{T}, sizes = [2:255..., round.(Int, range(57.16281374121
             (matrix_size=sz, MaBLAS_24x9=ma24, MaBLAS_32x6=ma32, MaBLAS_40x5=ma40, PaddedMatrices=jmlt)
         else
             opbt = benchmark_fun!(gemmopenblas!, C2, A, B, sz == first(sizes), C1)
-            mklbt= benchmark_fun!(gemmmkl!, C3, A, B, sz == first(sizes), C1)
+            C2 .= NaN; mklbt= benchmark_fun!(gemmmkl!, C2, A, B, sz == first(sizes), C1)
             # (matrix_size=sz, OpenBLAS=opbt, MKL=mklbt, MaBLAS_24x9=ma24, MaBLAS_32x6=ma32, MaBLAS_40x5=ma40, PaddedMatrices=jmlt)
             (matrix_size=sz, OpenBLAS=opbt, MKL=mklbt, PaddedMatrices=jmlt)
         end
