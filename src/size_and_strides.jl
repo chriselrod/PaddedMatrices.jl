@@ -4,6 +4,7 @@
 @inline VectorizationBase.bytestrides(A::PtrArray) = A.ptr.strd
 @inline VectorizationBase.bytestrides(A::StrideArray) = A.ptr.ptr.strd
 
+@inline bytestride(A::AbstractArray{T}, n) where {T} = VectorizationBase.bytestrides(A)[n]
 
 
 @generated function ArrayInterface.strides(A::PtrArray{S,D,T,N}) where {S,D,T,N}

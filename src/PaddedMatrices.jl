@@ -5,15 +5,16 @@ module PaddedMatrices
 using VectorizationBase, ArrayInterface,
     SLEEFPirates, VectorizedRNG,
     LoopVectorization, LinearAlgebra,
-    Random#, StackPointers#,
+    Random, Base.Threads#, StackPointers#,
     # SpecialFunctions # Perhaps there is a better way to support erf?
 
 using VectorizationBase: align, gep, AbstractStridedPointer, AbstractSIMDVector, vnoaliasstore!, staticm1,
-    static_sizeof, lazymul, vmul, vadd, vsub, StridedPointer, gesp
+    static_sizeof, lazymul, vmul, vadd, vsub, StridedPointer, gesp, zero_offsets, NUM_CORES
 using LoopVectorization: maybestaticsize, mᵣ, nᵣ, preserve_buffer
 using ArrayInterface: StaticInt, Zero, One, OptionallyStaticUnitRange, size, strides, offsets, indices,
     static_length, static_first, static_last, axes,
     dense_dims, DenseDims, stride_rank, StrideRank
+# using Threads: @spawn
 # import ReverseDiffExpressionsBase:
     # RESERVED_INCREMENT_SEED_RESERVED!, ∂getindex,
     # alloc_adjoint, uninitialized, initialized, isinitialized
@@ -127,10 +128,50 @@ end
 # const ACACHE = Float64[]
 # const ASIZE = something(Int(core_cache_size(Float64, Val(2))), 163840);
 const BCACHE = Float64[]
+const BCACHE_COUNT = something(VectorizationBase.CACHE_COUNT[3], 1);
 const BSIZE = Int(something(cache_size(Float64, Val(3)), 393216));
+
+const BCACHE_LOCK = Atomic{UInt}(zero(UInt))
+
+@inline _pause() = ccall(:jl_cpu_pause, Cvoid, ())
+struct BCache
+    p::Ptr{Float64}
+    i::UInt
+end
+@inline Base.pointer(b::BCache) = b.p
+@inline Base.unsafe_convert(::Type{Ptr{T}}, b::BCache) where {T} = Base.unsafe_convert(Ptr{T}, b.p)
+BCache(i) = BCache(pointer(BCACHE)+8BSIZE*i, i % UInt)
+
+const MAX_THREADS = min(64, NUM_CORES)
+const MULTASKS = Vector{Task}[]
+_nthreads() = min(MAX_THREADS, nthreads())
+_preallocated_tasks() = MULTASKS[threadid()]
+
+function _use_bcache()
+    while true
+        x = one(UInt)
+        for i ∈ 0:BCACHE_COUNT-1
+            if iszero(atomic_or!(BCACHE_LOCK, x) & x) # we've now set the flag, `i` was free
+                return BCache(i)
+            end
+            x <<= one(UInt)
+        end
+        _pause()
+    end
+end
+function _free_bcache!(b::BCache)
+    atomic_xor!(BCACHE_LOCK, one(UInt) << b.i)
+end
+
 function __init__()
     # resize!(ACACHE, ASIZE * Threads.nthreads())
-    resize!(BCACHE, BSIZE * Threads.nthreads())
+    # resize!(BCACHE, BSIZE * Threads.nthreads())
+    resize!(BCACHE, BSIZE * BCACHE_COUNT)
+    nthread = nthreads()
+    resize!(MULTASKS, nthread)
+    for t ∈ Base.OneTo(nthread)
+        MULTASKS[t] = Vector{Task}(undef, _nthreads()-1)
+    end
 # #    set_zero_subnormals(true)
 #     page_size = ccall(:jl_getpagesize, Int, ())
     # resize!(LCACHEARRAY, ((L₂ + L₃) >>> 3) * Threads.nthreads() + page_size)

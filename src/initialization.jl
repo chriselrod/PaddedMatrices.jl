@@ -40,6 +40,7 @@ end
 #     q = Expr(:block, Expr(:meta,:inline))
     
 # end
+@inline VectorizationBase.zero_offsets(A::PtrArray{S,D}) where {S,D} = PtrArray(zstridedpointer(A), size(A), DenseDims{D}())
 
 function ptrarray_densestride_quote(::Type{T}, N, stridedpointer_offsets) where {T}
     last_sx = :s_0

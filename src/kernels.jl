@@ -250,7 +250,7 @@ end
         C[m,n] = α * Cₘₙ + β * C[m,n]
     end
 end
-@inline function alloc_a_pack(A::AbstractArray{T}) where {T}
+@inline function alloc_a_pack(A::AbstractArray, ::Type{T}) where {T}
     M, K = size(A)
     buffer = core_cache_buffer(T, Val(2))
     # _buffer = core_cache_buffer(T, Val(2))
@@ -260,12 +260,12 @@ end
 end
 
 @inline function packaloopmul!(
-    C::AbstractStrideMatrix,
+    C::AbstractStrideMatrix{S,D,T},
     A::AbstractStrideMatrix,
     B::AbstractStrideMatrix,
     α, β, (M, K, N) = matmul_axes(C, A, B)
-)
-    Ãₚ, buffer = alloc_a_pack(A)
+) where {S,D,T}
+    Ãₚ, buffer = alloc_a_pack(A, T)
     GC.@preserve buffer begin
         # Nᵣrange = VectorizationBase.StaticUnitRange{1,nᵣ}()
         # Nrange = VectorizationBase.StaticLowerUnitRange{1+nᵣ}(N)
