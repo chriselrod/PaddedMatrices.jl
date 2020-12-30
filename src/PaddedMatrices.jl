@@ -9,8 +9,8 @@ using VectorizationBase, ArrayInterface,
     # SpecialFunctions # Perhaps there is a better way to support erf?
 
 using VectorizationBase: align, gep, AbstractStridedPointer, AbstractSIMDVector, vnoaliasstore!, staticm1,
-    static_sizeof, lazymul, vmul, vadd, vsub, StridedPointer, gesp, zero_offsets, NUM_CORES
-using LoopVectorization: maybestaticsize, mᵣ, nᵣ, preserve_buffer
+    static_sizeof, lazymul, vmul, vadd, vsub, StridedPointer, gesp, zero_offsets, NUM_CORES, CACHE_INCLUSIVITY, pause
+using LoopVectorization: maybestaticsize, mᵣ, nᵣ, preserve_buffer, CloseOpen
 using ArrayInterface: StaticInt, Zero, One, OptionallyStaticUnitRange, size, strides, offsets, indices,
     static_length, static_first, static_last, axes,
     dense_dims, DenseDims, stride_rank, StrideRank
@@ -32,6 +32,7 @@ export @StrideArray, @gc_preserve, # @Constant,
 
 
 
+include("l3_cache_buffer.jl")
 include("type_declarations.jl")
 include("size_and_strides.jl")
 include("adjoints.jl")
@@ -59,109 +60,12 @@ function logdensity end
 function ∂logdensity! end
 
 
-
-
-# function logdensity(x)
-#     s = zero(first(x))
-#     @avx for i ∈ eachindex(x)
-#         s += x[i]*x[i]
-#     end
-#     -0.5s
-# end
-# function ∂logdensity!(∂x, x)
-#     s = zero(first(x))
-#     @avx for i ∈ eachindex(x)
-#         s += x[i]*x[i]
-#         ∂x[i] = -x[i]
-#     end
-#     -0.5s
-# end
-
-# include("precompile.jl")
-# _precompile_()
-
-# Initialize on package load, else precompile will store excessively sized objects
-# const L1CACHE = Float64[]
-# const L3CACHE = Float64[]
-
-
-
-# function cache_sizes()
-#     L₁, L₂, L₃, L₄ = VectorizationBase.CACHE_SIZE
-#     # # L₃ ÷= VectorizationBase.NUM_CORES # L₃ is shared, L₁ and L₂ are note
-#     # align.((L₁, L₂, L₃), ccall(:jl_getpagesize, Int, ()))
-# end
-# const L₁, L₂, L₃, L₄ = cache_sizes()
-# const LCACHEARRAY = Float64[]
-# const LCACHE = Ref{Ptr{Float64}}()
-
-# function threadlocal_L2CACHE_pointer(::Type{T} = Float64, threadid = Threads.threadid()) where {T}
-#     Base.unsafe_convert(Ptr{T}, LCACHE[]) + (L₂ + L₃) * (threadid - 1)
-# end
-# function threadlocal_L3CACHE_pointer(::Type{T} = Float64, threadid = Threads.threadid()) where {T}
-#     Base.unsafe_convert(Ptr{T}, LCACHE[]) + (L₂ + L₃) * (threadid - 1) + L₂
-# end
-#=
-
-
-const ACACHE = Float64[]
 const BCACHE = Float64[]
-A_pointer(::Type{T}) where {T} = Base.unsafe_convert(Ptr{T}, pointer(ACACHE))
-function A_pointer(::Type{T}, ::Val{M}, ::Val{K}, Miter, m, k) where {T, M, K}
-    ptrA = Base.unsafe_convert(Ptr{T}, pointer(ACACHE))
-    MKst = M*K*sizeof(T)
-    ptrA + MKst * (m + (Miter+1) * k)
-end
-function resize_Acache!(::Type{T}, ::Val{M}, ::Val{K}, Miter, Kiter) where {T, M, K}
-    # sizeof(T) * M should be a multiple of REGISTER_SIZE, therefore the `>>> 3` will be exact division by 8
-    L = (sizeof(T) * M * K * (Miter + 1) * (Kiter + 1)) >>> 3
-    L > length(ACACHE) && resize!(ACACHE, L)
-    nothing
-end
-# function B_pointer(::Type{T} = Float64, threadid = Threads.threadid()) where {T}
-    # Base.unsafe_convert(Ptr{T}, pointer(BCACHE)) + L₃ * (threadid - 1)
-# end
-function B_pointer(::Type{T} = Float64) where {T}
-    Base.unsafe_convert(Ptr{T}, pointer(BCACHE))# + L₃ * (threadid - 1)
-end
-=#
-# const ACACHE = Float64[]
-# const ASIZE = something(Int(core_cache_size(Float64, Val(2))), 163840);
-const BCACHE = Float64[]
-const BCACHE_COUNT = something(VectorizationBase.CACHE_COUNT[3], 1);
-const BSIZE = Int(something(cache_size(Float64, Val(3)), 393216));
-
-const BCACHE_LOCK = Atomic{UInt}(zero(UInt))
-
-@inline _pause() = ccall(:jl_cpu_pause, Cvoid, ())
-struct BCache
-    p::Ptr{Float64}
-    i::UInt
-end
-@inline Base.pointer(b::BCache) = b.p
-@inline Base.unsafe_convert(::Type{Ptr{T}}, b::BCache) where {T} = Base.unsafe_convert(Ptr{T}, b.p)
-BCache(i) = BCache(pointer(BCACHE)+8BSIZE*i, i % UInt)
-
 const MAX_THREADS = min(64, NUM_CORES)
 const MULTASKS = Vector{Task}[]
+const BSYNCHRONIZERS = Atomic{UInt}[]
 _nthreads() = min(MAX_THREADS, nthreads())
 _preallocated_tasks() = MULTASKS[threadid()]
-
-function _use_bcache()
-    while true
-        x = one(UInt)
-        for i ∈ 0:BCACHE_COUNT-1
-            if iszero(atomic_or!(BCACHE_LOCK, x) & x) # we've now set the flag, `i` was free
-                return BCache(i)
-            end
-            x <<= one(UInt)
-        end
-        _pause()
-    end
-end
-function _free_bcache!(b::BCache)
-    atomic_xor!(BCACHE_LOCK, one(UInt) << b.i)
-end
 
 function __init__()
     # resize!(ACACHE, ASIZE * Threads.nthreads())
@@ -169,8 +73,10 @@ function __init__()
     resize!(BCACHE, BSIZE * BCACHE_COUNT)
     nthread = nthreads()
     resize!(MULTASKS, nthread)
-    for t ∈ Base.OneTo(nthread)
+    resize!(BSYNCHRONIZERS, nthread)
+    @threads for t ∈ Base.OneTo(nthread)
         MULTASKS[t] = Vector{Task}(undef, _nthreads()-1)
+        BSYNCHRONIZERS[t] = Atomic{UInt}(zero(UInt))
     end
 # #    set_zero_subnormals(true)
 #     page_size = ccall(:jl_getpagesize, Int, ())

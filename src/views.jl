@@ -61,16 +61,18 @@ function view_quote(i, K, S, D, T, N, C, B, R, X, O, zero_offsets::Bool = false)
             if still_dense
                 still_dense = if ((ispₙ === Colon)::Bool || (ispₙ <: Base.Slice)::Bool)
                     true
-                elseif (ispₙ <:  ArrayInterface.OptionallyStaticUnitRange{<:StaticInt,<:StaticInt})::Bool
-                    _sz = getfield(S, :parameters)[spₙ]
-                    if _sz <: StaticInt
-                        ip = getfield(ispₙ, :parameters)
-                        sz = getfield(_sz, :parameters)[1]
-                        1 + (getfield(ip[2], :parameters)[1])::Int - (getfield(ip[1], :parameters)[1])::Int === sz
+                else
+                    ispₙ_len = ArrayInterface.known_length(ispₙ)
+                    if ispₙ_len !== nothing
+                        _sz = getfield(S, :parameters)[spₙ]
+                        if _sz <: StaticInt
+                            ispₙ_len == getfield(_sz, :parameters)[1]
+                        else
+                            false
+                        end
                     else
                         false
                     end
-                else
                     false
                 end
             end

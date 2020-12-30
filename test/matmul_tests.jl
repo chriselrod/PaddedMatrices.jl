@@ -63,11 +63,32 @@ end
                 pmtime_nt = @elapsed PaddedMatrices.jmul!(C3, A, Bt'); pmops_nt = gopc / pmtime_nt
                 @test C1 ≈ C3
                 @show s, pmtime_nn, pmops_nn, pmtime_nt, pmops_nt
+                if T <: AbstractFloat
+                    fill!(C2, NaN); fill!(C3, NaN)
+                else
+                    fill!(C2, -99999); fill!(C3, -99999)
+                end
+                t_time_nn = @elapsed PaddedMatrices.jmult!(C2, A, B); t_ops_nn = gopc / t_time_nn
+                @test C1 ≈ C2
+                t_time_nt = @elapsed PaddedMatrices.jmult!(C3, A, Bt'); t_ops_nt = gopc / t_time_nt
+                @test C1 ≈ C3
+                @show s, t_time_nn, t_ops_nn, t_time_nt, t_ops_nt
+                
                 pmtime_tn = @elapsed PaddedMatrices.jmul!(C4, At', B); pmops_tn = gopc / pmtime_tn
                 @test C1 ≈ C4
                 pmtime_tt = @elapsed PaddedMatrices.jmul!(C5, At', Bt'); pmops_tt = gopc / pmtime_tt
                 @test C1 ≈ C5
                 @show s, pmtime_tn, pmops_tn, pmtime_tt, pmops_tt
+                if T <: AbstractFloat
+                    fill!(C4, NaN); fill!(C5, NaN)
+                else
+                    fill!(C4, -99999); fill!(C5, -99999)
+                end
+                t_time_tn = @elapsed PaddedMatrices.jmult!(C4, At', B); t_ops_tn = gopc / t_time_tn
+                @test C1 ≈ C4
+                t_time_tt = @elapsed PaddedMatrices.jmult!(C5, At', Bt'); t_ops_tt = gopc / t_time_tt
+                @test C1 ≈ C5
+                @show s, t_time_tn, t_ops_tn, t_time_tt, t_ops_tt
             end
         end
     end

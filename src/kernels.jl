@@ -4,6 +4,10 @@
     N = indices((C,B), (StaticInt{2}(),StaticInt{2}()))
     M, K, N
 end
+@inline function matmul_sizes(C, A, B)
+    M, K, N = matmul_axes(C, A, B)
+    static_length(M), static_length(K), static_length(N)
+end
 
 @inline function loopmul!(C, A, B, ::StaticInt{1}, ::StaticInt{0}, (M, K, N))
     # @avx for n ∈ N, m ∈ M
@@ -263,28 +267,22 @@ end
     C::AbstractStrideMatrix{S,D,T},
     A::AbstractStrideMatrix,
     B::AbstractStrideMatrix,
-    α, β, (M, K, N) = matmul_axes(C, A, B)
+    α, β, (M, K, N) = matmul_sizes(C, A, B)
 ) where {S,D,T}
     Ãₚ, buffer = alloc_a_pack(A, T)
     GC.@preserve buffer begin
-        # Nᵣrange = VectorizationBase.StaticUnitRange{1,nᵣ}()
-        # Nrange = VectorizationBase.StaticLowerUnitRange{1+nᵣ}(N)
-        Nᵣrange = static_first(N):(static_first(N)+StaticInt{nᵣ}()-One())
-        packamul!(stridedpointer(C), stridedpointer(Ãₚ), stridedpointer(A), stridedpointer(B), α, β, M, K, Nᵣrange) # pack A
+        packamul!(
+            stridedpointer(C), stridedpointer(Ãₚ), stridedpointer(A), stridedpointer(B),
+            α, β, CloseOpen(M), CloseOpen(K), CloseOpen(StaticInt{nᵣ}())
+        ) # pack A
         # @show size.((Ãₚ, A)) strides.((Ãₚ, A)) view(Ãₚ, 1:8, 1:8) #view(A, 1:8, 1:8)
-        Nrange = (static_first(N)+StaticInt{nᵣ}()):static_last(N)
+        Nrange = CloseOpen(StaticInt{nᵣ}(), N)
         Crem = zview(C, :, Nrange)
-        # Arem = view(Ãₚ, :, :) # hack to get them all on the same page in terms of offsets (1-based indexing...)
         Brem = zview(B, :, Nrange)
-        # Mnew = One():static_length(M)
-        # Knew = One():static_length(K)
-        # Nnew = One():static_length(Nrange)
-        Nnew = Zero():(static_length(Nrange) - One())
-        # @show eltype.((C,A,B, Ãₚ, Crem, Arem, Brem))
-        # @show all(isone, B)
-        # all(isone, Brem) || @show findall(!isone, Brem)
-        # @show view(Arem, 2:9, 2:9)
-        loopmul!(stridedpointer(Crem), stridedpointer(Ãₚ), stridedpointer(Brem), α, β, (M, K, Nnew))
+        loopmul!(
+            stridedpointer(Crem), stridedpointer(Ãₚ), stridedpointer(Brem),
+            α, β, (CloseOpen(M), CloseOpen(K), CloseOpen(static_length(Nrange)))
+        )
     end
     nothing
 end

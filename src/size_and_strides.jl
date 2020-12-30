@@ -23,7 +23,12 @@ end
 
 @inline Base.size(A::AbstractStrideArray) = map(Int, ArrayInterface.size(A))
 @inline Base.strides(A::AbstractStrideArray) = map(Int, ArrayInterface.strides(A))
-@inline ArrayInterface.axes(A::AbstractStrideArray) = map((o,s) -> o:s+(o-One()), offsets(A), size(A))
+
+@inline create_axis(s, ::Zero) = CloseOpen(s)
+@inline create_axis(s, ::One) = One():s
+@inline create_axis(s, o) = CloseOpen(s, s+o)
+
+@inline ArrayInterface.axes(A::AbstractStrideArray) = map(create_axis, size(A), offsets(A))
 @inline Base.axes(A::AbstractStrideArray) = axes(A)
 
 @inline ArrayInterface.offsets(A::PtrArray) = A.ptr.offsets
@@ -43,7 +48,7 @@ end
     if i == 1
         o = type_stable_select(offsets(A), i)
         s = type_stable_select(size(A), i)
-        return o:vadd(s, vsub(o, One()))
+        return create_axis(s, o)
     else
         return One():1
     end
@@ -51,6 +56,13 @@ end
 @inline function Base.axes(A::AbstractStrideArray, i::Integer)
     o = type_stable_select(offsets(A), i)
     s = type_stable_select(size(A), i)
-    o:vadd(s, vsub(o, One()))
+    create_axis(s, o)
 end
+
+@inline zeroindex(r::ArrayInterface.OptionallyStaticUnitRange{One}) = CloseOpen(Zero(), last(r))
+@inline zeroindex(r::Base.OneTo) = CloseOpen(Zero(), last(r))
+@inline zeroindex(r::AbstractUnitRange) = Zero():(last(r)-first(r))
+
+@inline zeroindex(r::CloseOpen{Zero}) = r
+@inline zeroindex(r::ArrayInterface.OptionallyStaticUnitRange{Zero}) = r
 
