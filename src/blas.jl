@@ -75,7 +75,7 @@ function jmulpackAonly!(
     mreps_per_iter = mᵣW * mcrepetitions
     Miter = num_m_iter - One()
     Mrem = M - Miter * mreps_per_iter
-    if Mrem < mᵣW
+    if (Mrem < mᵣW) & (Miter > 0)
         Miter -= one(Miter)
         Mrem += mreps_per_iter
     end
@@ -89,6 +89,7 @@ function jmulpackAonly!(
     _Mrem, _mreps_per_iter = promote(Mrem, mreps_per_iter)
     _Krem, _kreps_per_iter = promote(Krem, kreps_per_iter)
     # koffset = 0
+    # @show Miter, Kiter, M, K, N
     for ko ∈ 0:Kiter
         ksize = ifelse(ko == 0, _Krem, _kreps_per_iter)
         # _β = ifelse(ko == 0, convert(Tc, β), one(Tc))
@@ -149,7 +150,7 @@ function jmulpackAB!(
     mreps_per_iter = mᵣW * mcrepetitions
     Miter = num_m_iter - One()
     Mrem = M - Miter * mreps_per_iter
-    if Mrem < mᵣW
+    if (Mrem < mᵣW) & (Miter > 0)
         Miter -= one(Miter)
         Mrem += mreps_per_iter
     end
@@ -166,13 +167,15 @@ function jmulpackAB!(
     # bc = _use_bcache()
     # L3ptr = Base.unsafe_convert(Ptr{T}, BCACHE)
     bcache = _use_bcache()
-    L3ptr = pointer(bcache)
+    L3ptr = Base.unsafe_convert(Ptr{T}, bcache)
     noffset = 0
     _Nrem, _nreps_per_iter = promote(Nrem, nreps_per_iter)
     _Mrem, _mreps_per_iter = promote(Mrem, mreps_per_iter)
     _Krem, _kreps_per_iter = promote(Krem, kreps_per_iter)
     # Cb = preserve_buffer(C); Ab = preserve_buffer(A); Bb = preserve_buffer(B);
     # GC.@preserve Cb Ab Bb BCACHE begin
+    # @show T Niter, _Nrem, _nreps_per_iter Kiter, _Krem, _kreps_per_iter 
+    # return _free_bcache!(bcache)
     GC.@preserve BCACHE begin
         for no in 0:Niter
             # Krem
@@ -231,14 +234,30 @@ end
 # @inline firstbytestride(A::Transpose{<:Any,<:AbstractMatrix}) = stride(parent(A), 2)
 # @inline firstbytestride(::Any) = typemax(Int)
 
-@inline function vectormultiple(x, ::Type{Tc}, ::Type{Ta}) where {Tc,Ta}
+@inline function vectormultiple(bytex, ::Type{Tc}, ::Type{Ta}) where {Tc,Ta}
     Wc = VectorizationBase.pick_vector_width_val(Tc) * static_sizeof(Ta) - One()
-    iszero(x & Wc)
+    iszero(bytex & (VectorizationBase.REGISTER_SIZE - 1))
 end
 @inline function dontpack(ptrA::Ptr{Ta}, M, K, Xa, ::StaticInt{mc}, ::StaticInt{kc}, ::Type{Tc}) where {mc, kc, Tc, Ta}
-    mc_mult = VectorizationBase.AVX512F ? 73 : 53
-    (mc_mult > M) || (vectormultiple(Xa, Tc, Ta) && ((M * K) ≤ (mc * kc)) && iszero(reinterpret(Int, ptrA) & (VectorizationBase.REGISTER_SIZE - 1)))
+    mc_mult = ((VectorizationBase.AVX512F ? 9 : 13) * VectorizationBase.pick_vector_width(Tc)) ≥ M
+    mc_mult || (vectormultiple(Xa, Tc, Ta) && ((M * K) ≤ (mc * kc)) && iszero(reinterpret(Int, ptrA) & (VectorizationBase.REGISTER_SIZE - 1)))
 end
+
+
+@inline function jmul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix)
+    maybeinline(C, A) && return inlineloopmul!(C, A, B, One(), Zero())
+    jmul!(C, A, B, One(), Zero(), stride_rank(C))
+end
+@inline function jmul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, α)
+    maybeinline(C, A) && return inlineloopmul!(C, A, B, α, Zero())
+    jmul!(C, A, B, α, Zero(), stride_rank(C))
+end
+@inline function jmul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, α, β)
+    maybeinline(C, A) && return inlineloopmul!(C, A, B, α, β)
+    jmul!(C, A, B, α, β, stride_rank(C))
+end
+jmul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, α, β, ::StrideRank{(2,1)}) = (jmul!(C', B', A', α, β, nothing); return C)
+jmul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, α, β, ::StrideRank) = jmul!(C, A, B, α, β, nothing)
 
 """
   jmul!(C, A, B[, α = 1, β = 0])
@@ -254,28 +273,26 @@ If the arrays are small and statically sized, it will dispatch to an inlined mul
 Otherwise, based on the array's size, whether they are transposed, and whether the columns are already aligned, it decides to not pack at all, to pack only `A`, or to pack both arrays `A` and `B`.
 """
 @inline function jmul!(
-    C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, ::StaticInt{mc}, ::StaticInt{kc}, ::StaticInt{nc}, (M, K, N) = matmul_sizes(C, A, B)
-) where {Tc, Ta, Tb, mc, kc, nc}
+    C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β, MKN::Union{Nothing,Tuple{Vararg{Integer,3}}}
+) where {Tc, Ta, Tb}
     pA = zstridedpointer(A); pB = zstridedpointer(B); pC = zstridedpointer(C);
     Cb = preserve_buffer(C); Ab = preserve_buffer(A); Bb = preserve_buffer(B);
+    (M,K,N) = MKN === nothing ? matmul_sizes(C, A, B) : MKN
+    Mc, Kc, Nc = matmul_params(Tc)
     GC.@preserve Cb Ab Bb begin
-        if VectorizationBase.CACHE_SIZE[2] === nothing || ((nᵣ ≥ N) || (contiguousstride1(pA) && dontpack(pointer(pA), M, K, bytestride(pA,StaticInt{2}()), StaticInt{mc}(), StaticInt{kc}(), Tc)))
+        if VectorizationBase.CACHE_SIZE[2] === nothing || ((nᵣ ≥ N) || (contiguousstride1(pA) && dontpack(pointer(pA), M, K, bytestride(pA,StaticInt{2}()), Mc, Kc, Tc)))
             loopmul!(pC, pA, pB, α, β, (CloseOpen(M),CloseOpen(K),CloseOpen(N)))
-        elseif VectorizationBase.CACHE_SIZE[3] === nothing || (((contiguousstride1(pB) && (kc * nc ≥ K * N))) || firstbytestride(pB) ≤ 1600)
+        elseif VectorizationBase.CACHE_SIZE[3] === nothing || (((contiguousstride1(pB) && (Kc * Nc ≥ K * N))) || firstbytestride(pB) ≤ 1600)
             # println("Pack A mul")
-            jmulpackAonly!(pC, pA, pB, α, β, StaticInt{mc}(), StaticInt{kc}(), StaticInt{nc}(), (M,K,N))
+            jmulpackAonly!(pC, pA, pB, α, β, Mc, Kc, Nc, (M,K,N))
         else
             # println("Pack A and B mul")
-            jmulpackAB!(pC, pA, pB, α, β, StaticInt{mc}(), StaticInt{kc}(), StaticInt{nc}(), (M,K,N))
+            jmulpackAB!(pC, pA, pB, α, β, Mc, Kc, Nc, (M,K,N))
         end
     end
     return C
 end # function
 
-@inline function jmul!(C::LinearAlgebra.Adjoint{<:Real}, A::AbstractMatrix, B::AbstractMatrix, α, β, ::StaticInt{mc}, ::StaticInt{kc}, ::StaticInt{nc}) where {mc,kc,nc}
-    jmul!(C', B', A', α, β, StaticInt{mc}(), StaticInt{kc}(), StaticInt{nc}())
-    C
-end
 @inline function jmul!(
     C::AbstractStrideArray{S,D,T,2,2},
     A::AbstractMatrix,
@@ -344,24 +361,38 @@ function (m::PackAClosure{TC})() where {T,TC<:AbstractStridedPointer{T}}
     jmultpackAonly!(m.C, m.A, m.B, m.α, m.β, Mc, Kc, Nc, m.M, m.K, m.N, m.tasks)
 end
 
-function jmult!(C::AbstractMatrix{T}, A, B, α = One(), β = Zero(), (M,K,N) = matmul_sizes(C,A,B), nthread = nothing) where {T}
+@inline function jmult!(C, A, B)
+    maybeinline(C, A) && return inlineloopmul!(C, A, B, One(), Zero())
+    jmult!(C, A, B, One(), Zero(), nothing, stride_rank(C))
+end
+@inline function jmult!(C, A, B, α)
+    maybeinline(C, A) && return inlineloopmul!(C, A, B, α, Zero())
+    jmult!(C, A, B, α, Zero(), nothing, stride_rank(C))
+end
+@inline function jmult!(C, A, B, α, β)
+    maybeinline(C, A) && return inlineloopmul!(C, A, B, α, β)
+    jmult!(C, A, B, α, β, nothing, stride_rank(C))
+end
+@inline function jmult!(C, A, B, α, β, nthread)
+    maybeinline(C, A) && return inlineloopmul!(C, A, B, α, β)
+    jmult!(C, A, B, α, β, nthread, stride_rank(C))
+end
+jmult!(C, A, B, α, β, nthread, ::StrideRank{(2, 1)}) = (jmult!(C', B', A', α, β, nthread, nothing); return C)
+jmult!(C, A, B, α, β, nthread, ::StrideRank) = jmult!(C, A, B, α, β, nthread, nothing)
+
+function jmult!(C::AbstractMatrix{T}, A, B, α, β, nthread, matmuldims::Union{Nothing,Tuple{Vararg{Integer,3}}}) where {T}
     # Don't allow nested `jmult!`
-    iszero(ccall(:jl_in_threaded_region, Cint, ())) || return jmul!(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), (M,K,N))
-    Mc,Kc,Nc = matmul_params(T)
+    iszero(ccall(:jl_in_threaded_region, Cint, ())) || return jmul!(C, A, B, α, β, matmuldims)
     nt = _nthreads()
     _nthread = nthread === nothing ? nt : min(nt, nthread)
-    jmult!(C, A, B, α, β, Mc, Kc, Nc, (M,K,N), _nthread)
-end
-
-function jmult!(
-    C::AbstractMatrix{T}, A, B, α, β, ::StaticInt{Mc}, ::StaticInt{Kc}, ::StaticInt{Nc}, (M,K,N) = matmul_sizes(C,A,B), nthread = nothing
-) where {Mc,Kc,Nc,T}
+    MKN = matmuldims === nothing ? matmul_sizes(C, A, B) : matmuldims
+    Mc, Kc, Nc = matmul_params(T)
     Cb = preserve_buffer(C); Ab = preserve_buffer(A); Bb = preserve_buffer(B)
     GC.@preserve Cb Ab Bb begin
         # Base.unsafe_convert(Ptr{T}, BCACHE)
         _jmult!(
             zstridedpointer(C), zstridedpointer(A), zstridedpointer(B),
-            α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), (M,K,N), nthread
+            α, β, _nthread, MKN, Mc, Kc, Nc
         )
     end
     return C
@@ -400,7 +431,7 @@ end
 
 function _jmult!(
     C::AbstractStridedPointer{T}, A::AbstractStridedPointer, B::AbstractStridedPointer,
-    α, β, ::StaticInt{Mc}, ::StaticInt{Kc}, ::StaticInt{Nc}, (M,K,N), nthread
+    α, β, nthread, (M,K,N), ::StaticInt{Mc}, ::StaticInt{Kc}, ::StaticInt{Nc}
 ) where {T,Mc,Kc,Nc}
     Mᵣ = StaticInt{mᵣ}();
     Nᵣ = StaticInt{nᵣ}()
@@ -433,8 +464,6 @@ function _jmult!(
     # TODO: implement packing `B`
     # do_not_pack_b = true#(contiguousstride1(B) && (kc * nc ≥ K * N)) | (firstbytestride(B) > 1600)
     do_not_pack_b = (contiguousstride1(B) && (Kc * Nc ≥ K * N)) | (firstbytestride(B) > 1600)
-    tasks = 1:nspawn-1
-    # tasks = _preallocated_tasks()
     if do_not_pack_b
         do_not_pack_a = VectorizationBase.CACHE_SIZE[2] === nothing || ((nᵣ ≥ N) || (contiguousstride1(A) && dontpack(pointer(A), M, K, bytestride(A,StaticInt{2}()), StaticInt{Mc}(), StaticInt{Kc}(), T)))
         if do_not_pack_a
@@ -479,10 +508,10 @@ function _jmult!(
             # spawn_per_mrep is how many processes we'll spawn here
             spawn_per_mrep = min(cld_fast(nspawn, Mreps), N) # Safety: don't spawn more than `N`
             if spawn_per_mrep > 1
-                nspawn_per = cld(nspawn, spawn_per_mrep)
+                nspawn_per = cld_fast(nspawn, spawn_per_mrep)
                 spawn_start = 0#spawn_per_mrep
                 Nper = cld(N, spawn_per_mrep)
-                Nrem = N - (Nper * task_spawn_iters)
+                Nrem = N - (Nper * (spawn_per_mrep - 1))
                 for i ∈ Base.OneTo(spawn_per_mrep)
                     if i == spawn_per_mrep
                         Nsize = Nrem
@@ -566,7 +595,7 @@ function jmultpackAonly!(
         C = gesp(C, (Mblock, Zero()))
     end
     Mrem = M - Mblock * (to_spawn -  1)
-    wait(runfunc(LoopMulClosure{true}(C, A, B, α, β, Mblock, K, N), tasks.upper))
+    wait(runfunc(LoopMulClosure{true}(C, A, B, α, β, Mrem, K, N), tasks.upper))
     # jmulpackAonly!(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), (Mrem, K, N))
     waitonmultasks(tasks)
 end
@@ -594,7 +623,7 @@ function jmultpackAB!(
     task_start = 0
     Nsplitsm1 = Nsplits - One()
     Nrem = N - Nsize * Nsplitsm1
-    for i ∈ CloseOpen(Nsplits)
+    for i ∈ Base.OneTo(Nsplitsm1)#CloseOpen(Nsplits)
         task_next = min(task_start + Nspawn_per, tasks.upper)
         _taskview = CloseOpen(task_start, task_next)
         task_start = task_next
@@ -732,7 +761,7 @@ function sync_mul!(
     mreps_per_iter = mᵣW * mcrepetitions
     Miter = num_m_iter - One()
     Mrem = M - Miter * mreps_per_iter
-    if Mrem < mᵣW
+    if (Mrem < mᵣW) & (Miter > 0)
         Miter -= one(Miter)
         Mrem += mreps_per_iter
     end
@@ -890,28 +919,13 @@ function maybeinline(C::AbstractStrideMatrix{<:Any,<:Any,T}, ::AbstractStrideMat
     end
 end
 
-@inline function jmul!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}) where {Tc, Ta, Tb}
-    maybeinline(C, A) && return inlineloopmul!(C, A, B, StaticInt{1}(), StaticInt{0}())
-    mc, kc, nc = matmul_params(Tc)
-    jmul!(C, A, B, StaticInt{1}(), StaticInt{0}(), mc, kc, nc)
-end
-@inline function jmul!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α) where {Tc, Ta, Tb}
-    maybeinline(C, A) && return inlineloopmul!(C, A, B, α, StaticInt{0}())
-    mc, kc, nc = matmul_params(Tc)
-    jmul!(C, A, B, α, StaticInt{0}(), mc, kc, nc)
-end
-@inline function jmul!(C::AbstractMatrix{Tc}, A::AbstractMatrix{Ta}, B::AbstractMatrix{Tb}, α, β) where {Tc, Ta, Tb}
-    maybeinline(C, A) && return inlineloopmul!(C, A, B, α, β)
-    mc, kc, nc = matmul_params(Tc)
-    jmul!(C, A, B, α, β, mc, kc, nc)
-end
 
-@inline LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractMatrix, B::AbstractMatrix) = jmul!(C, A, B)
-@inline LinearAlgebra.mul!(C::AbstractMatrix, A::AbstractStrideMatrix, B::AbstractMatrix) = jmul!(C, A, B)
-@inline LinearAlgebra.mul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractStrideMatrix) = jmul!(C, A, B)
-@inline LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractStrideMatrix, B::AbstractMatrix) = jmul!(C, A, B)
-@inline LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractMatrix, B::AbstractStrideMatrix) = jmul!(C, A, B)
-@inline LinearAlgebra.mul!(C::AbstractMatrix, A::AbstractStrideMatrix, B::AbstractStrideMatrix) = jmul!(C, A, B)
+@inline LinearAlgebra.mul!(C::AbstractStrideMatrix, A::StridedMatrix, B::StridedMatrix) = jmul!(C, A, B)
+@inline LinearAlgebra.mul!(C::StridedMatrix, A::AbstractStrideMatrix, B::StridedMatrix) = jmul!(C, A, B)
+@inline LinearAlgebra.mul!(C::StridedMatrix, A::StridedMatrix, B::AbstractStrideMatrix) = jmul!(C, A, B)
+@inline LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractStrideMatrix, B::StridedMatrix) = jmul!(C, A, B)
+@inline LinearAlgebra.mul!(C::AbstractStrideMatrix, A::StridedMatrix, B::AbstractStrideMatrix) = jmul!(C, A, B)
+@inline LinearAlgebra.mul!(C::StridedMatrix, A::AbstractStrideMatrix, B::AbstractStrideMatrix) = jmul!(C, A, B)
 @inline LinearAlgebra.mul!(C::AbstractStrideMatrix, A::AbstractStrideMatrix, B::AbstractStrideMatrix) = jmul!(C, A, B)
 
 # @inline function Base.:*(
@@ -934,7 +948,7 @@ end
 
 @inline extract_λ(a) = a
 @inline extract_λ(a::UniformScaling) = a.λ
-@inline function Base.:*(A::AbstractStrideArray{S,D,T}, bλ::Union{Tb,UniformScaling{Tb}}) where {S,D,T,Tb}
+@inline function Base.:*(A::AbstractStrideArray{S,D,T}, bλ::Union{Tb,UniformScaling{Tb}}) where {S,D,T<:VectorizationBase.NativeTypes,Tb <: Real}
     mv = similar(A)
     b = T(extract_λ(bλ))
     @avx for i ∈ eachindex(A)
@@ -946,7 +960,7 @@ end
 @inline function LinearAlgebra.mul!(
     C::AbstractStrideMatrix{<:Any,<:Any,T},
     A::LinearAlgebra.Diagonal{T,<:AbstractStrideVector{<:Any,T}},
-    B::AbstractMatrix{T}
+    B::StridedMatrix{T}
 ) where {T}
     M, K, N = matmul_axes(C, A, B)
     MandK = ArrayInterface._pick_range(M, K)

@@ -7,6 +7,7 @@ using PaddedMatrices, StructArrays, LinearAlgebra, BenchmarkTools, Libdl
 # BLAS.set_num_threads(1); Base.Threads.nthreads()
 # For laptops that thermally throttle, you can set the `JULIA_SLEEP_BENCH` environment variable for #seconds to sleep before each `@belapsed`
 const SLEEPTIME = parse(Float64, get(ENV, "JULIA_SLEEP_BENCH", "0"))
+const THREADS = min(parse(Float64, get(ENV, "JULIA_BENCH_THREADS", "1")), PaddedMatrices._nthreads())
 maybe_sleep() = iszero(SLEEPTIME) || sleep(SLEEPTIME)
 
 # function check_if_should_pack(C, A, cache_params)
@@ -81,9 +82,9 @@ for (lib,f) ∈ [(:GEMM_MKL,:gemmmkl!), (:GEMM_OpenBLAS,:gemmopenblas!)]
     end
 end
 mkl_set_num_threads(N::Integer) = ccall(MKL_SET_NUM_THREADS, Cvoid, (Int32,), N % Int32)
-mkl_set_num_threads(1)
+mkl_set_num_threads(THREADS)
 openblas_set_num_threads(N::Integer) = ccall(OPENBLAS_SET_NUM_THREADS, Cvoid, (Int64,), N)
-openblas_set_num_threads(1)
+openblas_set_num_threads(THREADS)
 
 function benchmark_fun!(f!, C, A, B, force_belapsed = false, reference = nothing)
     maybe_sleep()
@@ -104,8 +105,8 @@ function benchmark_fun!(f!, C, A, B, force_belapsed = false, reference = nothing
 end
 
 
-# [2:255..., ( round.(Int, range(26.15105483720698,length=201) .^ 1.6989476505010863))...]
-function runbench(::Type{T}, sizes = [2:255..., round.(Int, range(57.16281374121401, length=200) .^ 1.3705658916944428)...]) where {T}
+function runbench(::Type{T}, sizes = vcat(2:255, round.(Int, exp.(range(log(256), log(2000 * (1+(THREADS>1))), length=200))))) where {T}
+    jmatmul! = THREADS == 1 ? jmul! : (THREADS == PaddedMatrices.NUM_CORES ? jmult! : (C,A,B) -> jmult!(C,A,B,PaddedMatrices.One(),PaddedMatrices.Zero(),THREADS))
     (StructVector ∘ map)(sizes) do sz
         n, k, m = sz, sz, sz
         C1 = Matrix{T}(undef, n, m)
@@ -122,7 +123,8 @@ function runbench(::Type{T}, sizes = [2:255..., round.(Int, range(57.16281374121
         # ma32 = benchmark_fun!(ma32x6!, C4, A, B, sz == first(sizes), C1)
         # ma40 = benchmark_fun!(ma40x5!, C5, A, B, sz == first(sizes), C1)
         # gt = benchmark_fun!(blocked_mul!, C5, A, B, sz == first(sizes), C1)
-        jmlt = benchmark_fun!(PaddedMatrices.jmul!, C1, A, B, sz == first(sizes))
+        
+        jmlt = benchmark_fun!(jmatmul!, C1, A, B, sz == first(sizes))
         res = if T <: Integer
             (matrix_size=sz, MaBLAS_24x9=ma24, MaBLAS_32x6=ma32, MaBLAS_40x5=ma40, PaddedMatrices=jmlt)
         else

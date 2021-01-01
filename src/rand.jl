@@ -6,6 +6,8 @@ end
 @inline function Random.randn!(A::AbstractStrideArray, args::Vararg{Any,K}) where {K}
     randn!(local_rng(), A, args...)
 end
+## ignore type...
+@inline Random.rand!(A::AbstractStrideArray, ::Type{T}) where {T} = rand!(local_rng(), A)
 
 function rand_expr(expr, args...)
     # @show expr.args

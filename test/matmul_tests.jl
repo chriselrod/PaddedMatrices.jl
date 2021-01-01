@@ -1,5 +1,5 @@
 
-const TRAVIS_SKIP = VERSION.minor != 4 && !isnothing(get(ENV, "TRAVIS_BRANCH", nothing))
+# const TRAVIS_SKIP = VERSION.minor != 4 && !isnothing(get(ENV, "TRAVIS_BRANCH", nothing))
 
 function test_fixed_size(M, K, N)
     A = @StrideArray rand(M,K);
@@ -10,14 +10,12 @@ function test_fixed_size(M, K, N)
     Aat = Array(At); Bat = Array(Bt);
     time = @elapsed(@test Aa * Ba ≈ A * B)
     @show M, K, N, time
-    if !TRAVIS_SKIP || (isodd(M) & isodd(N))
-        time = @elapsed(@test Aa * Bat ≈ A * Bt)
-        @show M, K, N, time
-        time = @elapsed(@test Aat * Ba ≈ At * B)
-        @show M, K, N, time
-        time = @elapsed(@test Aat * Bat ≈ At * Bt)
-        @show M, K, N, time
-    end
+    time = @elapsed(@test Aa * Bat ≈ A * Bt)
+    @show M, K, N, time
+    time = @elapsed(@test Aat * Ba ≈ At * B)
+    @show M, K, N, time
+    time = @elapsed(@test Aat * Bat ≈ At * Bt)
+    @show M, K, N, time
     nothing
 end
 
@@ -28,14 +26,12 @@ function test_fixed_size(M)
     Aa = Array(A); Ba = Array(B);
     time = @elapsed(@test Aa * Ba ≈ A * B)
     @show M, K, N, time
-    if !TRAVIS_SKIP || isodd(M)
-        time = @elapsed(@test Aa * Ba' ≈ A * B')
-        @show M, K, N, time
-        time = @elapsed(@test Aa' * Ba ≈ A' * B)
-        @show M, K, N, time
-        time = @elapsed(@test Aa' * Ba' ≈ A' * B')
-        @show M, K, N, time
-    end
+    time = @elapsed(@test Aa * Ba' ≈ A * B')
+    @show M, K, N, time
+    time = @elapsed(@test Aa' * Ba ≈ A' * B)
+    @show M, K, N, time
+    time = @elapsed(@test Aa' * Ba' ≈ A' * B')
+    @show M, K, N, time
     nothing
 end
 

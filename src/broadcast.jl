@@ -284,11 +284,12 @@ end
     itersym = first(loopsyms)
     L = _tuple_type_len(S)
     if L === nothing
-        Lsym = gensym(:L)
+        Lsym = gensym(:L); Rsym = gensym(:R)
         LoopVectorization.pushpreamble!(ls, Expr(:(=), Lsym, Expr(:call, :static_length, :dest)))
-        LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 1, Lsym))
+        LoopVectorization.pushpreamble!(ls, Expr(:(=), Rsym, Expr(:call, :(:), :(One()), Lsym)))
+        LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 1, Lsym, Rsym, Lsym))
     else
-        LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 1, L))
+        LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 1, L, Symbol(""), Symbol("")))
     end
     elementbytes = sizeof(T)
     LoopVectorization.add_broadcast!(ls, :dest, :bc, loopsyms, BC, elementbytes)
@@ -320,11 +321,12 @@ end
         # _s = 
         Sₙ =_extract(S.parameters[n])# (_s === nothing ? -1 : _s)::Int
         if Sₙ === nothing
-            Sₙsym = gensym(:Sₙ)
+            Sₙsym = gensym(:Sₙ); Rₙsym = gensym(:Rₙ)
             LoopVectorization.pushpreamble!(ls, Expr(:(=), Sₙsym, Expr(:call, :size, :dest, n)))
-            LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 1, Sₙsym))
+            LoopVectorization.pushpreamble!(ls, Expr(:(=), Rₙsym, Expr(:call, :(:), :(One()), Sₙsym)))
+            LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 1, Sₙsym, Rₙsym, Sₙsym))
         else#TODO: handle offsets
-            LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 1, Sₙ::Int))
+            LoopVectorization.add_loop!(ls, LoopVectorization.Loop(itersym, 1, Sₙ::Int, Symbol(""), Symbol("")))
         end
     end
     elementbytes = sizeof(T)
