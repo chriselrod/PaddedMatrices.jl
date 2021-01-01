@@ -9,7 +9,8 @@ using VectorizationBase, ArrayInterface,
     # SpecialFunctions # Perhaps there is a better way to support erf?
 
 using VectorizationBase: align, gep, AbstractStridedPointer, AbstractSIMDVector, vnoaliasstore!, staticm1,
-    static_sizeof, lazymul, vmul, vadd, vsub, StridedPointer, gesp, zero_offsets, NUM_CORES, CACHE_INCLUSIVITY, pause
+    static_sizeof, lazymul, vmul, vadd, vsub, StridedPointer, gesp, zero_offsets, pause,
+    CACHE_COUNT, NUM_CORES, CACHE_INCLUSIVITY
 using LoopVectorization: maybestaticsize, mᵣ, nᵣ, preserve_buffer, CloseOpen
 using ArrayInterface: StaticInt, Zero, One, OptionallyStaticUnitRange, size, strides, offsets, indices,
     static_length, static_first, static_last, axes,
@@ -27,13 +28,13 @@ export @StrideArray, @gc_preserve, # @Constant,
     StrideArray, StrideVector, StrideMatrix,
     PtrArray,# PtrVector, PtrMatrix,
     # ConstantArray, ConstantVector, ConstantMatrix, allocarray,
-    jmul!, mul!, *ˡ, StaticInt
+    jmul!, jmult!, mul!, *ˡ, StaticInt
 # LazyMap, 
 
 
 
-include("l3_cache_buffer.jl")
 include("type_declarations.jl")
+include("l3_cache_buffer.jl")
 include("size_and_strides.jl")
 include("adjoints.jl")
 include("stridedpointers.jl")
@@ -61,31 +62,28 @@ function ∂logdensity! end
 
 
 const BCACHE = Float64[]
-const MAX_THREADS = min(64, NUM_CORES)
-const MULTASKS = Vector{Task}[]
-const BSYNCHRONIZERS = Atomic{UInt}[]
-_nthreads() = min(MAX_THREADS, nthreads())
-_preallocated_tasks() = MULTASKS[threadid()]
+"""
+Length is one less than `Base.nthreads()`
+"""
+const MULTASKS = Task[]
+_nthreads() = min(NUM_CORES, length(MULTASKS));
+
+function runfunc(t::Task, tid)
+    t.sticky = true
+    ccall(:jl_set_task_tid, Cvoid, (Any, Cint), t, tid)
+    push!(@inbounds(Base.Workqueues[tid+1]), t)
+    ccall(:jl_wakeup_thread, Cvoid, (Int16,), tid % Int16)
+    t
+end
+runfunc(func, tid) = runfunc(Task(func), tid)
+function runfunc!(ft, tid)
+    @inbounds MULTASKS[tid] = runfunc(ft, tid)
+    nothing
+end
 
 function __init__()
-    # resize!(ACACHE, ASIZE * Threads.nthreads())
-    # resize!(BCACHE, BSIZE * Threads.nthreads())
     resize!(BCACHE, BSIZE * BCACHE_COUNT)
-    nthread = nthreads()
-    resize!(MULTASKS, nthread)
-    resize!(BSYNCHRONIZERS, nthread)
-    @threads for t ∈ Base.OneTo(nthread)
-        MULTASKS[t] = Vector{Task}(undef, _nthreads()-1)
-        BSYNCHRONIZERS[t] = Atomic{UInt}(zero(UInt))
-    end
-# #    set_zero_subnormals(true)
-#     page_size = ccall(:jl_getpagesize, Int, ())
-    # resize!(LCACHEARRAY, ((L₂ + L₃) >>> 3) * Threads.nthreads() + page_size)
-    # resize!
-#     LCACHE[] = VectorizationBase.align(pointer(LCACHEARRAY), page_size)
-#     @assert iszero(reinterpret(UInt, LCACHE[]) % page_size)
-#   #  resize!(BCACHE, (L₃ >>> 3) )#* Threads.nthreads())
-#     # @require ForwardDiff="f6369f11-7733-5829-9624-2563aa707210" @eval using PaddedMatricesForwardDiff
+    resize!(MULTASKS, nthreads() - 1)
 end
 
 # include("precompile.jl")

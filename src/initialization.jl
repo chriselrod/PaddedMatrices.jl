@@ -22,13 +22,15 @@ end
     default_stridedpointer_quote(T, N, :Zero)
 end
 
-@generated function all_dense(::Val{N}) where {N}
+function dense_quote(N::Int, b::Bool)
     d = Expr(:tuple)
     for n in 1:N
-        push!(d.args, true)
+        push!(d.args, b)
     end
     Expr(:call, Expr(:curly, :DenseDims, d))
 end
+@generated all_dense(::Val{N}) where {N} = dense_quote(N, true)
+@generated none_dense(::Val{N}) where {N} = dense_quote(N, false)
 
 @inline function ptrarray0(ptr::Ptr{T}, s::Tuple{Vararg{Integer,N}}, x::Tuple{Vararg{Integer,N}}, ::DenseDims{D}) where {T,N,D}
     PtrArray(default_zerobased_stridedpointer(ptr, x), s, DenseDims{D}())

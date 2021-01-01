@@ -254,34 +254,30 @@ end
         C[m,n] = α * Cₘₙ + β * C[m,n]
     end
 end
-@inline function alloc_a_pack(A::AbstractArray, ::Type{T}) where {T}
-    M, K = size(A)
+@inline function alloc_a_pack(A, M, ::Type{T}) where {T}
     buffer = core_cache_buffer(T, Val(2))
     # _buffer = core_cache_buffer(T, Val(2))
     # buffer = Vector{T}(undef, length(_buffer))
-    Apack = ptrarray0(align(pointer(buffer)), (M, K), (static_sizeof(T), static_sizeof(T) * align(M, T)), DenseDims{(true,false)}())
+    # Apack = ptrarray0(align(pointer(buffer)), (M, K), (static_sizeof(T), static_sizeof(T) * align(M, T)), DenseDims{(true,false)}())
+    Apack = default_zerobased_stridedpointer(pointer(buffer), (static_sizeof(T), static_sizeof(T) * align(M, T)))
     Apack, buffer
 end
 
 @inline function packaloopmul!(
-    C::AbstractStrideMatrix{S,D,T},
-    A::AbstractStrideMatrix,
-    B::AbstractStrideMatrix,
-    α, β, (M, K, N) = matmul_sizes(C, A, B)
-) where {S,D,T}
-    Ãₚ, buffer = alloc_a_pack(A, T)
+    C::AbstractStridedPointer{T},
+    A::AbstractStridedPointer,
+    B::AbstractStridedPointer,
+    α, β, (M, K, N)
+) where {T}
+    Ãₚ, buffer = alloc_a_pack(A, M, T)
+    # @show M,K,N, threadid()
+    # @show pointer.((C,A,B)), threadid()
     GC.@preserve buffer begin
-        packamul!(
-            stridedpointer(C), stridedpointer(Ãₚ), stridedpointer(A), stridedpointer(B),
-            α, β, CloseOpen(M), CloseOpen(K), CloseOpen(StaticInt{nᵣ}())
-        ) # pack A
-        # @show size.((Ãₚ, A)) strides.((Ãₚ, A)) view(Ãₚ, 1:8, 1:8) #view(A, 1:8, 1:8)
-        Nrange = CloseOpen(StaticInt{nᵣ}(), N)
-        Crem = zview(C, :, Nrange)
-        Brem = zview(B, :, Nrange)
+        Nᵣ = StaticInt{nᵣ}()
+        packamul!(C, Ãₚ, A, B, α, β, CloseOpen(M), CloseOpen(K), CloseOpen(Nᵣ))
         loopmul!(
-            stridedpointer(Crem), stridedpointer(Ãₚ), stridedpointer(Brem),
-            α, β, (CloseOpen(M), CloseOpen(K), CloseOpen(static_length(Nrange)))
+            gesp(C, (Zero(), Nᵣ)), Ãₚ, gesp(B, (Zero(), Nᵣ)), α, β,
+            (CloseOpen(M), CloseOpen(K), CloseOpen(N - Nᵣ))
         )
     end
     nothing

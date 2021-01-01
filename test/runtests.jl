@@ -1,4 +1,4 @@
-using PaddedMatrices, LinearAlgebra
+using PaddedMatrices, LinearAlgebra, Aqua
 using Test
 
 @show PaddedMatrices.VectorizationBase.REGISTER_COUNT
@@ -11,7 +11,8 @@ const START_TIME = time()
 @inferred PaddedMatrices.matmul_params(Int64)
 
 @time @testset "PaddedMatrices.jl" begin
-    @test isempty(detect_unbound_args(PaddedMatrices))
+    Aqua.test_all(PaddedMatrices)
+    # @test isempty(detect_unbound_args(PaddedMatrices))
     @time include("misc.jl")
     @time include("matmul_tests.jl")
     @time include("broadcast_tests.jl")

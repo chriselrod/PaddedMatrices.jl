@@ -32,7 +32,7 @@ function _use_bcache()
         pause()
     end
 end
-_free_bcache!(b::BCache{UInt}) = atomic_xor!(BCACHE_LOCK, one(UInt) << b.i)
+_free_bcache!(b::BCache{UInt}) = (atomic_xor!(BCACHE_LOCK, one(UInt) << b.i); nothing)
 _free_bcache!(b::BCache{Nothing}) = reseet_bcache_lock!()#atomic_xor!(BCACHE_LOCK, one(UInt))
 
 """
@@ -41,37 +41,70 @@ _free_bcache!(b::BCache{Nothing}) = reseet_bcache_lock!()#atomic_xor!(BCACHE_LOC
 Currently not using try/finally in matmul routine, despite locking.
 So if it errors for some reason, you may need to manually call `reset_bcache_lock!()`.
 """
-reseet_bcache_lock!() = BCACHE_LOCK[] = zero(UInt)
+reseet_bcache_lock!() = (BCACHE_LOCK[] = zero(UInt); nothing)
 
 
 let ityp = "i$(8sizeof(UInt))"
-    @inline function _atomic_load(ptr::Ptr{UInt})
-        Base.llvmcall("""
-          %p = inttoptr $(ityp) %0 to $(ityp)*
-          %v = load atomic $(ityp), $(ityp)* %p acquire, align $(Base.gc_alignment(UInt))
-          ret $(ityp) %v
-        """, UInt, Tuple{Ptr{UInt}}, ptr)
-    end
-    @inline function _atomic_store!(ptr::Ptr{UInt}, x::UInt)
-        Base.llvmcall("""
-          %p = inttoptr $(ityp) %0 to $(ityp)*
-          store atomic $(ityp) %1, $(ityp)* %p release, align $(Base.gc_alignment(UInt))
-          ret void
-        """, UInt, Tuple{Ptr{UInt}, UInt}, ptr, x)
-    end
-    @inline function _atomic_or!(ptr::Ptr{UInt}, x::UInt)
-        Base.llvmcall("""
-          %p = inttoptr $(ityp) %0 to $(ityp)*
-          %v = = atomicrmw or $(ityp)* %2, $(ityp) %p acq_rel
-          ret $(ityp) %v
-        """, UInt, Tuple{Ptr{UInt}, UInt}, ptr, x)
-    end
-    @inline function _atomic_xor!(ptr::Ptr{UInt}, x::UInt)
-        Base.llvmcall("""
-          %p = inttoptr $(ityp) %0 to $(ityp)*
-          %v = = atomicrmw xor $(ityp)* %2, $(ityp) %p acq_rel
-          ret $(ityp) %v
-        """, UInt, Tuple{Ptr{UInt}, UInt}, ptr, x)
+    @eval begin
+        @inline function _atomic_load(ptr::Ptr{UInt})
+            Base.llvmcall($("""
+              %p = inttoptr $(ityp) %0 to $(ityp)*
+              %v = load atomic volatile $(ityp), $(ityp)* %p acquire, align $(Base.gc_alignment(UInt))
+              ret $(ityp) %v
+            """), UInt, Tuple{Ptr{UInt}}, ptr)
+        end
+        @inline function _atomic_store!(ptr::Ptr{UInt}, x::UInt)
+            Base.llvmcall($("""
+              %p = inttoptr $(ityp) %0 to $(ityp)*
+              store atomic volatile $(ityp) %1, $(ityp)* %p release, align $(Base.gc_alignment(UInt))
+              ret void
+            """), Cvoid, Tuple{Ptr{UInt}, UInt}, ptr, x)
+        end
+        @inline function _atomic_cas_cmp!(ptr::Ptr{UInt}, cmp::UInt, newval::UInt)
+            Base.llvmcall($("""
+              %p = inttoptr $(ityp) %0 to $(ityp)*
+              %c = cmpxchg volatile i64* %p, i64 %1, i64 %2 acq_rel acquire
+              %bit = extractvalue { i64, i1 } %c, 1
+              %bool = zext i1 %bit to i8
+              ret i8 %bool
+            """), Bool, Tuple{Ptr{UInt}, UInt, UInt}, ptr, cmp, newval)
+        end
+        @inline function _atomic_add!(ptr::Ptr{UInt}, x::UInt)
+            Base.llvmcall($("""
+              %p = inttoptr $(ityp) %0 to $(ityp)*
+              %v = atomicrmw volatile add $(ityp)* %p, $(ityp) %1 acq_rel
+              ret $(ityp) %v
+            """), UInt, Tuple{Ptr{UInt}, UInt}, ptr, x)
+        end
+        @inline function _atomic_or!(ptr::Ptr{UInt}, x::UInt)
+            Base.llvmcall($("""
+              %p = inttoptr $(ityp) %0 to $(ityp)*
+              %v = atomicrmw volatile or $(ityp)* %p, $(ityp) %1 acq_rel
+              ret $(ityp) %v
+            """), UInt, Tuple{Ptr{UInt}, UInt}, ptr, x)
+        end
+        @inline function _atomic_xor!(ptr::Ptr{UInt}, x::UInt)
+            Base.llvmcall($("""
+              %p = inttoptr $(ityp) %0 to $(ityp)*
+              %v = atomicrmw volatile xor $(ityp)* %p, $(ityp) %1 acq_rel
+              ret $(ityp) %v
+            """), UInt, Tuple{Ptr{UInt}, UInt}, ptr, x)
+        end
+        @inline function _atomic_max!(ptr::Ptr{UInt}, x::UInt)
+            Base.llvmcall($("""
+              %p = inttoptr $(ityp) %0 to $(ityp)*
+              %v = atomicrmw volatile umax $(ityp)* %p, $(ityp) %1 acq_rel
+              ret $(ityp) %v
+            """), UInt, Tuple{Ptr{UInt}, UInt}, ptr, x)
+        end
+        @inline function _atomic_min!(ptr::Ptr{UInt}, x::UInt)
+            Base.llvmcall($("""
+              %p = inttoptr $(ityp) %0 to $(ityp)*
+              %v = atomicrmw volatile umin $(ityp)* %p, $(ityp) %1 acq_rel
+              ret $(ityp) %v
+            """), UInt, Tuple{Ptr{UInt}, UInt}, ptr, x)
+        end
     end
 end
+
 

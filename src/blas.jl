@@ -64,9 +64,9 @@ Only packs `A`. Primitively does column-major packing: it packs blocks of `A` in
 """
 function jmulpackAonly!(
     C::AbstractStridedPointer{T}, A::AbstractStridedPointer, B::AbstractStridedPointer,
-    α, β, ::StaticInt{mc}, ::StaticInt{kc}, ::StaticInt{nc}
+    α, β, ::StaticInt{mc}, ::StaticInt{kc}, ::StaticInt{nc}, (M,K,N)
 ) where {T, mc, kc, nc}
-    W = VectorizationBase.pick_vector_width_val(Tc)
+    W = VectorizationBase.pick_vector_width_val(T)
     mᵣW = StaticInt{mᵣ}() * W
     
     num_m_iter = cld_fast(M, StaticInt{mc}())
@@ -75,6 +75,10 @@ function jmulpackAonly!(
     mreps_per_iter = mᵣW * mcrepetitions
     Miter = num_m_iter - One()
     Mrem = M - Miter * mreps_per_iter
+    if Mrem < mᵣW
+        Miter -= one(Miter)
+        Mrem += mreps_per_iter
+    end
     #(iszero(Miter) && iszero(Niter)) && return loopmul!(C, A, B)
     num_k_iter = cld_fast(K, StaticInt{kc}())
     kreps_per_iter = vadd((div_fast(K, num_k_iter)), 3) & -4
@@ -128,15 +132,14 @@ Once `LoopVectorization` adds a few features to make it easy to abstract away ti
 """
 function jmulpackAB!(
     C::AbstractStridedPointer{T}, A::AbstractStridedPointer, B::AbstractStridedPointer,
-    α, β, ::StaticInt{mc}, ::StaticInt{kc}, ::StaticInt{nc}, (M, K, N) = matmul_sizes(C, A, B)
+    α, β, ::StaticInt{mc}, ::StaticInt{kc}, ::StaticInt{nc}, (M, K, N)# = matmul_sizes(C, A, B)
 ) where {T, mc, kc, nc}
     W = VectorizationBase.pick_vector_width_val(T)
     mᵣW = StaticInt{mᵣ}() * W
     
     num_n_iter = cld_fast(N, StaticInt{nc}())
     _nreps_per_iter = div_fast(N, num_n_iter) + StaticInt{nᵣ}() - One()
-    ncrepetitions = div_fast(_nreps_per_iter, StaticInt{nᵣ}())
-    nreps_per_iter = StaticInt{nᵣ}() * ncrepetitions
+    nreps_per_iter = div_fast(_nreps_per_iter, StaticInt{nᵣ}()) * StaticInt{nᵣ}()
     Niter = num_n_iter - One()
     Nrem = N - Niter * nreps_per_iter
 
@@ -146,7 +149,11 @@ function jmulpackAB!(
     mreps_per_iter = mᵣW * mcrepetitions
     Miter = num_m_iter - One()
     Mrem = M - Miter * mreps_per_iter
-    
+    if Mrem < mᵣW
+        Miter -= one(Miter)
+        Mrem += mreps_per_iter
+    end
+
     num_k_iter = cld_fast(K, StaticInt{kc}())
     kreps_per_iter = ((div_fast(K, num_k_iter)) + 3) & -4
     Krem = K - (num_k_iter - One()) * kreps_per_iter
@@ -157,7 +164,9 @@ function jmulpackAB!(
     Cptr = zero_offsets(C)
     # L3ptr = Base.unsafe_convert(Ptr{Tb}, pointer(BCACHE) + (Threads.threadid()-1)*BSIZE*8)
     # bc = _use_bcache()
-    L3ptr = Base.unsafe_convert(Ptr{T}, BCACHE)
+    # L3ptr = Base.unsafe_convert(Ptr{T}, BCACHE)
+    bcache = _use_bcache()
+    L3ptr = pointer(bcache)
     noffset = 0
     _Nrem, _nreps_per_iter = promote(Nrem, nreps_per_iter)
     _Mrem, _mreps_per_iter = promote(Mrem, mreps_per_iter)
@@ -175,11 +184,12 @@ function jmulpackAB!(
                     ksize = ifelse(ko == 0, _Krem, _kreps_per_iter)
                     # _β = ifelse(ko == 0, convert(T, β), one(T))
                     # Bsubset2 = PtrArray(gesp(Bptr, (koffset, noffset)), (ksize, nsize), dense_dims_subset(dense_dims(B), stride_rank(B)))
-                    Bsubset2 = PtrArray(Bptr, (ksize, nsize), dense_dims_subset(dense_dims(B), stride_rank(B)))
+                    # Bsubset2 = PtrArray(Bptr, (ksize, nsize), dense_dims_subset(dense_dims(B), stride_rank(B)))
+                    Bsubset2 = PtrArray(Bptr, (ksize, nsize), none_dense(Val{2}()))
                     Bpacked2 = ptrarray0(L3ptr, (ksize, nsize))
                     # @show offsets(Bpacked2), offsets(Bsubset2)
                     copyto!(Bpacked2, Bsubset2)
-                    let Aptr = Aptr, Cptr = Cptr, Bptr = stridedpointer(Bpacked2)
+                    let Aptr = Aptr, Cptr = Cptr, Bptr = zstridedpointer(Bpacked2)
                         # moffset = 0
                         for mo in 0:Miter
                             msize = ifelse(mo == Miter, _Mrem, _mreps_per_iter)
@@ -208,11 +218,14 @@ function jmulpackAB!(
             Cptr = gesp(Cptr, (Zero(), nsize))
         end
     end # GC.@preserve
+    _free_bcache!(bcache)
     nothing
 end
 
 @inline contiguousstride1(A) = ArrayInterface.contiguous_axis(A) === ArrayInterface.Contiguous{1}()
-@inline firstbytestride(A::AbstractStrideArray) = bytestride(A, One())
+@inline contiguousstride1(A::AbstractStridedPointer{T,N,1}) where {T,N} = true
+@inline firstbytestride(A::AbstractStridedPointer) = VectorizationBase.bytestrides(A)[One()]
+# @inline firstbytestride(A::AbstractStrideArray) = bytestride(A, One())
 # @inline firstbytestride(A::PermutedDimsArray) = LinearAlgebra.stride1(A)
 # @inline firstbytestride(A::Adjoint{<:Any,<:AbstractMatrix}) = stride(parent(A), 2)
 # @inline firstbytestride(A::Transpose{<:Any,<:AbstractMatrix}) = stride(parent(A), 2)
@@ -278,7 +291,7 @@ end
 # end
 # ThreadRun(i::Int, n::Int) = ThreadRun(i % UInt32, n % UInt32)
 
-struct LoopMulClosure{P,TC,TA,TB,Α,Β,M,K,N}
+struct LoopMulClosure{P,TC,TA,TB,Α,Β,Md,Kd,Nd}
     C::TC
     A::TA
     B::TB
@@ -299,14 +312,14 @@ end
 #     LoopMulClosure{true,TC,TA,TB,Α,Β,M,K,N}(C, A, B, α, β, Maxis, Kaxis, Naxis)
 # end
 function LoopMulClosure{P}(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, α, β, M, K, N) where {P} # if not packing, discard `PtrArray` wrapper
-    LoopMulClosure{P}(stridedpointer(C), stridedpointer(A), stridedpointer(B), α, β, M, K, N)
+    LoopMulClosure{P}(zstridedpointer(C), zstridedpointer(A), zstridedpointer(B), α, β, M, K, N)
 end
 # function LoopMulClosure{true}(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, α, β, M, K, N)
 #     LoopMulClosure{true}(C, A, B, α, β, M, K, N)
 # end
-(m::LoopMulClosure{false})() = loopmul!(m.C, m.A, m.B, m.α, m.β, (m.M, m.K, m.N))
+(m::LoopMulClosure{false})() = loopmul!(m.C, m.A, m.B, m.α, m.β, (CloseOpen(m.M), CloseOpen(m.K), CloseOpen(m.N)))
 # (m::LoopMulClosure{true})() = jmulpackAonly!(m.C, m.A, m.B, m.α, m.β, (m.Maxis, m.Kaxis, m.Naxis))
-function (m::LoopMulClosure{true,TC})() where {S,D,T,TC <: AbstractStrideArray{S,D,T}}
+function (m::LoopMulClosure{true,TC})() where {T,TC <: AbstractStridedPointer{T}}
     Mc,Kc,Nc = matmul_params(T)
     jmulpackAonly!(m.C, m.A, m.B, m.α, m.β, Mc, Kc, Nc, (m.M, m.K, m.N))
 end
@@ -331,13 +344,17 @@ function (m::PackAClosure{TC})() where {T,TC<:AbstractStridedPointer{T}}
     jmultpackAonly!(m.C, m.A, m.B, m.α, m.β, Mc, Kc, Nc, m.M, m.K, m.N, m.tasks)
 end
 
-function jmult!(C::AbstractMatrix{T}, A, B, α = One(), β = Zero(), (M,K,N) = matmul_sizes(C,A,B), nthread = _nthreads()) where {T}
+function jmult!(C::AbstractMatrix{T}, A, B, α = One(), β = Zero(), (M,K,N) = matmul_sizes(C,A,B), nthread = nothing) where {T}
+    # Don't allow nested `jmult!`
+    iszero(ccall(:jl_in_threaded_region, Cint, ())) || return jmul!(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), (M,K,N))
     Mc,Kc,Nc = matmul_params(T)
-    jmult!(C, A, B, α, β, Mc, Kc, Nc, (M,K,N), nthread)
+    nt = _nthreads()
+    _nthread = nthread === nothing ? nt : min(nt, nthread)
+    jmult!(C, A, B, α, β, Mc, Kc, Nc, (M,K,N), _nthread)
 end
 
 function jmult!(
-    C::AbstractMatrix{T}, A, B, α, β, ::StaticInt{Mc}, ::StaticInt{Kc}, ::StaticInt{Nc}, (M,K,N) = matmul_sizes(C,A,B), nthread = _nthreads()
+    C::AbstractMatrix{T}, A, B, α, β, ::StaticInt{Mc}, ::StaticInt{Kc}, ::StaticInt{Nc}, (M,K,N) = matmul_sizes(C,A,B), nthread = nothing
 ) where {Mc,Kc,Nc,T}
     Cb = preserve_buffer(C); Ab = preserve_buffer(A); Bb = preserve_buffer(B)
     GC.@preserve Cb Ab Bb begin
@@ -350,7 +367,7 @@ function jmult!(
     return C
 end
 
-function gcd_fast(a::T, b::T) where {T<:Base.BitInteger}
+@inline function gcd_fast(a::T, b::T) where {T<:Base.BitInteger}
     za = trailing_zeros(a)
     zb = trailing_zeros(b)
     k = min(za, zb)
@@ -366,7 +383,7 @@ function gcd_fast(a::T, b::T) where {T<:Base.BitInteger}
     r = u << k
     r % T
 end
-function divide_blocks(M, N, ::StaticInt{Mb}, ::StaticInt{Nb}, nspawn) where {Mb,Nb}
+@inline function divide_blocks(M, N, ::StaticInt{Mb}, ::StaticInt{Nb}, nspawn) where {Mb,Nb}
     Mfull, Mrem = divrem_fast(M, Mb)
     Mtotal = Mfull + (Mrem > 0)
 
@@ -385,10 +402,11 @@ function _jmult!(
     C::AbstractStridedPointer{T}, A::AbstractStridedPointer, B::AbstractStridedPointer,
     α, β, ::StaticInt{Mc}, ::StaticInt{Kc}, ::StaticInt{Nc}, (M,K,N), nthread
 ) where {T,Mc,Kc,Nc}
-    Mᵣ = StaticInt{mᵣ}(); Nᵣ = StaticInt{nᵣ}()
+    Mᵣ = StaticInt{mᵣ}();
+    Nᵣ = StaticInt{nᵣ}()
     W = VectorizationBase.pick_vector_width_val(T)
     MᵣW = Mᵣ*W
-    nkern = cld_fast(M * N,  Mᵣ * Nᵣ)
+    # nkern = cld_fast(M * N,  MᵣW * Nᵣ)
 
     # Assume 3 μs / spawn cost
     # 15W approximate GFLOPS target
@@ -413,13 +431,16 @@ function _jmult!(
     #       if so, do threading with `packamuls`, one packed-B at a time
     #       if not, also divide `N`, and correspondingly decrease `Nc`
     # TODO: implement packing `B`
-    do_not_pack_b = true#(contiguousstride1(B) && (kc * nc ≥ K * N)) | (firstbytestride(B) > 1600)
-    tasks = _preallocated_tasks()
+    # do_not_pack_b = true#(contiguousstride1(B) && (kc * nc ≥ K * N)) | (firstbytestride(B) > 1600)
+    do_not_pack_b = (contiguousstride1(B) && (Kc * Nc ≥ K * N)) | (firstbytestride(B) > 1600)
+    tasks = 1:nspawn-1
+    # tasks = _preallocated_tasks()
     if do_not_pack_b
-        do_not_pack_a = VectorizationBase.CACHE_SIZE[2] === nothing || ((nᵣ ≥ N) || (contiguousstride1(A) && dontpack(pointer(A), M, K, bytestride(A,StaticInt{2}()), StaticInt{M}(), StaticInt{Kc}(), T)))
+        do_not_pack_a = VectorizationBase.CACHE_SIZE[2] === nothing || ((nᵣ ≥ N) || (contiguousstride1(A) && dontpack(pointer(A), M, K, bytestride(A,StaticInt{2}()), StaticInt{Mc}(), StaticInt{Kc}(), T)))
         if do_not_pack_a
             Mblocks, Nblocks = divide_blocks(M, N, MᵣW, Nᵣ, nspawn)
-            _nspawn_m1 = Mblocks * Nblocks - One()
+            _nspawn = Mblocks * Nblocks
+            _nspawn_m1 = _nspawn - One()
             Mbsize = cld_fast(cld_fast(M, Mblocks), W) * W
             Nbsize = cld_fast(N, Nblocks)
             Mrem = M - Mbsize * (Mblocks - One())
@@ -439,16 +460,12 @@ function _jmult!(
                             # _C = stridedpointer(zview(C, mrange, nrange))
                             # _A = stridedpointer(zview(A, mrange, :))
                             if tnum == _nspawn_m1
-                                loopmul!(_C, _A, _B, α, β, msize, K, nsize)
-                                foreach(wait, view(tasks, Base.OneTo(_nspawn_m1)))
+                                wait(runfunc(LoopMulClosure{false}(_C, _A, _B, α, β, msize, K, nsize), _nspawn))
+                                # loopmul!(_C, _A, _B, α, β, (CloseOpen(msize), CloseOpen(K), CloseOpen(nsize)))
+                                for ic ∈ CloseOpen(One(), _nspawn); @inbounds wait(MULTASKS[ic]); end
                                 return
                             end
-                            t = Task(LoopMulClosure{false}(_C, _A, _B, α, β, msize, K, nsize))
-                            t.sticky = false
-                            schedule(t)
-                            tasks[(tnum += 1)] = t
-                            # mlower += Mbsize
-                            # mupper += Mbsize
+                            runfunc!(LoopMulClosure{false}(_C, _A, _B, α, β, msize, K, nsize), (tnum += 1))
                             _A = gesp(_A, (msize, Zero()))
                             _C = gesp(_C, (msize, Zero()))
                         end
@@ -463,33 +480,49 @@ function _jmult!(
             spawn_per_mrep = min(cld_fast(nspawn, Mreps), N) # Safety: don't spawn more than `N`
             if spawn_per_mrep > 1
                 nspawn_per = cld(nspawn, spawn_per_mrep)
-                spawn_start = spawn_per_mrep
+                spawn_start = 0#spawn_per_mrep
                 Nper = cld(N, spawn_per_mrep)
-                # Nstart = 0
-                task_spawn_iters = spawn_per_mrep - 1
-                for i ∈ Base.OneTo(task_spawn_iters)
-                    tasks_view = view(tasks, spawn_start:spawn_start+nspawn_per-2) # tasks are to be 1 shorter than number of threads running; "main" task runs the last set.
-                    # nrange = Nstart:Nstart+Nper-1
-                    # t = Task(PackAClosure(zview(C, :, nrange), A, zview(B, :, nrange), α, β, M, K, Nper, task_view))
-                    t = Task(PackAClosure(C, A, B, α, β, M, K, Nper, task_view))
-                    t.sticky = false
-                    schedule(t)
-                    tasks[i] = t
-                    # Nstart += Nper
-                    spawn_start += nspawn_per - 1
+                Nrem = N - (Nper * task_spawn_iters)
+                for i ∈ Base.OneTo(spawn_per_mrep)
+                    if i == spawn_per_mrep
+                        Nsize = Nrem
+                        next_start = nspawn
+                    else
+                        Nsize = Nper
+                        next_start = spawn_start + nspawn_per
+                    end
+                    task_view = CloseOpen(spawn_start, next_start)
+                    jmultpackAonly!(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), M, K, Nsize, task_view)
+                    spawn_start = next_start
                     B = gesp(B, (Zero(), Nper))
                     C = gesp(C, (Zero(), Nper))
                 end
-                tasks_view = view(tasks, 1:nspawn-1)
-                # nrange = Nstart:N-One()
-                Nrem = N - (Nper * task_spawn_iters)
-                jmultpackAonly!(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), M, K, Nrem, tasks_view)
-                foreach(wait, view(tasks, Base.OneTo(task_spawn_iters))) # wait for spawned `jmultpackAonly!`s
+            #     # Nstart = 0
+            #     for i ∈ CloseOpen(One(), spawn_per_mrep)
+            #         # tasks are to be 1 shorter than number of threads running; "main" task runs the last set.
+            #         # tasks_view = view(tasks, spawn_start:spawn_start+nspawn_per-2)
+            #         next_start = spawn_start + nspawn_per-1
+            #         task_view = CloseOpen(spawn_start, next_start)
+            #         spawn_start = next_start
+            #         runfunc!(PackAClosure(C, A, B, α, β, M, K, Nper, task_view), i)
+            #         B = gesp(B, (Zero(), Nper))
+            #         C = gesp(C, (Zero(), Nper))
+            #     end
+            #     # task_view = view(tasks, 1:nspawn-1)
+            #     # task_view = 
+            #     # nrange = Nstart:N-One()
+            #     task_view = CloseOpen(spawn_start, nspawn)
+            #     # task_view = spawn_start:spawn_start+nspawn_per-2
+            #     task_spawn_iters = spawn_per_mrep - 1
+            #     Nrem = N - (Nper * task_spawn_iters)
+            #     wait(runfunc(PackAClosure(C, A, B, α, β, M, K, Nrem, task_view), spawn_per_mrep))
+            #     # jmultpackAonly!(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), M, K, Nrem, task_view)
+            #     for ic ∈ Base.OneTo(task_spawn_iters); @inbounds wait(MULTASKS[ic]); end
             else
-                tasks_view = view(tasks, 1:nspawn-1)
-                jmultpackAonly!(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), M, K, N, tasks_view)
+                jmultpackAonly!(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), M, K, N, CloseOpen(0, nspawn))
+                # jmultpackAonly!(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), M, K, N, 1:nspawn-1)
             end
-            return
+            # return
         end
     # elseif CC3 > 1
     #     cc3 = min(nspawn, CC3)
@@ -500,99 +533,130 @@ function _jmult!(
     #     end
     #     return C
     else
-        jmultpackAB!(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), M, K, N, view(tasks, 1:nspawn))
-        return
+        jmultpackAB!(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), M, K, N, CloseOpen(0, nspawn), Val{CACHE_COUNT[3]}())
+        # return
     end
 end
-function jmultpackAonly!(
-    C::AbstractStridedPointer, A::AbstractStridedPointer, B::AbstractStridedPointer,
-    α, β, ::StaticInt{Mc}, ::StaticInt{Kc}, ::StaticInt{Nc}, M, K, N, tasks
-) where {Mc,Kc,Nc}
-    to_spawn = length(tasks)
-    total_threads = to_spawn + 1
-    
-    M = static_length(Maxis)
 
-    W = VectorizationBase.pick_vector_width_val(T)
-    _Mblock = cld_fast(M, total_threads)
-    Mblock = cld_fast(_Mblock, W) * W
+_tail(r::CloseOpen) = CloseOpen(first(r) + One(), r.upper)
+function waitonmultasks(tasks)
+    for tid ∈ _tail(tasks)
+        @inbounds wait(MULTASKS[tid])
+    end
+end
+
+# _front(r::AbstractUnitRange) = CloseOpen(first(r), last(r))
+"""
+Runs on threadids `tasks .+ 1`
+"""
+function jmultpackAonly!(
+    C::AbstractStridedPointer{T}, A::AbstractStridedPointer, B::AbstractStridedPointer,
+    α, β, ::StaticInt{Mc}, ::StaticInt{Kc}, ::StaticInt{Nc}, M, K, N, tasks::CloseOpen
+) where {T,Mc,Kc,Nc}
+    # e.g., tasks = CloseOpen(0,4) = [0,1,2,3] runs on [1,2,3,4]
+    to_spawn = length(tasks)
     
-    # Mstart = 0
-    for i ∈ 1:to_spawn
-        # mrange = Mstart:Mstart + Mblock - 1
-        # t = Task(LoopMulClosure{true}(zview(C, mrange, :), zview(A, mrange, :), B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), Zero():Mblock-One(), Kaxis, Naxis))
-        # t = Task(LoopMulClosure{true}(zview(C, mrange, :), zview(A, mrange, :), B, α, β, Zero():Mblock-One(), Kaxis, Naxis))
-        t = Task(LoopMulClosure{true}(C, A, B, α, β, Mblock, K, N))
-        t.sticky = false
-        schedule(t)
-        tasks[i] = t
-        # Mstart += Mblock
+    W = VectorizationBase.pick_vector_width_val(T)
+    _Mblock = cld_fast(M, to_spawn)
+    Mblock = cld_fast(_Mblock, W) * W
+
+    for tid ∈ _tail(tasks)
+        runfunc!(LoopMulClosure{true}(C, A, B, α, β, Mblock, K, N), tid)
         A = gesp(A, (Mblock, Zero()))
         C = gesp(C, (Mblock, Zero()))
     end
-    mrange = Mstart:M-1
-    Mrem = M - Mblock * to_spawn
-    jmulpackAonly!(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), Mrem, K, N)
-    foreach(wait, tasks)
+    Mrem = M - Mblock * (to_spawn -  1)
+    wait(runfunc(LoopMulClosure{true}(C, A, B, α, β, Mblock, K, N), tasks.upper))
+    # jmulpackAonly!(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), (Mrem, K, N))
+    waitonmultasks(tasks)
 end
 
+# open_upper(r::CloseOpen) = r.upper
 function jmultpackAB!(
-    C::AbstractStridedPointer, A::AbstractStridedPointer, B::AbstractStridedPointer,
-    α, β, ::StaticInt{Mc}, ::StaticInt{Kc}, ::StaticInt{Nc}, M, K, N, task_view
-) where {Mc,Kc,Nc}
+    C::AbstractStridedPointer{T}, A::AbstractStridedPointer, B::AbstractStridedPointer,
+    α, β, ::StaticInt{Mc}, ::StaticInt{Kc}, ::StaticInt{Nc}, M, K, N, tasks::CloseOpen, ::Val{CC}
+) where {T,Mc,Kc,Nc,CC}
+    @assert CC > 1
+    
     W = VectorizationBase.pick_vector_width_val(T)
     mᵣW = StaticInt{mᵣ}() * W
-    
+
     to_spawn = length(tasks)
-    total_threads = to_spawn + 1
+    # to_spawn = to_spawn + 1
     # nspawn = length(task_view) + 1
     # Nsplits = cld_fast(cld_fast(M, mᵣW), nspawn)
-    Nsplits = cld_fast(M, mᵣW * total_threads)
-    if Nsplits > 1
-        _Nsize = cld(N, Nsplits)
-        Nsize = cld(N, cld(N, _Nsize))
-        Nspawn_per = cld(Nsplits, total_threads)
-        tv_start = Nsplits
-        Nsplitsm1 = Nsplits-1
-        for i in Base.OneTo(Nsplitsm1)
-            _taskview = view(task_view, tv_start:tv_start+Nspawn_per-2)
-            t = Task(PackABClosure(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), M, K, Nsize, _taskview))
-            t.sticky = false
-            schedule(t)
-            task_view[i] = t
-            tv_start += Nspawn_per - 1
-            B = gesp(C, (Zero(), Nsize))
-            C = gesp(C, (Zero(), Nsize))
-        end
-        Nrem = N - Nsize * Nsplitsm1
-        _jmultpackAB!(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), M, K, Nrem, _taskview)
-        foreach(wait, view(task_view, Base.OneTo(Nsplitsm1)))
-        return
+    Nsplits = min(cld_fast(M, mᵣW * to_spawn), CC)
+    Nsplits > 1 || return jmultpackAB!(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), M, K, N, tasks, Val{1}())
+    
+    _Nsize = cld_fast(N, Nsplits)
+    Nsize = cld_fast(N, cld(N, _Nsize))
+    Nspawn_per = cld_fast(Nsplits, to_spawn)
+    task_start = 0
+    Nsplitsm1 = Nsplits - One()
+    Nrem = N - Nsize * Nsplitsm1
+    for i ∈ CloseOpen(Nsplits)
+        task_next = min(task_start + Nspawn_per, tasks.upper)
+        _taskview = CloseOpen(task_start, task_next)
+        task_start = task_next
+        nsize = i == Nsplitsm1 ? Nrem : Nsize
+        jmultpackAB!(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), M, K, nsize, _taskview, Val{1}())
+        
+        B = gesp(C, (Zero(), Nsize))
+        C = gesp(C, (Zero(), Nsize))
     end
+end
+function jmultpackAB!(
+    C::AbstractStridedPointer{T}, A::AbstractStridedPointer, B::AbstractStridedPointer,
+    α, β, ::StaticInt{Mc}, ::StaticInt{Kc}, ::StaticInt{Nc}, M, K, N, tasks::CloseOpen, ::Val{1}
+) where {T,Mc,Kc,Nc}
+    W = VectorizationBase.pick_vector_width_val(T)
+    mᵣW = StaticInt{mᵣ}() * W
 
-    atomicsync = Ref(UInt}(zero(UInt))
+    to_spawn = length(tasks)
+    atomicsync = Ref{NTuple{9,UInt}}()
     p = Base.unsafe_convert(Ptr{UInt}, atomicsync)
+    _atomic_store!(p, zero(UInt)); _atomic_store!(p + 8sizeof(UInt), zero(UInt))
+    # unsafe_store!(p, zero(UInt), 1); unsafe_store!(p, zero(UInt), 9)
+    
     bc = _use_bcache()
     bc_ptr = Base.unsafe_convert(typeof(pointer(C)), pointer(bc))
-    # Mblock = cld_fast(cld_fast(M, total_threads), MᵣW) * Mᵣ*W
+    # Mblock = cld_fast(cld_fast(M, to_spawn), MᵣW) * Mᵣ*W
     GC.@preserve atomicsync begin
-        Mblock = cld_fast(cld_fast(M, total_threads), W) * W
-        for i ∈ Base.OneTo(to_spawn)
-            t = Task(SyncClosure(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), Mblock, K, N, bc_ptr, i % UInt, to_spawn % UInt))
-            t.sticky = false
-            schedule(t)
-            # task_view[i] = t # shouldn't have to wait, should sync in there
+        Mblock = cld_fast(cld_fast(M, to_spawn), W) * W
+        for (i,tid) ∈ enumerate(_tail(tasks))
+            runfunc!(SyncClosure{Mc,Kc,Nc}(C, A, B, α, β, Mblock, K, N, p, bc_ptr, i % UInt, to_spawn % UInt), tid)
             A = gesp(A, (Mblock, Zero()))
             C = gesp(C, (Mblock, Zero()))
         end
+        Mrem = M - (to_spawn-1) * Mblock
+        wait(runfunc(SyncClosure{Mc,Kc,Nc}(C, A, B, α, β, Mrem, K, N, p, bc_ptr, zero(UInt), to_spawn % UInt), tasks.upper))
+        waitonmultasks(tasks)
     end
-    Mrem = M - to_spawn * Mblock
-    sync_mul!(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), Mrem, K, N, p, bc_ptr, zero(UInt), to_spawn % UInt)
     _free_bcache!(bc)
     return
 end
 
-struct SyncClosure{Mc,Kc,Nc,TC,TA,TB,Α,Β,Md,Kd,Nd,C}
+# struct PackABClosure{Mc,Kc,Nc,TC,TA,TB,Α,Β,Md,Kd,Nd,V}
+#     C::TC
+#     A::TA
+#     B::TB
+#     α::Α
+#     β::Β
+#     M::Md
+#     K::Kd
+#     N::Nd
+#     tv::V
+# end
+# function PackABClosure{Mc,Kc,Nc}(
+#     C::TC, A::TA, B::TB, α::Α, β::Β, ::StaticInt{Mc}, ::StaticInt{Kc}, ::StaticInt{Nc}, M::Md, K::Kd, N::Nd, _taskview::V
+# ) where {Mc,Kc,Nc,TC,TA,TB,Α,Β,Md,Kd,Nd,V}
+#     PackABClosure{Mc,Kc,Nc,TC,TA,TB,Α,Β,Md,Kd,Nd,V}(C, A, B, α, β, M, K, N, _taskview)
+# end
+# function (m::PackABClosure{Mc,Kc,Nc})() where {Mc,Kc,Nc}
+#     jmultpackAB!(m.C, m.A, m.B, m.α, m.β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), m.M, m.K, m.N, m.tv, Val{1}())
+# end
+
+struct SyncClosure{Mc,Kc,Nc,TC,TA,TB,Α,Β,Md,Kd,Nd,CA}
     C::TC
     A::TA
     B::TB
@@ -602,15 +666,15 @@ struct SyncClosure{Mc,Kc,Nc,TC,TA,TB,Α,Β,Md,Kd,Nd,C}
     K::Kd
     N::Nd
     p::Ptr{UInt}
-    bc::C
+    bc::Ptr{CA}
     id::UInt
     last_id::UInt
 end
 
 function SyncClosure{Mc,Kc,Nc}(
-    C::TC, A::TA, B::TB, α::Α, β::Β, M::Md, K::Kd, N::Nd, p::Ptr{UInt}, bc::C, id::UInt, last_id::UInt
-) where {Mc,Kc,Nc,TC,TA,TB,Α,Β,Md,Kd,Nd,C}
-    SyncClosure{Mc,Kc,Nc,TC,TA,TB,Α,Β,Md,Kd,Nd,C}(C, A, B, α, β, M, K, N, p, bc, id, last_id)    
+    C::TC, A::TA, B::TB, α::Α, β::Β, M::Md, K::Kd, N::Nd, p::Ptr{UInt}, bc::Ptr{CA}, id::UInt, last_id::UInt
+) where {Mc,Kc,Nc,TC,TA,TB,Α,Β,Md,Kd,Nd,CA}
+    SyncClosure{Mc,Kc,Nc,TC,TA,TB,Α,Β,Md,Kd,Nd,CA}(C, A, B, α, β, M, K, N, p, bc, id, last_id)    
 end
 
 function (sc::SyncClosure{Mc,Kc,Nc})() where {Mc,Kc,Nc}
@@ -618,90 +682,186 @@ function (sc::SyncClosure{Mc,Kc,Nc})() where {Mc,Kc,Nc}
 end
 
 function sync_mul!(
-    C::AbstractStridedPointer, A::AbstractStridedPointer, B::AbstractStridedPointer,
-    α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), Mblock, K, N, atomicp::Ptr{UInt}, bc::Ptr, id::UInt, last_id::UInt
-)
-    num_n_iter = cld_fast(N, StaticInt{nc}())
+    C::AbstractStridedPointer{T}, A::AbstractStridedPointer, B::AbstractStridedPointer,
+    α, β, ::StaticInt{Mc}, ::StaticInt{Kc}, ::StaticInt{Nc}, M, K, N, atomicp::Ptr{UInt}, bc::Ptr, id::UInt, total_ids::UInt
+) where {T, Mc, Kc, Nc}
+    num_n_iter = cld_fast(N, StaticInt{Nc}())
     _nreps_per_iter = div_fast(N, num_n_iter) + StaticInt{nᵣ}() - One()
-    ncrepetitions = div_fast(_nreps_per_iter, StaticInt{nᵣ}())
-    nreps_per_iter = StaticInt{nᵣ}() * ncrepetitions
+    nreps_per_iter = div_fast(_nreps_per_iter, StaticInt{nᵣ}()) * StaticInt{nᵣ}()
     Niter = num_n_iter - One()
     Nrem = N - Niter * nreps_per_iter
 
-    total_ids = last_id + one(UInt)
+    last_id = total_ids - one(UInt)
+    # total_ids = last_id + one(UInt)
     flag = (one(UInt) << total_ids) - one(UInt)
+    # xchngflag = flag | (id << (4sizeof(UInt)))
     idflag = one(UInt) << id
+    
+    # cmp_id = id << (4sizeof(UInt))
+    # cmp_id_next = (id + one(UInt))  << (4sizeof(UInt))
+    # cmp_id = iszero(id) ? total_ids : id << (4sizeof(UInt))
+    # cmp_id_next = id == last_id ? zero(UInt64) : (id+one(UInt)) << (4sizeof(UInt))
+    atomics = atomicp + 8sizeof(UInt)
+    sync_iters = zero(UInt64)
+    # ids are 0, 1, 2, 3; last_id = 3
+    # cmp_ids init as = id
+    # on each iter
+    # cmp_id += total_ids
+    # cmp_ids = 4, 5, 6, 7
+    # everyone atomic adds, so we have atomicp[] == 4
+    # then _atomic_cas_cmp!(atomicp, cmp_ids, cmp_id_next)
+    # so now cmp_ids == 8;
+    # later, to sync finishing
+    # _atomic_cas_cmp!(atomicp, cmp_id_next, cmp_ids)
+    
     Npackblock_full = cld_fast(nreps_per_iter, total_ids)
     Npackblock_rem = nreps_per_iter - Npackblock_full * last_id
     Npackblockrem_full = cld_fast(Nrem, total_ids)
     Npackblockrem_rem = Nrem - Npackblock_full * last_id
     pack_offset = Npackblock_full*id
-    pack_view = pack_offset:min(pack_offset + Npackblock_full, nreps_per_iter)
+    pack_view = CloseOpen(pack_offset, min((pack_offset + Npackblock_full) % UInt, nreps_per_iter % UInt))
     pack_offset_rem = Npackblockrem_full*id
-    pack_view_rem = pack_offset:min(pack_offset_rem + Npackblockrem_full, Nrem)
+    pack_view_rem = CloseOpen(pack_offset_rem, min((pack_offset_rem + Npackblockrem_full) % UInt, Nrem % UInt))
+    # @show id, pack_view, pack_view_rem, id%Int
     # pack_offset is the offset of region this one is packing
     # Npackblock is the block size being packed
-    
-    num_m_iter = cld_fast(M, StaticInt{mc}())
+    mᵣW = StaticInt{mᵣ}() * VectorizationBase.pick_vector_width_val(T)
+    num_m_iter = cld_fast(M, StaticInt{Mc}())
     _mreps_per_iter = div_fast(M, num_m_iter) + mᵣW - One()
     mcrepetitions = div_fast(_mreps_per_iter, mᵣW)
     mreps_per_iter = mᵣW * mcrepetitions
     Miter = num_m_iter - One()
     Mrem = M - Miter * mreps_per_iter
+    if Mrem < mᵣW
+        Miter -= one(Miter)
+        Mrem += mreps_per_iter
+    end
     
-    num_k_iter = cld_fast(K, StaticInt{kc}())
+    num_k_iter = cld_fast(K, StaticInt{Kc}())
     kreps_per_iter = ((div_fast(K, num_k_iter)) + 3) & -4
     Krem = K - (num_k_iter - One()) * kreps_per_iter
     Kiter = num_k_iter - One()
         
-    # noffset = 0
     _Nrem, _nreps_per_iter = promote(Nrem, nreps_per_iter)
     _Mrem, _mreps_per_iter = promote(Mrem, mreps_per_iter)
     _Krem, _kreps_per_iter = promote(Krem, kreps_per_iter)
-    # Cb = preserve_buffer(C); Ab = preserve_buffer(A); Bb = preserve_buffer(B);
-    # GC.@preserve Cb Ab Bb BCACHE begin
+    # stuck = 0; max_iter = 199_999_999;
+    # @show Miter, Kiter, Niter, id%Int mreps_per_iter, kreps_per_iter, nreps_per_iter, id%Int Mrem, Krem, Nrem, id%Int
+    # @show (Miter, Kiter, Niter) .* (mreps_per_iter, kreps_per_iter, nreps_per_iter) .+ (Mrem, Krem, Nrem), id%Int
+    # return
     GC.@preserve BCACHE begin
         for no in 0:Niter
             # Krem
             # pack kc x nc block of B
             nsize = ifelse(no == Niter, _Nrem, _nreps_per_iter)
             _pack_view = no == Niter ? pack_view_rem : pack_view
-            # koffset = 0
-            let B = B, C = C
+            let A = A, B = B#, C = C
                 for ko ∈ 0:Kiter
                     ksize = ifelse(ko == 0, _Krem, _kreps_per_iter)
-                    Bsubset2 = PtrArray(gesp(Bptr, (koffset, noffset)), (ksize, nsize), dense_dims_subset(dense_dims(B), stride_rank(B)))
-                    Bpacked2 = ptrarray0(L3ptr, (ksize, nsize))
+                    Bsubset2 = PtrArray(B, (ksize, nsize), none_dense(Val{2}()))
+                    Bpacked2 = ptrarray0(bc, (ksize, nsize))
+                    copyto!(zview(Bpacked2, :, _pack_view), zview(Bsubset2, :, _pack_view))
                     
-                    copyto!(view(Bpacked2, :, _pack_view), view(Bsubset2, :, _pack_view))
-                    _atomic_or!(atomicp, idflag)
-                    while _atomic_load(atomicp) != flag
+                    # flagcmp = _atomic_or!(atomicp, idflag)
+                    # # atomic_fence()
+                    # while flagcmp != flag
+                    #     # @show _atomic_load(atomicp), id, last_id, flag
+                    #     flagcmp = _atomic_max!(atomicp, zero(UInt))
+                    #     pause()
+                    #     ((stuck += 1) > max_iter) && error("$id stuck for $stuck iterations")
+                    # end
+                    # @show 0, id, time_ns()
+                    sync_iters += total_ids
+                    _mv = _atomic_add!(atomicp, one(UInt))
+                    while _mv < sync_iters
                         pause()
+                        # _mv = _atomic_min!(atomicp, sync_iters)
+                        _mv = _atomic_max!(atomicp, zero(UInt))
+                        # mv = _mv % Int; sv = sync_iters % Int
+                        # @show 0, (id%Int), threadid()-1, mv, sv
+                        # ((stuck += 1) > max_iter) && error("$id stuck for $stuck iterations")
+                        # ccall(:jl_wakeup_thread, Cvoid, (Int16,), 0 % Int16)
+                        # ccall(:jl_wakeup_thread, Cvoid, (Int16,), 1 % Int16)
+                        # ccall(:jl_wakeup_thread, Cvoid, (Int16,), 2 % Int16)
+                        # ccall(:jl_wakeup_thread, Cvoid, (Int16,), 3 % Int16)
                     end
-                    # moffset = 0
-                    let A = A, B = stridedpointer(Bpacked2), C = C
+                    # @show 1, id, time_ns()
+                    # cmp_id += total_ids
+                    # cmp_id_next += total_ids
+                    # atomic_fence()
+                    # while _atomic_load(atomicp) < sync_iters
+                    # while _atomic_min!(atomicp, sync_iters) < sync_iters
+                    #     # atomic_fence()
+                    #     mv = _atomic_min!(atomicp, sync_iters) % Int; sv = sync_iters%Int
+                    #     @show 0, (id%Int), threadid()-1, mv, sv
+                    #     pause()
+                    #     # sleep(1e-3)
+                    #     ((stuck += 1) > max_iter) && error("$id stuck for $stuck iterations")
+                    # end
+                    # while !_atomic_cas_cmp!(atomicp, cmp_id, cmp_id_next)
+                    #     # cl = cmp_id % Int32; cu = (cmp_id >> 32) % Int32
+                    #     # aplu = _atomic_load(atomicp); apl = aplu % Int32; apu = (aplu >> 32)%Int32
+                    #     # @show 0, id%Int, apl, apu, cl, cu
+                    #     # @assert _atomic_load(atomicp) ≤ cmp_id "atomicp too large for $id, !($(_atomic_load(atomicp)) ≤ $cmp_id"
+                    #     pause()
+                    #     # ((stuck += 1) > max_iter) && error("$id stuck for $stuck iterations")
+                    #     # sleep(1e-2)
+                    # end
+                    let A = A, B = zstridedpointer(Bpacked2), C = C
                         for mo in 0:Miter
+                            # @show mo, ko, no
                             msize = ifelse(mo == Miter, _Mrem, _mreps_per_iter)
-                            Asubset = PtrArray(gesp(Aptr, (moffset, koffset)), (msize, ksize), dense_dims_subset(dense_dims(A), stride_rank(A)))
-
-                            Cpmat = PtrArray(gesp(Cptr, (moffset, noffset)), (msize, nsize), dense_dims_subset(dense_dims(C), stride_rank(C)))
                             if ko == 0
-                                packaloopmul!(Cpmat, Asubset, Bpacked2, α, β, (zrange(msize), zrange(ksize), zrange(nsize)))
+                                packaloopmul!(C, A, B, α,     β, (msize, ksize, nsize))
                             else
-                                packaloopmul!(C, A, B, α, One(), (zrange(msize), zrange(ksize), zrange(nsize)))
+                                packaloopmul!(C, A, B, α, One(), (msize, ksize, nsize))
                             end
                             A = gesp(A, (mreps_per_iter, Zero()))
                             C = gesp(C, (mreps_per_iter, Zero()))
                             # moffset += mreps_per_iter
                         end
                     end
-                    _atomic_xor!(atomicp, idflag)
+                    # @assert _atomic_xor!(atomicp, idflag) != zero(UInt)
+                    # 
                     A = gesp(A, (Zero(), ksize))
-                    B = gesp(A, (ksize, Zero()))
-                    while _atomic_load(atomicp) != zero(UInt)
+                    B = gesp(B, (ksize, Zero()))
+                    # atomic_fence()
+                    # flagcmp = _atomic_xor!(atomicp, idflag)
+                    # while flagcmp != zero(UInt)
+                    #     # @show _atomic_load(atomicp), id, last_id
+                    #     flagcmp = _atomic_max!(atomicp, zero(UInt))
+                    #     pause()
+                    #     ((stuck += 1) > max_iter) && error("$id stuck for $stuck iterations")
+                    # end
+
+                    _mv = _atomic_add!(atomics, one(UInt))
+                    # while _atomic_load(atomics) < sync_iters
+                    while _mv < sync_iters
                         pause()
+                        # _mv = _atomic_min!(atomics, sync_iters)
+                        _mv = _atomic_max!(atomics, zero(UInt))
+                        # atomic_fence()
+                        # mv = _atomic_min!(atomicp, sync_iters) % Int; sv = sync_iters%Int
+                        # @show 1, (id%Int), threadid()-1, mv, sv
+                        # pause()
+                        # # sleep(1e-3)
+                        # ((stuck += 1) > max_iter) && error("$id stuck for $stuck iterations")
+                        # ccall(:jl_wakeup_thread, Cvoid, (Int16,), 0 % Int16)
+                        # ccall(:jl_wakeup_thread, Cvoid, (Int16,), 1 % Int16)
+                        # ccall(:jl_wakeup_thread, Cvoid, (Int16,), 2 % Int16)
+                        # ccall(:jl_wakeup_thread, Cvoid, (Int16,), 3 % Int16)
                     end
-                    # koffset += ksize
+                    # atomic_fence()
+                    # while !_atomic_cas_cmp!(atomics, cmp_id, cmp_id_next)
+                        # cl = cmp_id % Int32; cu = (cmp_id >> 32) % Int32
+                        # aslu = _atomic_load(atomics); asl = aslu % Int32; asu = (aslu >> 32)%Int32
+                        # @show 1, id%Int, asl, asu, cl, cu
+                        # @assert _atomic_load(atomics) ≤ cmp_id "atomics too large, !($(_atomic_load(atomics)) ≤ $cmp_id"
+                        # pause()
+                        # ((stuck += 1) > max_iter) && error("$id stuck for $stuck iterations")
+                        # sleep(1e-2)
+                    # end
+                    # stuck = 0
                 end
             end
             B = gesp(B, (Zero(), nreps_per_iter))
