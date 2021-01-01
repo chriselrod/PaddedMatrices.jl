@@ -7,7 +7,7 @@ using PaddedMatrices, StructArrays, LinearAlgebra, BenchmarkTools, Libdl
 # BLAS.set_num_threads(1); Base.Threads.nthreads()
 # For laptops that thermally throttle, you can set the `JULIA_SLEEP_BENCH` environment variable for #seconds to sleep before each `@belapsed`
 const SLEEPTIME = parse(Float64, get(ENV, "JULIA_SLEEP_BENCH", "0"))
-const THREADS = min(parse(Float64, get(ENV, "JULIA_BENCH_THREADS", "1")), PaddedMatrices._nthreads())
+const THREADS = min(parse(Int, get(ENV, "JULIA_BENCH_THREADS", "1")), PaddedMatrices._nthreads())
 maybe_sleep() = iszero(SLEEPTIME) || sleep(SLEEPTIME)
 
 # function check_if_should_pack(C, A, cache_params)
