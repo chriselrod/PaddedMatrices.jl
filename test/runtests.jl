@@ -1,6 +1,9 @@
 using PaddedMatrices, LinearAlgebra, Aqua
 using Test
 
+import InteractiveUtils
+InteractiveUtils.versioninfo(stdout; verbose = true)
+
 @show PaddedMatrices.VectorizationBase.REGISTER_COUNT
 const START_TIME = time()
 

@@ -378,22 +378,37 @@ end
     maybeinline(C, A) && return inlineloopmul!(C, A, B, α, β)
     jmult!(C, A, B, α, β, nthread, stride_rank(C))
 end
-jmult!(C, A, B, α, β, nthread, ::StrideRank{(2, 1)}) = (jmult!(C', B', A', α, β, nthread, nothing); return C)
-jmult!(C, A, B, α, β, nthread, ::StrideRank) = jmult!(C, A, B, α, β, nthread, nothing)
+jmult!(C::AbstractMatrix, A, B, α, β, nthread, ::StrideRank{(2, 1)}) = (jmult!(C', B', A', α, β, nthread, nothing); return C)
+jmult!(C::AbstractMatrix, A, B, α, β, nthread, ::StrideRank) = jmult!(C, A, B, α, β, nthread, nothing)
 
-function jmult!(C::AbstractMatrix{T}, A, B, α, β, nthread, matmuldims::Union{Nothing,Tuple{Vararg{Integer,3}}}) where {T}
+function jmult!(C::AbstractMatrix{T}, A, B, α, β, nthread, matmuldims) where {T}#::Union{Nothing,Tuple{Vararg{Integer,3}}}) where {T}
     # Don't allow nested `jmult!`
     iszero(ccall(:jl_in_threaded_region, Cint, ())) || return jmul!(C, A, B, α, β, matmuldims)
     nt = _nthreads()
     _nthread = nthread === nothing ? nt : min(nt, nthread)
-    MKN = matmuldims === nothing ? matmul_sizes(C, A, B) : matmuldims
+    M, K, N = matmuldims === nothing ? matmul_sizes(C, A, B) : matmuldims
+
+    W = VectorizationBase.pick_vector_width_val(T)
+    # Assume 3 μs / spawn cost
+    # 15W approximate GFLOPS target
+    # 22500 = 3e-6μ/spawn * 15 / 2e-9
+    L = StaticInt{22500}() * W
+    MKN = M*K*N
+    suggested_threads = cld_fast(MKN, L)
+    nspawn = min(_nthread, suggested_threads)
+    if nspawn ≤ 1
+        # We convert to `PtrArray`s here to reduce recompilation
+        loopmul!(zstridedpointer(C), zstridedpointer(A), zstridedpointer(B), α, β, (CloseOpen(M),CloseOpen(K),CloseOpen(N)))
+        return C
+    elseif MKN * static_sizeof(T) < 5451776 # Only start threading beyond about 88x88 * 88x88 for `Float64`, or 111x111 * 111x111 for `Float32`
+        return jmul!(C, A, B, α, β, (M, K, N))
+    end
     Mc, Kc, Nc = matmul_params(T)
     Cb = preserve_buffer(C); Ab = preserve_buffer(A); Bb = preserve_buffer(B)
     GC.@preserve Cb Ab Bb begin
-        # Base.unsafe_convert(Ptr{T}, BCACHE)
         _jmult!(
             zstridedpointer(C), zstridedpointer(A), zstridedpointer(B),
-            α, β, _nthread, MKN, Mc, Kc, Nc
+            α, β, nspawn, (M,K,N), Mc, Kc, Nc
         )
     end
     return C
@@ -434,7 +449,7 @@ end
 
 function _jmult!(
     C::AbstractStridedPointer{T}, A::AbstractStridedPointer, B::AbstractStridedPointer,
-    α, β, nthread, (M,K,N), ::StaticInt{Mc}, ::StaticInt{Kc}, ::StaticInt{Nc}
+    α, β, nspawn, (M,K,N), ::StaticInt{Mc}, ::StaticInt{Kc}, ::StaticInt{Nc}
 ) where {T,Mc,Kc,Nc}
     Mᵣ = StaticInt{mᵣ}();
     Nᵣ = StaticInt{nᵣ}()
@@ -442,18 +457,6 @@ function _jmult!(
     MᵣW = Mᵣ*W
     # nkern = cld_fast(M * N,  MᵣW * Nᵣ)
 
-    # Assume 3 μs / spawn cost
-    # 15W approximate GFLOPS target
-    # 22500 = 3e-6μ/spawn * 15 / 2e-9
-    L = StaticInt{22500}() * W
-    MKN = M*K*N
-    suggested_threads = cld_fast(MKN, L)
-    nspawn = min(nthread, suggested_threads)
-    if nspawn ≤ 1
-        # We convert to `PtrArray`s here to reduce recompilation
-        loopmul!(zero_offsets(C), zero_offsets(A), zero_offsets(B), α, β, (CloseOpen(M),CloseOpen(K),CloseOpen(N)))
-        return
-    end
     # Approach:
     # Check if we want to pack B
     #    if not, check if we want to pack A
@@ -507,7 +510,7 @@ function _jmult!(
                             if tnum == _nspawn_m1
                                 wait(runfunc(LoopMulClosure{false}(_C, _A, _B, α, β, msize, K, nsize), _nspawn))
                                 # loopmul!(_C, _A, _B, α, β, (CloseOpen(msize), CloseOpen(K), CloseOpen(nsize)))
-                                for ic ∈ CloseOpen(One(), _nspawn); @inbounds wait(MULTASKS[ic]); end
+                                waitonmultasks(CloseOpen(Zero(), _nspawn))
                                 return
                             end
                             runfunc!(LoopMulClosure{false}(_C, _A, _B, α, β, msize, K, nsize), (tnum += 1))
@@ -587,10 +590,10 @@ function _jmult!(
     end
 end
 
-# _tail(r::UnitRange) = (first(r) + One()):last(r)
-_tail(r::CloseOpen) = CloseOpen(first(r) + One(), r.upper)
-function waitonmultasks(tasks)
-    for tid ∈ _tail(tasks)
+# If tasks is [0,1,2,3] (e.g., `CloseOpen(0,4)`), it will wait on `MULTASKS[i]` for `i = [1,2,3]`.
+function waitonmultasks(tasks::CloseOpen)
+    tid = Int(first(tasks))
+    while (tid += 1) < tasks.upper
         @inbounds wait(MULTASKS[tid])
     end
 end
@@ -761,9 +764,9 @@ function sync_mul!(
 
     last_id = total_ids - one(UInt)
     # total_ids = last_id + one(UInt)
-    flag = (one(UInt) << total_ids) - one(UInt)
+    # flag = (one(UInt) << total_ids) - one(UInt)
     # xchngflag = flag | (id << (4sizeof(UInt)))
-    idflag = one(UInt) << id
+    # idflag = one(UInt) << id
     
     # cmp_id = id << (4sizeof(UInt))
     # cmp_id_next = (id + one(UInt))  << (4sizeof(UInt))

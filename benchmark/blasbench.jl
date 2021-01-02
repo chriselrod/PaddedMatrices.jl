@@ -181,7 +181,7 @@ function pick_suffix(desc = "")
     if desc != ""
         suffix *= '_' * desc
     end
-    "$(Sys.CPU_NAME)_$suffix"
+    "$(Sys.CPU_NAME)_$(suffix)_$(THREADS)thread"
 end
 
 function plot(tf, ::Type{T} = Float64, desc = "") where {T}
