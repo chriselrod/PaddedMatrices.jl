@@ -20,6 +20,6 @@ However, beyond this size, performance begins to fall behind:
 
 The packing and blocking need work.
 
-Multithreading is coming.
+Multithreading benchmarks were run using [BLASBenchmarks.jl](https://github.com/chriselrod/BLASBenchmarks.jl).
 
 
