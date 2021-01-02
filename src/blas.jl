@@ -247,7 +247,7 @@ end
 @inline function jmul(A::AbstractMatrix, B::AbstractMatrix)
     m = size(A, StaticInt{1}())
     p = size(B, StaticInt{2}())
-    C = similar(A, (m, p))
+    C = StrideArray{promote_type(eltype(A),eltype(B))}(undef, (m,p))
     jmul!(C, A, B)
     return C
 end
@@ -372,7 +372,7 @@ end
 @inline function jmult(A, B)
     m = size(A, StaticInt{1}())
     p = size(B, StaticInt{2}())
-    C = similar(A, (m, p))
+    C = StrideArray{promote_type(eltype(A),eltype(B))}(undef, (m,p))
     jmult!(C, A, B)
     return C
 end
