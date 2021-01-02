@@ -20,6 +20,14 @@ julia> jmult(A, B) # (multi-threaded) multiply A×B and return the result
 julia> jmul(A, B) # (single-threaded) multiply A×B and return the result
 ```
 
+If you want to use the multi-threaded functions, you need to start Julia with multiple threads.
+PaddedMatrices will use a maximum of `min(VectorizationBase.NUM_CORES, Threads.nthreads() - 1)` threads.
+Therefore, if you have a system with `N` cores, you should start Julia with `N + 1` threads.
+For example, if you have a 8 core system, you should start Julia with 9 threads.
+To start Julia with 9 threads, either:
+- Start Julia with `julia -t 9`
+- Set the `JULIA_NUM_THREADS` environment variable to `9` **before** starting Julia
+
 ## Usage
 
 This library provides a few array types, as well as pure-Julia matrix multiplication.
