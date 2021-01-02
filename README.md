@@ -6,7 +6,17 @@
 [![CI (Julia nightly)](https://github.com/chriselrod/PaddedMatrices.jl/workflows/CI%20(Julia%20nightly)/badge.svg)](https://github.com/chriselrod/PaddedMatrices.jl/actions?query=workflow%3A%22CI+%28Julia+nightly%29%22)
 [![Codecov](https://codecov.io/gh/chriselrod/PaddedMatrices.jl/branch/master/graph/badge.svg)](https://codecov.io/gh/chriselrod/PaddedMatrices.jl)
 
-# Usage
+## Quick Start
+
+```julia
+julia> using PaddedMatrices
+
+julia> jmult!(C, A, B) # (multi-threaded) multiply A×B and store the result in C (overwriting the contents of C)
+
+julia> jmul!(C, A, B) # (single-threaded) multiply A×B and store the result in C (overwriting the contents of C)
+```
+
+## Usage
 
 This library provides a few array types, as well as pure-Julia matrix multiplication.
 
