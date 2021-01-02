@@ -382,12 +382,13 @@ jmult!(C::AbstractMatrix, A, B, α, β, nthread, ::StrideRank{(2, 1)}) = (jmult!
 jmult!(C::AbstractMatrix, A, B, α, β, nthread, ::StrideRank) = jmult!(C, A, B, α, β, nthread, nothing)
 
 function jmult!(C::AbstractMatrix{T}, A, B, α, β, nthread, matmuldims) where {T}#::Union{Nothing,Tuple{Vararg{Integer,3}}}) where {T}
-    # Don't allow nested `jmult!`
-    iszero(ccall(:jl_in_threaded_region, Cint, ())) || return jmul!(C, A, B, α, β, matmuldims)
+    # Don't allow nested `jmult!`, and if we were padded `nthread` of 1, don't thread
     nt = _nthreads()
-    _nthread = nthread === nothing ? nt : min(nt, nthread)
-    M, K, N = matmuldims === nothing ? matmul_sizes(C, A, B) : matmuldims
+    _nthread = nthread === nothing ? nt : min(_nthreads(), nthread)
 
+    (!iszero(ccall(:jl_in_threaded_region, Cint, ())) || (_nthread ≤ 1)) && return jmul!(C, A, B, α, β, matmuldims)
+
+    M, K, N = matmuldims === nothing ? matmul_sizes(C, A, B) : matmuldims
     W = VectorizationBase.pick_vector_width_val(T)
     # Assume 3 μs / spawn cost
     # 15W approximate GFLOPS target
@@ -395,14 +396,14 @@ function jmult!(C::AbstractMatrix{T}, A, B, α, β, nthread, matmuldims) where {
     L = StaticInt{22500}() * W
     MKN = M*K*N
     suggested_threads = cld_fast(MKN, L)
-    nspawn = min(_nthread, suggested_threads)
-    if nspawn ≤ 1
+    if suggested_threads ≤ 1
         # We convert to `PtrArray`s here to reduce recompilation
         loopmul!(zstridedpointer(C), zstridedpointer(A), zstridedpointer(B), α, β, (CloseOpen(M),CloseOpen(K),CloseOpen(N)))
         return C
-    elseif MKN * static_sizeof(T) < 5451776 # Only start threading beyond about 88x88 * 88x88 for `Float64`, or 111x111 * 111x111 for `Float32`
+    elseif MKN * static_sizeof(T) < 5451776  # Only start threading beyond about 88x88 * 88x88 for `Float64`, or 111x111 * 111x111 for `Float32`
         return jmul!(C, A, B, α, β, (M, K, N))
     end
+    nspawn = min(_nthread, suggested_threads)
     Mc, Kc, Nc = matmul_params(T)
     Cb = preserve_buffer(C); Ab = preserve_buffer(A); Bb = preserve_buffer(B)
     GC.@preserve Cb Ab Bb begin
