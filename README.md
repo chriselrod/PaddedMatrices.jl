@@ -16,6 +16,11 @@ julia> jmult!(C, A, B) # (multi-threaded) multiply A×B and store the result in 
 julia> jmul!(C, A, B) # (single-threaded) multiply A×B and store the result in C (overwriting the contents of C)
 ```
 
+If you want to use the multi-threaded functions, remember to start Julia with multiple threads, e.g.:
+- `julia -t auto`
+- `julia -t 8`
+- Set the `JULIA_NUM_THREADS` environment variable to `8` **before** starting Julia
+
 ## Usage
 
 This library provides a few array types, as well as pure-Julia matrix multiplication.
