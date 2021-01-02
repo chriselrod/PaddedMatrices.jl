@@ -106,5 +106,5 @@ let ityp = "i$(8sizeof(UInt))"
         end
     end
 end
-
+@inline _atomic_load!(ptr::Ptr{UInt}) = _atomic_max!(ptr, zero(UInt))
 

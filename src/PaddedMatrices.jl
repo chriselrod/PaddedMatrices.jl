@@ -31,6 +31,8 @@ export @StrideArray, @gc_preserve, # @Constant,
     jmul!, jmult!, mul!, *ˡ, StaticInt
 # LazyMap, 
 
+const ChannelArgs = Tuple{Ptr{UInt},Ptr{Cvoid},Tuple{UInt64,UInt64,Tuple{UInt64,UInt64,UInt64,UInt,UInt,UInt},UInt32,UInt32,UInt32},UInt32,UInt32};
+const RChannel = Channel{Tuple{Ptr{Cvoid},ChannelArgs}};
 
 
 include("type_declarations.jl")
@@ -42,6 +44,8 @@ include("indexing.jl")
 include("initialization.jl")
 include("views.jl")
 include("rand.jl")
+include("reassembly.jl")
+include("blasclosures.jl")
 include("kernels.jl")
 include("blas.jl")
 include("broadcast.jl")
@@ -65,25 +69,52 @@ const BCACHE = Float64[]
 """
 Length is one less than `Base.nthreads()`
 """
-const MULTASKS = Task[]
-_nthreads() = min(NUM_CORES, length(MULTASKS));
+# const MULTASKS = Task[]
+# _nthreads() = min(NUM_CORES, length(MULTASKS));
 
-function runfunc(t::Task, tid)
-    t.sticky = true
-    ccall(:jl_set_task_tid, Cvoid, (Any, Cint), t, tid)
-    push!(@inbounds(Base.Workqueues[tid+1]), t)
-    ccall(:jl_wakeup_thread, Cvoid, (Int16,), tid % Int16)
-    t
+# function runfunc(t::Task, tid)
+#     t.sticky = true
+#     ccall(:jl_set_task_tid, Cvoid, (Any, Cint), t, tid)
+#     push!(@inbounds(Base.Workqueues[tid+1]), t)
+#     ccall(:jl_wakeup_thread, Cvoid, (Int16,), tid % Int16)
+#     t
+# end
+# runfunc(func, tid) = runfunc(Task(func), tid)
+# function runfunc!(ft, tid)
+#     @inbounds MULTASKS[tid] = runfunc(ft, tid)
+#     nothing
+# end
+
+const FCHANNEL = RChannel[]
+_nthreads() = min(NUM_CORES, length(FCHANNEL));
+function crun(chn::RChannel)
+    f, args = take!(chn)
+    ccall(f, Cvoid, (ChannelArgs,), args)
 end
-runfunc(func, tid) = runfunc(Task(func), tid)
-function runfunc!(ft, tid)
-    @inbounds MULTASKS[tid] = runfunc(ft, tid)
-    nothing
+
+struct Runner
+    chn::RChannel
+end
+function (r::Runner)()
+    chn = r.chn
+    while true
+        crun(chn)
+    end
 end
 
 function __init__()
     resize!(BCACHE, BSIZE * BCACHE_COUNT)
-    resize!(MULTASKS, nthreads() - 1)
+    resize!(FCHANNEL, nthreads() - 1)
+
+    for i ∈ 1:nthreads() - 1
+        chn = FCHANNEL[i] = RChannel(1)
+        t = Task(Runner(chn))
+        t.sticky = true
+        ccall(:jl_set_task_tid, Cvoid, (Any, Cint), t, i % Cint)
+        push!(@inbounds(Base.Workqueues[i+1]), t);
+        ccall(:jl_wakeup_thread, Cvoid, (Int16,), i % Int16)
+    end
+
 end
 
 # include("precompile.jl")

@@ -309,58 +309,6 @@ end
 # end
 # ThreadRun(i::Int, n::Int) = ThreadRun(i % UInt32, n % UInt32)
 
-struct LoopMulClosure{P,TC,TA,TB,Α,Β,Md,Kd,Nd}
-    C::TC
-    A::TA
-    B::TB
-    α::Α # \Alpha
-    β::Β # \Beta
-    M::Md
-    K::Kd
-    N::Nd
-end
-function LoopMulClosure{P}(
-    C::TC, A::TA, B::TB, α::Α, β::Β, M::Md, K::Kd, N::Nd
-) where {P,TC<:AbstractStridedPointer,TA<:AbstractStridedPointer,TB<:AbstractStridedPointer,Α,Β,Md,Kd,Nd}
-    LoopMulClosure{P,TC,TA,TB,Α,Β,Md,Kd,Nd}(C, A, B, α, β, M, K, N)
-end
-# function LoopMulClosure{true}(
-#     C::TC, A::TA, B::TB, α::Α, β::Β, Maxis::M, Kaxis::K, Naxis::N
-# ) where {TC,TA,TB,Α,Β,M,K,N}
-#     LoopMulClosure{true,TC,TA,TB,Α,Β,M,K,N}(C, A, B, α, β, Maxis, Kaxis, Naxis)
-# end
-function LoopMulClosure{P}(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, α, β, M, K, N) where {P} # if not packing, discard `PtrArray` wrapper
-    LoopMulClosure{P}(zstridedpointer(C), zstridedpointer(A), zstridedpointer(B), α, β, M, K, N)
-end
-# function LoopMulClosure{true}(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, α, β, M, K, N)
-#     LoopMulClosure{true}(C, A, B, α, β, M, K, N)
-# end
-(m::LoopMulClosure{false})() = loopmul!(m.C, m.A, m.B, m.α, m.β, (CloseOpen(m.M), CloseOpen(m.K), CloseOpen(m.N)))
-# (m::LoopMulClosure{true})() = jmulpackAonly!(m.C, m.A, m.B, m.α, m.β, (m.Maxis, m.Kaxis, m.Naxis))
-function (m::LoopMulClosure{true,TC})() where {T,TC <: AbstractStridedPointer{T}}
-    Mc,Kc,Nc = matmul_params(T)
-    jmulpackAonly!(m.C, m.A, m.B, m.α, m.β, Mc, Kc, Nc, (m.M, m.K, m.N))
-end
-
-struct PackAClosure{TC,TA,TB,Α,Β,Md,Kd,Nd,T}
-    # lmc::LoopMulClosure{TC,TA,TB,Α,Β,M,K,N}
-    C::TC
-    A::TA
-    B::TB
-    α::Α # \Alpha
-    β::Β # \Beta
-    M::Md
-    K::Kd
-    N::Nd
-    tasks::T
-end
-# function PackAClosure(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix, α, β, M, K, N, tasks)
-#     PackAClosure(stridedpointer(C), stridedpointer(A), stridedpointer(B), α, β, M, K, N, tasks)
-# end
-function (m::PackAClosure{TC})() where {T,TC<:AbstractStridedPointer{T}}
-    Mc,Kc,Nc = matmul_params(T)
-    jmultpackAonly!(m.C, m.A, m.B, m.α, m.β, Mc, Kc, Nc, m.M, m.K, m.N, m.tasks)
-end
 
 @inline function jmult!(C, A, B)
     maybeinline(C, A) && return inlineloopmul!(C, A, B, One(), Zero())
@@ -494,34 +442,31 @@ function _jmult!(
             Nbsize = cld_fast(N, Nblocks)
             Mrem = M - Mbsize * (Mblocks - One())
             Nrem = N - Nbsize * (Nblocks - One())
-            tnum = 0
+            tid = 0
             let _A = A, _B = B, _C = C
-                for n ∈ Base.OneTo(Nblocks)
-                    nsize = ifelse(n == Nblocks, Nrem, Nbsize) 
-                    # nrange = nlower:min(N,nupper)
-                    # mlower = 0
-                    # mupper = Mbsize-1
-                    # _B = stridedpointer(zview(B, :, nrange))
-                    let _A = _A, _C = _C
-                        for m ∈ Base.OneTo(Mblocks)
-                            msize = ifelse(m == Mblocks, Mrem, Mbsize)
-                            # mrange = mlower:min(M,mupper)
-                            # _C = stridedpointer(zview(C, mrange, nrange))
-                            # _A = stridedpointer(zview(A, mrange, :))
-                            if tnum == _nspawn_m1
-                                wait(runfunc(LoopMulClosure{false}(_C, _A, _B, α, β, msize, K, nsize), _nspawn))
-                                # loopmul!(_C, _A, _B, α, β, (CloseOpen(msize), CloseOpen(K), CloseOpen(nsize)))
-                                waitonmultasks(CloseOpen(Zero(), _nspawn))
-                                return
+                atomic = Ref{UInt}(zero(UInt))
+                atomicptr = Base.unsafe_convert(Ptr{UInt}, atomic)
+                GC.@preserve atomic begin
+                    for n ∈ Base.OneTo(Nblocks)
+                        nsize = ifelse(n == Nblocks, Nrem, Nbsize) 
+                        let _A = _A, _C = _C
+                            for m ∈ Base.OneTo(Mblocks)
+                                msize = ifelse(m == Mblocks, Mrem, Mbsize)
+                                loopmul_call_thread!(
+    atomicptr, _C, _A, _B, α, β, msize, K, nsize, Val{false}(), (tid += 1)
+)
+                                _A = gesp(_A, (msize, Zero()))
+                                _C = gesp(_C, (msize, Zero()))
                             end
-                            runfunc!(LoopMulClosure{false}(_C, _A, _B, α, β, msize, K, nsize), (tnum += 1))
-                            _A = gesp(_A, (msize, Zero()))
-                            _C = gesp(_C, (msize, Zero()))
                         end
+                        _B = gesp(_B, (Zero(), nsize))
+                        _C = gesp(_C, (Zero(), nsize))
                     end
-                    _B = gesp(_B, (Zero(), nsize))
-                    _C = gesp(_C, (Zero(), nsize))
+                    while _atomic_load!(atomicptr) < tid
+                        pause()
+                    end
                 end
+                return
             end
         elseif split_n# do pack A
             # Mreps = cld_fast(M, MᵣW)
@@ -592,12 +537,13 @@ function _jmult!(
 end
 
 # If tasks is [0,1,2,3] (e.g., `CloseOpen(0,4)`), it will wait on `MULTASKS[i]` for `i = [1,2,3]`.
-function waitonmultasks(tasks::CloseOpen)
-    tid = Int(first(tasks))
-    while (tid += 1) < tasks.upper
-        @inbounds wait(MULTASKS[tid])
-    end
-end
+# function waitonmultasks(tasks::CloseOpen)
+#     tid = Int(first(tasks))
+#     while (tid += 1) < tasks.upper
+#         @inbounds wait(MULTASKS[tid])
+#     end
+# end
+
 
 # _front(r::AbstractUnitRange) = CloseOpen(first(r), last(r))
 """
@@ -618,19 +564,35 @@ function jmultpackAonly!(
     if iszero(_Mrem)
         Mrem = Mblock
         Miter = _Miter - One()
+        # total_iter = _Miter
     else
         Mrem = _Mrem
         Miter = _Miter
+        # total_iter = _Miter + One()
     end
     tid = ft = first(tasks)
-    for _ ∈ Base.OneTo(Miter)
-        runfunc!(LoopMulClosure{true}(C, A, B, α, β, Mblock, K, N), (tid += 1))
-        A = gesp(A, (Mblock, Zero()))
-        C = gesp(C, (Mblock, Zero()))        
+    atomic = Ref{UInt}(zero(UInt))
+    atomicptr = Base.unsafe_convert(Ptr{UInt}, atomic)
+    GC.@preserve atomic begin
+        for _ ∈ Base.OneTo(Miter)
+            loopmul_call_thread!(
+                atomicptr, C, A, B, α, β, Mblock, K, N, Val{true}(), (tid += 1)
+            )
+            # runfunc(LoopMulClosure{true}(C, A, B, α, β, Mblock, K, N), (tid += 1))
+            A = gesp(A, (Mblock, Zero()))
+            C = gesp(C, (Mblock, Zero()))        
+        end
+        loopmul_call_thread!(
+            atomicptr, C, A, B, α, β, Mrem, K, N, Val{true}(), (tid += 1)
+        )
+        # runfunc(LoopMulClosure{true}(C, A, B, α, β, Mrem, K, N), (tid += 1))
+        # jmulpackAonly!(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), (Mrem, K, N))
+        # waitonmultasks(CloseOpen(ft, tid))
+        while _atomic_load!(atomicptr) ≤ Miter#< total_iter
+            pause()
+        end
     end
-    wait(runfunc(LoopMulClosure{true}(C, A, B, α, β, Mrem, K, N), (tid += 1)))
-    # jmulpackAonly!(C, A, B, α, β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), (Mrem, K, N))
-    waitonmultasks(CloseOpen(ft, tid))
+    nothing
 end
 
 # open_upper(r::CloseOpen) = r.upper
@@ -675,9 +637,11 @@ function jmultpackAB!(
     mᵣW = StaticInt{mᵣ}() * W
 
     to_spawn = length(tasks)
-    atomicsync = Ref{NTuple{9,UInt}}()
+    atomicsync = Ref{NTuple{17,UInt}}()
     p = Base.unsafe_convert(Ptr{UInt}, atomicsync)
-    _atomic_store!(p, zero(UInt)); _atomic_store!(p + 8sizeof(UInt), zero(UInt))
+    _atomic_store!(p, zero(UInt));
+    _atomic_store!(p + 8sizeof(UInt), zero(UInt))
+    _atomic_store!(p + 16sizeof(UInt), zero(UInt))
     # unsafe_store!(p, zero(UInt), 1); unsafe_store!(p, zero(UInt), 9)
     
     bc = _use_bcache()
@@ -702,7 +666,11 @@ function jmultpackAB!(
             C = gesp(C, (Mblock, Zero()))
         end
         wait(runfunc(SyncClosure{Mc,Kc,Nc}(C, A, B, α, β, Mrem, K, N, p, bc_ptr, zero(UInt), _to_spawn), (tid += 1)))
-        waitonmultasks(CloseOpen(ft, tid))
+        total_iter = Miter + 1; atomicp = atomicsync + 16sizeof(UInt)
+        while _atomic_load!(atomicp) ≤ Miter #< total_iter
+            pause()
+        end
+        # waitonmultasks(CloseOpen(ft, tid))
     end
     _free_bcache!(bc)
     return
@@ -728,30 +696,6 @@ end
 #     jmultpackAB!(m.C, m.A, m.B, m.α, m.β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), m.M, m.K, m.N, m.tv, Val{1}())
 # end
 
-struct SyncClosure{Mc,Kc,Nc,TC,TA,TB,Α,Β,Md,Kd,Nd,CA}
-    C::TC
-    A::TA
-    B::TB
-    α::Α
-    β::Β
-    M::Md
-    K::Kd
-    N::Nd
-    p::Ptr{UInt}
-    bc::Ptr{CA}
-    id::UInt
-    last_id::UInt
-end
-
-function SyncClosure{Mc,Kc,Nc}(
-    C::TC, A::TA, B::TB, α::Α, β::Β, M::Md, K::Kd, N::Nd, p::Ptr{UInt}, bc::Ptr{CA}, id::UInt, last_id::UInt
-) where {Mc,Kc,Nc,TC,TA,TB,Α,Β,Md,Kd,Nd,CA}
-    SyncClosure{Mc,Kc,Nc,TC,TA,TB,Α,Β,Md,Kd,Nd,CA}(C, A, B, α, β, M, K, N, p, bc, id, last_id)    
-end
-
-function (sc::SyncClosure{Mc,Kc,Nc})() where {Mc,Kc,Nc}
-    sync_mul!(sc.C, sc.A, sc.B, sc.α, sc.β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), sc.M, sc.K, sc.N, sc.p, sc.bc, sc.id, sc.last_id)
-end
 
 function sync_mul!(
     C::AbstractStridedPointer{T}, A::AbstractStridedPointer, B::AbstractStridedPointer,
