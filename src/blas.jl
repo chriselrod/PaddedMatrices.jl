@@ -244,6 +244,13 @@ end
     mc_mult || (vectormultiple(Xa, Tc, Ta) && ((M * K) ≤ (mc * kc)) && iszero(reinterpret(Int, ptrA) & (VectorizationBase.REGISTER_SIZE - 1)))
 end
 
+@inline function jmul(A::AbstractMatrix, B::AbstractMatrix)
+    m = size(A, StaticInt{1}())
+    p = size(B, StaticInt{2}())
+    C = StrideArray{promote_type(eltype(A),eltype(B))}(undef, (m,p))
+    jmul!(C, A, B)
+    return C
+end
 
 @inline function jmul!(C::AbstractMatrix, A::AbstractMatrix, B::AbstractMatrix)
     maybeinline(C, A) && return inlineloopmul!(C, A, B, One(), Zero())
@@ -360,6 +367,14 @@ end
 function (m::PackAClosure{TC})() where {T,TC<:AbstractStridedPointer{T}}
     Mc,Kc,Nc = matmul_params(T)
     jmultpackAonly!(m.C, m.A, m.B, m.α, m.β, Mc, Kc, Nc, m.M, m.K, m.N, m.tasks)
+end
+
+@inline function jmult(A, B)
+    m = size(A, StaticInt{1}())
+    p = size(B, StaticInt{2}())
+    C = StrideArray{promote_type(eltype(A),eltype(B))}(undef, (m,p))
+    jmult!(C, A, B)
+    return C
 end
 
 @inline function jmult!(C, A, B)
