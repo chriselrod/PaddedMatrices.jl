@@ -4,7 +4,7 @@ using Test
 import InteractiveUtils
 InteractiveUtils.versioninfo(stdout; verbose = true)
 
-@show PaddedMatrices.VectorizationBase.REGISTER_COUNT
+@show Threads.nthreads(), PaddedMatrices._nthreads() PaddedMatrices.VectorizationBase.REGISTER_COUNT
 const START_TIME = time()
 
 @inferred PaddedMatrices.matmul_params(Float32)

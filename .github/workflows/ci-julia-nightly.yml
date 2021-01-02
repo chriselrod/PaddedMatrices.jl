@@ -20,8 +20,8 @@ jobs:
           - ubuntu-latest
           - windows-latest
         threads:
-          - '1'
-          - '2'
+          # - '1'
+          - '5'
         arch:
           - x64
     steps:

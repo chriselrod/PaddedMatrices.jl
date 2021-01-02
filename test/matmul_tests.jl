@@ -42,13 +42,13 @@ end
         @time for T in (Float32, Float64, Int32, Int64)
             @show T, @__LINE__
             logMmax, logKmax, logNmax = log.(PaddedMatrices.matmul_params(T))
-            @time for logN ∈ range(0, logNmax + 0.05, length = 10)
+            @time for logN ∈ range(0, logNmax + 0.7, length = 7)
                 N = round(Int, exp(logN))
-                for logM ∈ range(0, logMmax + 0.05, length = 10)
+                for logM ∈ range(0, logMmax + 0.7, length = 7)
                     M = round(Int, exp(logM))
                     C1 = Matrix{T}(undef, M, N);
                     C2 = similar(C1); C3 = similar(C1); C4 = similar(C1); C5 = similar(C1);
-                    for logK ∈ range(0, logKmax + 0.05, length = 10)
+                    for logK ∈ range(0, logKmax + 0.7, length = 7)
                         K = round(Int, exp(logK))
                         
                         gopc = 2e-9M*K*N
