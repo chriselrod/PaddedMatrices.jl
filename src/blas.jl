@@ -245,8 +245,8 @@ end
 end
 
 @inline function jmul(A::AbstractMatrix, B::AbstractMatrix)
-    m = size(A, 1)
-    p = size(B, 2)
+    m = size(A, StaticInt{1}())
+    p = size(B, StaticInt{2}())
     C = similar(A, (m, p))
     jmul!(C, A, B)
     return C
@@ -370,8 +370,8 @@ function (m::PackAClosure{TC})() where {T,TC<:AbstractStridedPointer{T}}
 end
 
 @inline function jmult(A, B)
-    m = size(A, 1)
-    p = size(B, 2)
+    m = size(A, StaticInt{1}())
+    p = size(B, StaticInt{2}())
     C = similar(A, (m, p))
     jmult!(C, A, B)
     return C
