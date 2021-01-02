@@ -16,10 +16,13 @@ julia> jmult!(C, A, B) # (multi-threaded) multiply A×B and store the result in 
 julia> jmul!(C, A, B) # (single-threaded) multiply A×B and store the result in C (overwriting the contents of C)
 ```
 
-If you want to use the multi-threaded functions, remember to start Julia with multiple threads, e.g.:
-- `julia -t auto`
-- `julia -t 8`
-- Set the `JULIA_NUM_THREADS` environment variable to `8` **before** starting Julia
+If you want to use the multi-threaded functions, you need to start Julia with multiple threads.
+PaddedMatrices will use a maximum of `min(VectorizationBase.NUM_CORES, Threads.nthreads() - 1)` threads.
+Therefore, if you have a system with `N` cores, you should start Julia with `N + 1` threads.
+For example, if you have a 8 core system, you should start Julia with 9 threads.
+To start Julia with 9 threads, either:
+- Start Julia with `julia -t 9`
+- Set the `JULIA_NUM_THREADS` environment variable to `9` **before** starting Julia
 
 ## Usage
 
