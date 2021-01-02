@@ -22,5 +22,5 @@ Unlike Cascadelake, where approaching the CPU's peak performance can be challeng
 
 Given that `LoopVectorization` by itself [does better on Cascadelake than PaddedMatrices](https://chriselrod.github.io/LoopVectorization.jl/latest/examples/matrix_multiplication/#Matrix-Multiplication) over the 2-256 size range, it'd be worth comparing Tigerlake with simple `@avx for` loops as well.
 
-
+![threadedbenchmarks](../assets/gemm_Float64_10_1000_tigerlake_AVX512__multithreaded_logscale.svg)
 
