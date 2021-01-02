@@ -14,6 +14,10 @@ julia> using PaddedMatrices
 julia> jmult!(C, A, B) # (multi-threaded) multiply A×B and store the result in C (overwriting the contents of C)
 
 julia> jmul!(C, A, B) # (single-threaded) multiply A×B and store the result in C (overwriting the contents of C)
+
+julia> jmult(A, B) # (multi-threaded) multiply A×B and return the result
+
+julia> jmul(A, B) # (single-threaded) multiply A×B and return the result
 ```
 
 ## Usage
@@ -272,5 +276,3 @@ BenchmarkTools.Trial:
   samples:          10000
   evals/sample:     221
 ```
-
-
