@@ -250,8 +250,8 @@ end
     Wc = VectorizationBase.pick_vector_width_val(Tc) * static_sizeof(Ta) - One()
     iszero(bytex & (VectorizationBase.REGISTER_SIZE - 1))
 end
-@inline function dontpack(pA::AbstractStridedPointer{Ta}, M, K, N, ::StaticInt{mc}, ::StaticInt{kc}, ::Type{Tc}) where {mc, kc, Tc, Ta}
-    (nᵣ ≥ N) || (contiguousstride1(pA) && 
+@inline function dontpack(pA::AbstractStridedPointer{Ta}, M, K, ::StaticInt{mc}, ::StaticInt{kc}, ::Type{Tc}) where {mc, kc, Tc, Ta}
+    (contiguousstride1(pA) && 
          ((((VectorizationBase.AVX512F ? 9 : 13) * VectorizationBase.pick_vector_width(Tc)) ≥ M) ||
           (vectormultiple(bytestride(pA, StaticInt{2}()), Tc, Ta) && ((M * K) ≤ (mc * kc)) && iszero(reinterpret(Int, pointer(pA)) & (VectorizationBase.REGISTER_SIZE - 1)))))
 end
@@ -300,7 +300,7 @@ Otherwise, based on the array's size, whether they are transposed, and whether t
     (M,K,N) = MKN === nothing ? matmul_sizes(C, A, B) : MKN
     Mc, Kc, Nc = matmul_params(T)
     GC.@preserve Cb Ab Bb begin
-        if VectorizationBase.CACHE_SIZE[2] === nothing || dontpack(pA, M, K, N, Mc, Kc, T)
+        if VectorizationBase.CACHE_SIZE[2] === nothing ||  (nᵣ ≥ N) || dontpack(pA, M, K, Mc, Kc, T)
             loopmul!(pC, pA, pB, α, β, (CloseOpen(M),CloseOpen(K),CloseOpen(N)))
             return C
         else
@@ -430,11 +430,12 @@ end
 
     pA = zstridedpointer(A); pB = zstridedpointer(B); pC = zstridedpointer(C);
     Cb = preserve_buffer(C); Ab = preserve_buffer(A); Bb = preserve_buffer(B);
+    N_too_small = nᵣ ≥ N
     GC.@preserve Cb Ab Bb begin
-        if MKN < (StaticInt{5451776}() ÷ static_sizeof(T))
+        if N_too_small | (MKN < (StaticInt{5451776}() ÷ static_sizeof(T)))
             # Only start threading beyond about 88x88 * 88x88 for `Float64`, or 111x111 * 111x111 for `Float32`
             # This is a small-matrix fast path
-            if dontpack(pA, M, K, N, Mc, Kc, T)
+            if N_too_small | dontpack(pA, M, K, Mc, Kc, T)
                 loopmul!(pC, pA, pB, α, β, (CloseOpen(M),CloseOpen(K),CloseOpen(N)))
                 return C
             else
@@ -582,8 +583,8 @@ function _jmul!(
     #       if so, divide `M` first, then use ratio of desired divisions / divisions along `M` to calc divisions along `N`
     #       if not, only thread along `M`. These don't need syncing, as we're not packing `B`
     #    if so, `jmultpackAB!`
-    if VectorizationBase.CACHE_SIZE[2] === nothing ||
-        dontpack(A, M, K, N, StaticInt{Mc}(), StaticInt{Kc}(), T) || # do not pack A
+    if VectorizationBase.CACHE_SIZE[2] === nothing ||  (nᵣ ≥ N) || 
+        dontpack(A, M, K, StaticInt{Mc}(), StaticInt{Kc}(), T) || # do not pack A
         (N * M ≤ (Nc * MᵣW) * nspawn) # do we just want to split aggressively?
         jmultdonotpacka!(C, A, B, α, β, nspawn, (M,K,N))
     elseif (contiguousstride1(B) && (Kc * Nc ≥ K * N)) | (firstbytestride(B) > 1600) # do not pack B
