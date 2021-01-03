@@ -58,7 +58,7 @@ end
                         blastime = @elapsed mul!(C1, A, B)
                         # blastime = @elapsed (C1 = gmul(A, B))
                         bops = gopc / blastime
-                        @show (M,K,N), blastime, bops
+                        @show (M,K,N), blastime, bops, T
                         pmtime_nn = @elapsed jmul!(C2, A, B); pmops_nn = gopc / pmtime_nn
                         @test C1 ≈ C2
                         pmtime_nt = @elapsed jmul!(C3, A, Bt'); pmops_nt = gopc / pmtime_nt

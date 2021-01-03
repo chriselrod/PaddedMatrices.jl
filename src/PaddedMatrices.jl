@@ -84,7 +84,9 @@ end
 
 function __init__()
     resize!(BCACHE, BSIZE * BCACHE_COUNT)
-    resize!(MULTASKS, nthreads() - 1)
+    _nt = nthreads() - 1
+    _nt > 1 && resize!(MULTASKS, _nt)
+    _nt < NUM_CORES && @warn "Your system has $NUM_CORES physical cores, but `PaddedMatrices.jl` only has $(_nt > 1 ? "$(_nt) threads" : "1 thread") available (it doesn't spawn tasks on `threadid() == 1`)."
 end
 
 # include("precompile.jl")
