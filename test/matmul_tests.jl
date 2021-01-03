@@ -42,7 +42,7 @@ end
         @time for T in (Float32, Float64, Int32, Int64)
             @show T, @__LINE__
             logMmax, logKmax, logNmax = log.(PaddedMatrices.matmul_params(T))
-            @time for logN ∈ range(0, logNmax + 0.7, length = 7)
+            @time for logN ∈ range(0, min(logNmax + 0.7, 9.210340371976184), length = 7)
                 N = round(Int, exp(logN))
                 for logM ∈ range(0, logMmax + 0.7, length = 7)
                     M = round(Int, exp(logM))

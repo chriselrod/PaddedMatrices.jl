@@ -36,8 +36,8 @@ function runbenches(sr, ::Type{T} = Float64) where {T}
         end
         maybe_sleep()
         bench_results[i,2] = @belapsed mul!($Cmutable, $Amutable, $Bmutable)
-        Afixed = StrideArray{T}(undef, (StaticInt(M),StaticInt(K))) .= Amutable
-        Bfixed = StrideArray{T}(undef, (StaticInt(K),StaticInt(N))) .= Bmutable
+        Afixed = StrideArray(Amutable)
+        Bfixed = StrideArray(Bmutable)
         Cfixed = StrideArray{T}(undef, (StaticInt(M),StaticInt(N)))
         maybe_sleep()
         bench_results[i,3] = @belapsed mul!($Cfixed, $Afixed, $Bfixed)
