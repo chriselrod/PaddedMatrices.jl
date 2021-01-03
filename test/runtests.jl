@@ -22,4 +22,4 @@ const START_TIME = time()
 end
 
 const ELAPSED_MINUTES = (time() - START_TIME)/60
-@test ELAPSED_MINUTES < 120
+@test ELAPSED_MINUTES < 180

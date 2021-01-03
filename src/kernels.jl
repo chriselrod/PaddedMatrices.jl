@@ -4,10 +4,23 @@
     N = indices((C,B), (StaticInt{2}(),StaticInt{2}()))
     M, K, N
 end
-@inline function matmul_sizes(C, A, B)
-    M, K, N = matmul_axes(C, A, B)
-    static_length(M), static_length(K), static_length(N)
+
+@inline _select(::StaticInt{M}, ::StaticInt{M}) where {M} = StaticInt{M}()
+@noinline _select(::StaticInt{M}, ::StaticInt{N}) where {M,N} = throw("$M ≠ $N")
+@inline _select(::StaticInt{M}, _) where {M} = StaticInt{M}()
+@inline _select(_, ::StaticInt{M}) where {M} = StaticInt{M}()
+@inline _select(x, _) = x
+@inline function matmul_sizes(C,A,B)
+    MC, NC = size(C)
+    MA, KA = size(A)
+    KB, NB = size(B)
+    @assert ((MC == MA) & (KA == KB) & (NC == NB)) "Size mismatch."
+    (_select(MA, MC), _select(KA, KB), _select(NB, NC))
 end
+# @inline function matmul_sizes(C, A, B)
+#     M, K, N = matmul_axes(C, A, B)
+#     static_length(M), static_length(K), static_length(N)
+# end
 
 @inline function loopmul!(C, A, B, ::StaticInt{1}, ::StaticInt{0}, (M, K, N))
     # @avx for n ∈ N, m ∈ M
@@ -251,8 +264,8 @@ end
             Cₘₙ += Aₘₖ * B[k,n]
             Ãₚ[m,k] = Aₘₖ 
         end
-        C[m,n] = α * Cₘₙ + β * C[m,n]
-    end
+        C[m,n] = α * Cₘₙ + β * C[m,n] 
+   end
 end
 @inline function alloc_a_pack(A, M, ::Type{T}) where {T}
     buffer = core_cache_buffer(T, Val(2))
