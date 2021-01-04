@@ -50,15 +50,16 @@ function matmul_params(::Type{T}) where {T}
     mc = MᵣW * MᵣW_mul_factor # TODO: make this smarter/less heuristic
     # L₁ = something(core_cache_size(T, Val(1)), StaticInt{32768}() ÷ static_sizeof(T))
     L₂ = if CACHE_INCLUSIVITY[2]
-        something(core_cache_size(T, Val(2)), StaticInt{262144}() ÷ static_sizeof(T)) - something(core_cache_size(T, Val(1)), StaticInt{32768}() ÷ static_sizeof(T))
+        something(core_cache_size(T, Val(2)), StaticInt{262144}() ÷ static_sizeof(T)) - (something(core_cache_size(T, Val(1)), StaticInt{32768}() ÷ static_sizeof(T)) * StaticInt{CACHE_COUNT[1]}()) ÷ StaticInt{CACHE_COUNT[2]}()
     else
         something(core_cache_size(T, Val(2)), StaticInt{262144}() ÷ static_sizeof(T))
     end
     # _kc = ((StaticInt{795}() * L₂) ÷ StaticInt{1024}() - StaticInt{30420}()) ÷ mc
     _kc = ((StaticInt{795}() * L₂) ÷ StaticInt{1024}() - StaticInt{15250}()) ÷ mc
+    # _kc = ((StaticInt{3}() * L₂) ÷ (StaticInt{4}() * mc)) - StaticInt{130}()
     kc = _max(_kc, StaticInt{120}())
     L₃ = if CACHE_INCLUSIVITY[3]
-        something(cache_size(T, Val(3)), StaticInt{3145728}() ÷ static_sizeof(T)) - L₂
+        something(cache_size(T, Val(3)), StaticInt{3145728}() ÷ static_sizeof(T)) - (L₂ * StaticInt{CACHE_COUNT[2]}()) ÷ StaticInt{CACHE_COUNT[3]}()
     else
         something(cache_size(T, Val(3)), StaticInt{3145728}() ÷ static_sizeof(T))
     end
