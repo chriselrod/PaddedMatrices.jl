@@ -61,6 +61,16 @@ include("miscellaneous.jl")
 function logdensity end
 function ∂logdensity! end
 
+@generated function calc_factors(::Val{nc} = Val{NUM_CORES}()) where {nc}
+    t = Expr(:tuple)
+    for i ∈ nc:-1:1
+        d, r = divrem(nc, i)
+        iszero(r) && push!(t.args, (i, d))
+    end
+    t
+end
+const CORE_FACTORS = calc_factors()
+
 
 const BCACHE = Float64[]
 """
