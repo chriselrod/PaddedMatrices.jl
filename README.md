@@ -11,13 +11,13 @@
 ```julia
 julia> using PaddedMatrices
 
-julia> jmult!(C, A, B) # (multi-threaded) multiply A×B and store the result in C (overwriting the contents of C)
+julia> matmul!(C, A, B) # (multi-threaded) multiply A×B and store the result in C (overwriting the contents of C)
 
-julia> jmul!(C, A, B) # (single-threaded) multiply A×B and store the result in C (overwriting the contents of C)
+julia> matmul_serial!(C, A, B) # (single-threaded) multiply A×B and store the result in C (overwriting the contents of C)
 
-julia> jmult(A, B) # (multi-threaded) multiply A×B and return the result
+julia> matmul(A, B) # (multi-threaded) multiply A×B and return the result
 
-julia> jmul(A, B) # (single-threaded) multiply A×B and return the result
+julia> matmul_serial(A, B) # (single-threaded) multiply A×B and return the result
 ```
 
 If you want to use the multi-threaded functions, you need to start Julia with multiple threads.
@@ -36,7 +36,7 @@ The native types are optionally statically sized, and optionally given padding (
 
 * `SMatrix` and `MMatrix` multiplication from [StaticArrays.jl](https://github.com/JuliaArrays/StaticArrays.jl). Beyond `14`x`14`x`14`, MMatrix will switch to using `LinearAlgebra.BLAS.gemm!`.
 * `StrideArray`, with compile-time known sizes, and an unsafe `PtrArray` that once upon a time had a lower constant overhead, but that problem seems to have been solved on Julia 1.6 (the Cascadelake-AVX512 benchmarks, below).
-* The base `Matrix{Float64}` type, using the pure-Julia `PaddedMatrices.jmul!` method.
+* The base `Matrix{Float64}` type, using the pure-Julia `matmul!` method.
 
 All matrices were square; the `x`-axis reports size of each dimension. Benchmarks ranged from `2`x`2` matrices through `48`x`48`. The `y`-axis reports double-precision GFLOPS. That is billions of double precision floating point operations per second. Higher is better.
 
@@ -59,7 +59,7 @@ PaddedMatrices relies on [LoopVectorization.jl](https://github.com/chriselrod/Lo
 
 One of the goals of PaddedMatrices.jl is to provide good performance across a range of practical sizes.
 
-How does the dynamic `jmul!` compare with OpenBLAS and MKL at larger sizes? Below are more single-threaded `Float64` benchmarks on the 10980XE. Size range from `2`x`2` through `256`x`256`:
+How does the dynamic `matmul!` compare with OpenBLAS and MKL at larger sizes? Below are more single-threaded `Float64` benchmarks on the 10980XE. Size range from `2`x`2` through `256`x`256`:
 ![dgemmbenchmarkssmall](docs/src/assets/gemmFloat64_2_256_cascadelake_AVX512.svg)
 Tigerlake laptop (same as earlier):
 ![dgemmbenchmarkssmall](docs/src/assets/gemmFloat64_2_256_tigerlake_AVX512.svg)
@@ -85,11 +85,11 @@ julia> M = K = N = 71;
 julia> A = rand(M,K); B = rand(K,N); C2 = @time(A * B); C1 = similar(C2);
   0.000093 seconds (2 allocations: 39.516 KiB)
 
-julia> @time(PaddedMatrices.jmul!(C1,A,B)) ≈ C1 # time to first matmul
+julia> @time(matmul!(C1,A,B)) ≈ C1 # time to first matmul
   9.937127 seconds (21.34 M allocations: 1.234 GiB, 2.46% gc time)
 true
 
-julia> foreachmklmul!(C, A, B, N) = foreach(_ -> PaddedMatrices.jmul!(C, A, B), Base.OneTo(N))
+julia> foreachmklmul!(C, A, B, N) = foreach(_ -> matmul!(C, A, B), Base.OneTo(N))
 ```
 And then sample `@pstats` results:
 ```

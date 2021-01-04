@@ -28,8 +28,8 @@ export @StrideArray, @gc_preserve, # @Constant,
     StrideArray, StrideVector, StrideMatrix,
     PtrArray,# PtrVector, PtrMatrix,
     # ConstantArray, ConstantVector, ConstantMatrix, allocarray,
-    jmul!, jmul_single_threaded!, mul!, *ˡ, StaticInt,
-    jmul, jmul_single_threaded
+    matmul!, matmul_serial!, mul!, *ˡ, StaticInt,
+    matmul, matmul_serial
 # LazyMap, 
 
 

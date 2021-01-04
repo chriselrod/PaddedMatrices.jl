@@ -37,8 +37,8 @@ end
 
 # gmul(A, B) = LinearAlgebra.generic_matmatmul('N','N', A, B)
 
-@testset "MatMul" begin
-    @testset "jmul" begin
+@testset "MatrixMultiply" begin
+    @testset "matmul" begin
         @time for T in (Float32, Float64, Int32, Int64)
             @show T, @__LINE__
             logMmax, logKmax, logNmax = log.(PaddedMatrices.matmul_params(T))
@@ -59,9 +59,9 @@ end
                         # blastime = @elapsed (C1 = gmul(A, B))
                         bops = gopc / blastime
                         @show (M,K,N), blastime, bops, T
-                        s_time_nn = @elapsed jmul_single_threaded!(C2, A, B); s_ops_nn = gopc / s_time_nn
+                        s_time_nn = @elapsed matmul_serial!(C2, A, B); s_ops_nn = gopc / s_time_nn
                         @test C1 ≈ C2
-                        s_time_nt = @elapsed jmul_single_threaded!(C3, A, Bt'); s_ops_nt = gopc / s_time_nt
+                        s_time_nt = @elapsed matmul_serial!(C3, A, Bt'); s_ops_nt = gopc / s_time_nt
                         @test C1 ≈ C3
                         @show (M,K,N), s_time_nn, s_ops_nn, s_time_nt, s_ops_nt
                         if T <: AbstractFloat
@@ -69,15 +69,15 @@ end
                         else
                             fill!(C2, -99999); fill!(C3, -99999)
                         end
-                        t_time_nn = @elapsed jmul!(C2, A, B); t_ops_nn = gopc / t_time_nn
+                        t_time_nn = @elapsed matmul!(C2, A, B); t_ops_nn = gopc / t_time_nn
                         @test C1 ≈ C2
-                        t_time_nt = @elapsed jmul!(C3, A, Bt'); t_ops_nt = gopc / t_time_nt
+                        t_time_nt = @elapsed matmul!(C3, A, Bt'); t_ops_nt = gopc / t_time_nt
                         @test C1 ≈ C3
                         @show (M,K,N), t_time_nn, t_ops_nn, t_time_nt, t_ops_nt
                         
-                        s_time_tn = @elapsed jmul_single_threaded!(C4, At', B); s_ops_tn = gopc / s_time_tn
+                        s_time_tn = @elapsed matmul_serial!(C4, At', B); s_ops_tn = gopc / s_time_tn
                         @test C1 ≈ C4
-                        s_time_tt = @elapsed jmul_single_threaded!(C5, At', Bt'); s_ops_tt = gopc / s_time_tt
+                        s_time_tt = @elapsed matmul_serial!(C5, At', Bt'); s_ops_tt = gopc / s_time_tt
                         @test C1 ≈ C5
                         @show (M,K,N), s_time_tn, s_ops_tn, s_time_tt, s_ops_tt
                         if T <: AbstractFloat
@@ -85,9 +85,9 @@ end
                         else
                             fill!(C4, -99999); fill!(C5, -99999)
                         end
-                        t_time_tn = @elapsed jmul!(C4, At', B); t_ops_tn = gopc / t_time_tn
+                        t_time_tn = @elapsed matmul!(C4, At', B); t_ops_tn = gopc / t_time_tn
                         @test C1 ≈ C4
-                        t_time_tt = @elapsed jmul!(C5, At', Bt'); t_ops_tt = gopc / t_time_tt
+                        t_time_tt = @elapsed matmul!(C5, At', Bt'); t_ops_tt = gopc / t_time_tt
                         @test C1 ≈ C5
                         @show (M,K,N), t_time_tn, t_ops_tn, t_time_tt, t_ops_tt
                     end
