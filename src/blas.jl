@@ -476,8 +476,8 @@ end
         end
         # We are threading, but how many threads?
         # nspawn = min(_nthread, div_fast(M + N, StaticInt{4}() * W))
-        # nspawn = clamp(div_fast(M + N, StaticInt{4}() * W), 1, 18)
-        nspawn = clamp(div_fast((M + N)*StaticInt{11}(), StaticInt{64}() * W), 1, 18)
+        # nspawn = clamp(div_fast(M + N, StaticInt{4}() * W), 1, NUM_CORES)
+        nspawn = clamp(div_fast((M + N)*StaticInt{11}(), StaticInt{64}() * W), 1, NUM_CORES)
         # L = StaticInt{22500}() * W
         # nspawn = min(_nthread, cld_fast(MKN, L))
         _matmul!(pC, pA, pB, α, β, nspawn, (M,K,N), Mc, Kc, Nc)
