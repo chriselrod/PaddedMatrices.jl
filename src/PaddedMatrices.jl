@@ -86,7 +86,15 @@ function __init__()
     resize!(BCACHE, BSIZE * BCACHE_COUNT)
     _nt = nthreads() - 1
     _nt > 1 && resize!(MULTASKS, _nt)
-    _nt < NUM_CORES && @warn "Your system has $NUM_CORES physical cores, but `PaddedMatrices.jl` only has $(_nt > 1 ? "$(_nt) threads" : "1 thread") available (it doesn't spawn tasks on `threadid() == 1`)."
+    if _nt < NUM_CORES
+        msg = string(
+            "Your system has $NUM_CORES physical cores, but `PaddedMatrices.jl` only has ",
+            "$(_nt > 1 ? "$(_nt) threads" : "1 thread") available ",
+            "(it doesn't spawn tasks on `threadid() == 1`). ",
+            "You should start Julia with at least $(NUM_CORES + 1) threads.",
+            "",
+        )
+    end
 end
 
 # include("precompile.jl")
