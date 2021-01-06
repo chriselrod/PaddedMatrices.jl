@@ -799,8 +799,8 @@ function jmultpackAB!(
 end
 function jmultpackAB!(
     C::AbstractStridedPointer{T}, A::AbstractStridedPointer, B::AbstractStridedPointer,
-    α, β, ::Val{Mc}, ::Val{Kc}, ::Val{Nc}, M, K, N, tasks::CloseOpen, ::Val{1}
-) where {T,Mc,Kc,Nc}
+    α, β, ::Val{Mc}, ::Val{Kc}, ::Val{Nc}, ::Val{R₂}, ::Val{R₃}, M, K, N, tasks::CloseOpen, ::Val{1}
+) where {T,Mc,Kc,Nc,R₂,R₃}
     W = VectorizationBase.pick_vector_width_val(T)
     mᵣW = StaticInt{mᵣ}() * W
 
@@ -821,12 +821,12 @@ function jmultpackAB!(
     # Mblock = cld_fast(cld_fast(M, to_spawn), MᵣW) * Mᵣ*W
     GC.@preserve atomicsync begin
         for i ∈ CloseOpen(One(), _to_spawn) # ...thus the fact that `CloseOpen()` iterates at least once is okay.
-            runfunc!(SyncClosure{Mc,Kc,Nc}(C, A, B, α, β, ((i ≤ Mrem) % Int,(Mblock_,Mblock_Mrem,Mremfinal)), K, N, p, bc_ptr, i % UInt, u_to_spawn), (tid += 1))
+            runfunc!(SyncClosure{Mc,Kc,Nc,R₂,R₃}(C, A, B, α, β, ((i ≤ Mrem) % Int,(Mblock_,Mblock_Mrem,Mremfinal)), K, N, p, bc_ptr, i % UInt, u_to_spawn), (tid += 1))
             Mblock = ifelse(i ≤ Mrem, Mblock_Mrem, Mblock_)
             A = gesp(A, (Mblock, Zero()))
             C = gesp(C, (Mblock, Zero()))
         end
-        wait(runfunc(SyncClosure{Mc,Kc,Nc}(C, A, B, α, β, (2, (Mblock_,Mblock_Mrem,Mremfinal)), K, N, p, bc_ptr, zero(UInt), u_to_spawn), (tid += 1)))
+        wait(runfunc(SyncClosure{Mc,Kc,Nc,R₂,R₃}(C, A, B, α, β, (2, (Mblock_,Mblock_Mrem,Mremfinal)), K, N, p, bc_ptr, zero(UInt), u_to_spawn), (tid += 1)))
         waitonmultasks(CloseOpen(first(tasks), tid))
     end
     _free_bcache!(bc)
@@ -853,7 +853,7 @@ end
 #     jmultpackAB!(m.C, m.A, m.B, m.α, m.β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), m.M, m.K, m.N, m.tv, Val{1}())
 # end
 
-struct SyncClosure{Mc,Kc,Nc,TC,TA,TB,Α,Β,Md,Kd,Nd,CA}
+struct SyncClosure{Mc,Kc,Nc,R₂,R₃TC,TA,TB,Α,Β,Md,Kd,Nd,CA}
     C::TC
     A::TA
     B::TB
@@ -871,66 +871,59 @@ end
 function SyncClosure{Mc,Kc,Nc}(
     C::TC, A::TA, B::TB, α::Α, β::Β, M::Md, K::Kd, N::Nd, p::Ptr{UInt}, bc::Ptr{CA}, id::UInt, last_id::UInt
 ) where {Mc,Kc,Nc,TC,TA,TB,Α,Β,Md,Kd,Nd,CA}
-    SyncClosure{Mc,Kc,Nc,TC,TA,TB,Α,Β,Md,Kd,Nd,CA}(C, A, B, α, β, M, K, N, p, bc, id, last_id)    
+    SyncClosure{Mc,Kc,Nc,Nothing,Nothing,TC,TA,TB,Α,Β,Md,Kd,Nd,CA}(C, A, B, α, β, M, K, N, p, bc, id, last_id)    
+end
+function SyncClosure{Mc,Kc,Nc,R₂,R₃}(
+    C::TC, A::TA, B::TB, α::Α, β::Β, M::Md, K::Kd, N::Nd, p::Ptr{UInt}, bc::Ptr{CA}, id::UInt, last_id::UInt
+) where {Mc,Kc,Nc,R₂,R₃,TC,TA,TB,Α,Β,Md,Kd,Nd,CA}
+    SyncClosure{Mc,Kc,Nc,R₂,R₃,TC,TA,TB,Α,Β,Md,Kd,Nd,CA}(C, A, B, α, β, M, K, N, p, bc, id, last_id)    
 end
 
-function (sc::SyncClosure{Mc,Kc,Nc,TC,TA,TB,Α,Β,Md})() where {Mc,Kc,Nc,TC,TA,TB,Α,Β,Md<:Tuple{Int,NTuple{3,Int}}}
-    sync_mul!(sc.C, sc.A, sc.B, sc.α, sc.β, Val{Mc}(), Val{Kc}(), Val{Nc}(), sc.M, sc.K, sc.N, sc.p, sc.bc, sc.id, sc.last_id)
+function (sc::SyncClosure{Mc,Kc,Nc,R₂,R₃})() where {Mc,Kc,Nc,R₂,R₃}
+    sync_mul!(sc.C, sc.A, sc.B, sc.α, sc.β, Val{Mc}(), Val{Kc}(), Val{Nc}(), Val{R₂}(), Val{R₃}(), sc.M, sc.K, sc.N, sc.p, sc.bc, sc.id, sc.last_id)
 end
-function (sc::SyncClosure{Mc,Kc,Nc})() where {Mc,Kc,Nc}
+function (sc::SyncClosure{Mc,Kc,Nc,Nothing,Nothing})() where {Mc,Kc,Nc}
     sync_mul!(sc.C, sc.A, sc.B, sc.α, sc.β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), sc.M, sc.K, sc.N, sc.p, sc.bc, sc.id, sc.last_id)
 end
 
 
 
-function pick_block(M, ::Val{N}, ::Val{R}, ::Type{T}) where {N, R, T}
-    Base.fptosi(Int, (effective_cache(T, Val{N}()) * inv(R)) / M)
+@inline function pick_block(M, ::Val{N}, ::Val{R}, ::Type{T}) where {N, R, T}
+    Base.fptosi(Int, (effective_cache(T, Val{N}()) * R) / M)
 end
-# function block_sizes(M, K, N, ::Val{Mc}, ::Val{Kc}, ::Val{Nc}) where {Mc,Kc,Nc}
+# inlined because that's a lot of integers we're dumping
+@inline function block_sizes(
+    ::Type{T}, M, K, N, ::Val{McMax}, ::Val{KcMax}, ::Val{NcMax}, ::Val{R₂}, ::Val{R₃}
+) where {McMax, KcMax, NcMax, R₂, R₃, T}
+    Niter, Nblock_Nrem, Nblock_, Nrem = if N ≤ NcMax
+        1, N, N, 0
+    else
+        niters = cld_fast(N, NcMax)
+        nd, nr = divrem_fast(N, niters)
+        ndr, nd_ = promote(nd + (nr > 0), nd)
+        niters, ndr, nd_, nr
+    end
+    kc = min(pick_block(Nblock_Nrem, Val{3}(), Val{R₃}(), T), KcMax)
+    Kiter = cld_fast(K, kc)
+    Kblockdiv, Krem = divrem_fast(K, Kiter)
+    Kblock_Krem, Kblock_ = promote(Kblockdiv + 1, Kblockdiv)
+
+    mcpref = min(pick_block(Kblock_Krem, Val{2}(), Val{R₂}(), T), McMax)
+    _Miter = cld_fast(M, mcpref)
+    W = VectorizationBase.pick_vector_width_val(T)
+    Mbsize, Mrem, Mremfinal, Miter = split_m(M, _Miter, W) # M is guaranteed to be > W because of `W ≥ M` condition for `jmultsplitn!`...
+    Mblock_Mrem, Mblock_ = promote(Mbsize + W, Mbsize)
     
-# end
+    (Miter, Mrem, Mblock_Mrem, Mblock_, Mremfinal), (Kiter, Krem, Kblock_Krem, Kblock_, Krem), (Niter, Nrem, Nblock_Nrem, Nblock_)
+end
 
 function sync_mul!(
     C::AbstractStridedPointer{T}, A::AbstractStridedPointer, B::AbstractStridedPointer,
-    α, β, ::Val{Mc}, ::Val{Kc}, ::Val{Nc}, (Mid,Ms), K, N, atomicp::Ptr{UInt}, bc::Ptr, id::UInt, total_ids::UInt
-) where {T, Mc, Kc, Nc}
+    α, β, ::Val{Mc}, ::Val{Kc}, ::Val{Nc}, ::Val{R₂}, ::Val{R₃}, M, K, N, atomicp::Ptr{UInt}, bc::Ptr, id::UInt, total_ids::UInt
+) where {T, Mc, Kc, Nc, R₂, R₃}
 
-    W = VectorizationBase.pick_vector_width_val(T)
-    Base.Cartesian.@nexprs 3 i -> begin
-        _M_i = Ms[i]
-        _Miter_i = cld_fast(_M_i, StaticInt{Mc}())
-        _Mbsize_i, _Mrem_i, _Mremfinal_i, _to_spawn_i = split_m(_M_i, _Miter_i, W) # M is guaranteed to be > W because of `W ≥ M` condition for `jmultsplitn!`...
-        _Mblock_Mrem_i, _Mblock__i = promote(_Mbsize_i + W, _Mbsize_i)
-        _Mblock_Mrem_i = ifelse(_Mrem_i > 0, _Mblock_Mrem_i, _Mblock__i)
-    end
-    biggest_mb = Base.Cartesian.@ncall 3 max i -> _Mblock_Mrem_i
-    Base.Cartesian.@nif 3 i -> ((i - 1) == Mid) i -> begin
-        Miter = _Miter_i
-        Mrem = _Mrem_i
-        Mremfinal = _Mremfinal_i
-        Mblock_Mrem = _Mblock_Mrem_i
-        Mblock_ = _Mblock__i
-    end i -> begin
-        Miter = _Miter_i
-        Mrem = _Mrem_i
-        Mremfinal = _Mremfinal_i
-        Mblock_Mrem = _Mblock_Mrem_i
-        Mblock_ = _Mblock__i
-    end
-    # M = @inbounds(Ms[Mid+1])
-    # everyone will use the largest mb to pick values for `kc` and `nc`
-    kc = pick_block(biggest_mb, Val{2}(), Val{Kc}(), T)
-    Kiter = cld_fast(K, kc)
-    Kblockdiv, Krem = divrem_fast(K, Kiter)
-    Kblock_Krem, Kblock_ = promote(Kblockdiv + One(), Kblockdiv)
-
-    nc = pick_block(kc, Val{3}(), Val{Nc}(), T)
-    Niter = cld_fast(N, nc)
-    Nblockdiv, Nrem = divrem_fast(N, Niter)
-    Nblock_Nrem, Nblock_ = promote(Nblockdiv + One(), Nblockdiv)
-
-    # @show biggest_mb, (Mblock_Mrem, Mblock_), (Miter, Mrem), kc, (Kblock_Krem, Kblock_), (Kiter, Krem), nc, (Nblock_Nrem, Nblock_), (Niter, Nrem)
-    
+    (Miter, Mrem, Mblock_Mrem, Mblock_, Mremfinal), (Kiter, Krem, Kblock_Krem, Kblock_, Krem), (Niter, Nrem, Nblock_Nrem, Nblock_) = block_sizes(T, M, K, N, Val{Mc}(), Val{Kc}(), Val{Nc}(), Val{R₂}(), Val{R₃}())
+        
     last_id = total_ids - one(UInt)
     atomics = atomicp + 8sizeof(UInt)
     sync_iters = zero(UInt64)
