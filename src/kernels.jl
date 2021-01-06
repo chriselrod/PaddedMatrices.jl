@@ -272,7 +272,7 @@ end
     # _buffer = core_cache_buffer(T, Val(2))
     # buffer = Vector{T}(undef, length(_buffer))
     # Apack = ptrarray0(align(pointer(buffer)), (M, K), (static_sizeof(T), static_sizeof(T) * align(M, T)), DenseDims{(true,false)}())
-    Apack = default_zerobased_stridedpointer(pointer(buffer), (static_sizeof(T), static_sizeof(T) * align(M, T)))
+    Apack = default_zerobased_stridedpointer(align(pointer(buffer),T), (static_sizeof(T), static_sizeof(T) * align(M, T)))
     Apack, buffer
 end
 

@@ -44,13 +44,13 @@ end
     if CS === nothing
         nothing
     else
-        MemoryBuffer{T}(undef, StaticInt{CS}() ÷ static_sizeof(T))
+        MemoryBuffer{T}(undef, StaticInt{CS}() ÷ static_sizeof(T))# + (StaticInt{4096}() ÷ static_sizeof(T)))
     end
 end
 @inline function core_cache_buffer(::Type{T}, ::Val{N}) where {T,N}
     L = core_cache_size(T, Val{N}())
     L === nothing && return nothing
-    MemoryBuffer{T}(undef, L)
+    MemoryBuffer{T}(undef, L)# + (StaticInt{4096}() ÷ static_sizeof(T)))
 #     ptr = Base.unsafe_convert(Ptr{T}, ACACHE) + (Threads.threadid()-1) * L * static_sizeof(T)
 #     ptrarray0(ptr, (L,))
 end

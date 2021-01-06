@@ -22,28 +22,61 @@ function pick_N(K_c, r)
     round(Int, (L3 / r) / (K_c * PaddedMatrices.nᵣ)) * PaddedMatrices.nᵣ
 end
 
+# function jmultpackab!(C, A, B, ::Val{M_c}, ::Val{K_c}, ::Val{N_c}) where {M_c, K_c, N_c}
+#     M, N = size(C); K = size(B,1)
+#     zc, za, zb = PaddedMatrices.zstridedpointer.((C,A,B))
+#     @elapsed(PaddedMatrices.jmultpackAB!(zc, za, zb, StaticInt{1}(), StaticInt{0}(), StaticInt{M_c}(), StaticInt{K_c}(), StaticInt{N_c}(), M, K, N, PaddedMatrices.CloseOpen(0, VectorizationBase.NUM_CORES), Val{VectorizationBase.CACHE_COUNT[3]}()))
+# end
+function jmultpackab!(C, A, B, ::Val{M_c}, ::Val{K_c}, ::Val{N_c}) where {M_c, K_c, N_c}
+    M, N = size(C); K = size(B,1)
+    zc, za, zb = PaddedMatrices.zstridedpointer.((C,A,B))
+    @elapsed(PaddedMatrices.jmultpackAB!(zc, za, zb, StaticInt{1}(), StaticInt{0}(), Val{M_c}(), Val{K_c}(), Val{N_c}(), M, K, N, PaddedMatrices.CloseOpen(0, VectorizationBase.NUM_CORES), Val{VectorizationBase.CACHE_COUNT[3]}()))
+end
+
 function bench_size(S, Cs, As, Bs, ::Val{M_c}, ::Val{K_c}, ::Val{N_c}) where {M_c, K_c, N_c}
-    PaddedMatrices.jmulpackAB!(first(Cs), first(As), first(Bs), StaticInt{1}(), StaticInt{0}(), StaticInt{M_c}(), StaticInt{K_c}(), StaticInt{N_c}())
+    jmultpackab!(first(Cs), first(As), first(Bs), Val{M_c}(), Val{K_c}(), Val{N_c}()) # compile
     gflop = 0.0
     for sCAB ∈ zip(S,As,Bs,Cs)
         (s,C,A,B) = sCAB::Tuple{Int,Matrix{Float64},Matrix{Float64},Matrix{Float64}}
-        t = @elapsed(PaddedMatrices.jmulpackAB!(C, A, B, StaticInt{1}(), StaticInt{0}(), StaticInt{M_c}(), StaticInt{K_c}(), StaticInt{N_c}()))
+        # sleep(0.5)
+        t = jmultpackab!(C, A, B, Val{M_c}(), Val{K_c}(), Val{N_c}())
         gf = 2e-9*s*s*s / t
-        # @show (s, M_c, K_c, N_c, gf)
         gflop += gf
     end
     gflop / length(S)
 end
+
+# function search(Mc_range = 72:24:120, Kc_range = 1.5:0.25:1.7, Nc_range = 1.0:0.1:1.4)
+#     best = Ref((0,0,0,-Inf))
+#     gflop_array = let S = round.(Int, exp.(range(log(1500), stop = log(10000), length = 100))), As = map(s -> rand(s,s), S), Bs = map(s -> rand(s,s), S), Cs = similar.(As), iter_prod = Iterators.product(Mc_range, Kc_range, Nc_range), p = Progress(length(iter_prod)), best = best
+#         map(iter_prod) do P
+#             M_c, Koff, r = P
+#             K_c = pick_K(M_c, Koff)
+#             N_c = pick_N(K_c, r)
+#             gflops = bench_size(S, Cs, As, Bs, Val(M_c), Val(K_c), Val(N_c))
+#             b = best[]
+#             recent = (M_c,K_c,N_c,gflops)
+#             bb = if last(b) > gflops
+#                 b
+#             else
+#                 best[] = recent
+#             end
+#             ProgressMeter.next!(p, showvalues = [(:Last, recent), (:Best, bb)])
+#             gflops
+#         end
+#     end
+#     gflop_array, best
+# end
 function search(Mc_range = 72:24:120, Kc_range = 1.5:0.25:1.7, Nc_range = 1.0:0.1:1.4)
-    best = Ref((0,0,0,-Inf))
-    gflop_array = let S = round.(Int, exp.(range(log(500), stop = log(8000), length = 50))), As = map(s -> rand(s,s), S), Bs = map(s -> rand(s,s), S), Cs = similar.(As), iter_prod = Iterators.product(Mc_range, Kc_range, Nc_range), p = Progress(length(iter_prod)), best = best
+    best = Ref((0,0,0,(0.0,0.0),-Inf))
+    gflop_array = let S = round.(Int, exp.(range(log(1500), stop = log(10000), length = 100))), As = map(s -> rand(s,s), S), Bs = map(s -> rand(s,s), S), Cs = similar.(As), iter_prod = Iterators.product(Mc_range, Kc_range, Nc_range), p = Progress(length(iter_prod)), best = best
         map(iter_prod) do P
-            M_c, Koff, r = P
-            K_c = pick_K(M_c, Koff)
-            N_c = pick_N(K_c, r)
-            gflops = bench_size(S, Cs, As, Bs, Val(M_c), Val(K_c), Val(N_c))
+            M_c, rk, rn = P
+            gflops = bench_size(S, Cs, As, Bs, Val(M_c), Val(rk), Val(rn))
             b = best[]
-            recent = (M_c,K_c,N_c,gflops)
+            K_c = pick_K(M_c, rk)
+            N_c = pick_N(K_c, rn)
+            recent = (M_c, K_c, N_c, (rk, rn), gflops)
             bb = if last(b) > gflops
                 b
             else
@@ -55,7 +88,31 @@ function search(Mc_range = 72:24:120, Kc_range = 1.5:0.25:1.7, Nc_range = 1.0:0.
     end
     gflop_array, best
 end
-gflop_array, best = search()
+
+search_range = (72:24:120, 1.80:0.025:1.9, 1.00:0.25:1.1);
+# search_range = (96:24:144, 1.6:0.05:1.9, 1.0:0.05:1.2);
+gflop_array, best = search(search_range...); getindex.(search_range, Tuple(argmax(gflop_array)))
+
+
+
+# julia> search_range = (72:24:120, 1.85:0.025:1.95, 1.1:0.25:1.2);
+
+# julia> gflop_array, best = search(search_range...); getindex.(search_range, Tuple(argmax(gflop_array)))
+# Progress: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| Time: 0:05:24
+#   Last:  (120, 560, 5265, 1514.4606921365082)
+#   Best:  (96, 738, 3996, 1560.6626281274844)
+# (96, 1.85, 1.1)
+
+# julia> best_gflop_array, best_search_range = gflop_array, search_range;
+
+# julia> search_range = (72:24:120, 1.80:0.025:1.9, 1.05:0.25:1.1);
+
+# julia> gflop_array, best = search(search_range...); getindex.(search_range, Tuple(argmax(gflop_array)))
+# Progress: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| Time: 0:05:27
+#   Last:  (120, 575, 5373, 1445.457326021271)
+#   Best:  (72, 971, 3186, 1551.317089863005)
+# (72, 1.875, 1.05)
+
 
 
 using JuMP
@@ -70,7 +127,7 @@ model = Model()
     1 <= N_cf <= 2000 # N_c = N_cf * 9
     end
 )
-
+@objective(model, Max, gflops)
 
 using MaBLAS, BenchmarkTools
 
