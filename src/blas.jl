@@ -811,7 +811,6 @@ function jmultpackAB!(
     # unsafe_store!(p, zero(UInt), 1); unsafe_store!(p, zero(UInt), 9)
     Mbsize, Mrem, Mremfinal, _to_spawn = split_m(M, to_spawn, W) # M is guaranteed to be > W because of `W ≥ M` condition for `jmultsplitn!`...
     Mblock_Mrem, Mblock_ = promote(Mbsize + W, Mbsize)
-    Mblock_Mrem = ifelse(Mrem > 0, Mblock_Mrem, Mblock_)
     u_to_spawn = _to_spawn % UInt
     tid = Int(first(tasks))
     # @show Mbsize, Mrem, Mremfinal, _to_spawn
@@ -821,12 +820,12 @@ function jmultpackAB!(
     # Mblock = cld_fast(cld_fast(M, to_spawn), MᵣW) * Mᵣ*W
     GC.@preserve atomicsync begin
         for i ∈ CloseOpen(One(), _to_spawn) # ...thus the fact that `CloseOpen()` iterates at least once is okay.
-            runfunc!(SyncClosure{Mc,Kc,Nc,R₂,R₃}(C, A, B, α, β, ((i ≤ Mrem) % Int,(Mblock_,Mblock_Mrem,Mremfinal)), K, N, p, bc_ptr, i % UInt, u_to_spawn), (tid += 1))
             Mblock = ifelse(i ≤ Mrem, Mblock_Mrem, Mblock_)
+            runfunc!(SyncClosure{Mc,Kc,Nc,R₂,R₃}(C, A, B, α, β, Mblock, K, N, p, bc_ptr, i % UInt, u_to_spawn), (tid += 1))
             A = gesp(A, (Mblock, Zero()))
             C = gesp(C, (Mblock, Zero()))
         end
-        wait(runfunc(SyncClosure{Mc,Kc,Nc,R₂,R₃}(C, A, B, α, β, (2, (Mblock_,Mblock_Mrem,Mremfinal)), K, N, p, bc_ptr, zero(UInt), u_to_spawn), (tid += 1)))
+        wait(runfunc(SyncClosure{Mc,Kc,Nc,R₂,R₃}(C, A, B, α, β, Mremfinal, K, N, p, bc_ptr, zero(UInt), u_to_spawn), (tid += 1)))
         waitonmultasks(CloseOpen(first(tasks), tid))
     end
     _free_bcache!(bc)
@@ -853,7 +852,7 @@ end
 #     jmultpackAB!(m.C, m.A, m.B, m.α, m.β, StaticInt{Mc}(), StaticInt{Kc}(), StaticInt{Nc}(), m.M, m.K, m.N, m.tv, Val{1}())
 # end
 
-struct SyncClosure{Mc,Kc,Nc,R₂,R₃TC,TA,TB,Α,Β,Md,Kd,Nd,CA}
+struct SyncClosure{Mc,Kc,Nc,R₂,R₃,TC,TA,TB,Α,Β,Md,Kd,Nd,CA}
     C::TC
     A::TA
     B::TB

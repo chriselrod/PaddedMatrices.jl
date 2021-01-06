@@ -27,24 +27,6 @@ end
 #     zc, za, zb = PaddedMatrices.zstridedpointer.((C,A,B))
 #     @elapsed(PaddedMatrices.jmultpackAB!(zc, za, zb, StaticInt{1}(), StaticInt{0}(), StaticInt{M_c}(), StaticInt{K_c}(), StaticInt{N_c}(), M, K, N, PaddedMatrices.CloseOpen(0, VectorizationBase.NUM_CORES), Val{VectorizationBase.CACHE_COUNT[3]}()))
 # end
-function jmultpackab!(C, A, B, ::Val{M_c}, ::Val{K_c}, ::Val{N_c}) where {M_c, K_c, N_c}
-    M, N = size(C); K = size(B,1)
-    zc, za, zb = PaddedMatrices.zstridedpointer.((C,A,B))
-    @elapsed(PaddedMatrices.jmultpackAB!(zc, za, zb, StaticInt{1}(), StaticInt{0}(), Val{M_c}(), Val{K_c}(), Val{N_c}(), M, K, N, PaddedMatrices.CloseOpen(0, VectorizationBase.NUM_CORES), Val{VectorizationBase.CACHE_COUNT[3]}()))
-end
-
-function bench_size(S, Cs, As, Bs, ::Val{M_c}, ::Val{K_c}, ::Val{N_c}) where {M_c, K_c, N_c}
-    jmultpackab!(first(Cs), first(As), first(Bs), Val{M_c}(), Val{K_c}(), Val{N_c}()) # compile
-    gflop = 0.0
-    for sCAB ∈ zip(S,As,Bs,Cs)
-        (s,C,A,B) = sCAB::Tuple{Int,Matrix{Float64},Matrix{Float64},Matrix{Float64}}
-        # sleep(0.5)
-        t = jmultpackab!(C, A, B, Val{M_c}(), Val{K_c}(), Val{N_c}())
-        gf = 2e-9*s*s*s / t
-        gflop += gf
-    end
-    gflop / length(S)
-end
 
 # function search(Mc_range = 72:24:120, Kc_range = 1.5:0.25:1.7, Nc_range = 1.0:0.1:1.4)
 #     best = Ref((0,0,0,-Inf))
@@ -67,16 +49,40 @@ end
 #     end
 #     gflop_array, best
 # end
-function search(Mc_range = 72:24:120, Kc_range = 1.5:0.25:1.7, Nc_range = 1.0:0.1:1.4)
-    best = Ref((0,0,0,(0.0,0.0),-Inf))
-    gflop_array = let S = round.(Int, exp.(range(log(1500), stop = log(10000), length = 100))), As = map(s -> rand(s,s), S), Bs = map(s -> rand(s,s), S), Cs = similar.(As), iter_prod = Iterators.product(Mc_range, Kc_range, Nc_range), p = Progress(length(iter_prod)), best = best
+using PaddedMatrices, VectorizationBase, ProgressMeter
+function jmultpackab!(C, A, B, ::Val{M_c}, ::Val{K_c}, ::Val{N_c}, ::Val{R₂}, ::Val{R₃}) where {M_c, K_c, N_c, R₂, R₃}
+    M, N = size(C); K = size(B,1)
+    zc, za, zb = PaddedMatrices.zstridedpointer.((C,A,B))
+    @elapsed(
+        PaddedMatrices.jmultpackAB!(
+            zc, za, zb, StaticInt{1}(), StaticInt{0}(), Val{M_c}(), Val{K_c}(), Val{N_c}(), Val{R₂}(), Val{R₃}(),
+            M, K, N, PaddedMatrices.CloseOpen(0, VectorizationBase.NUM_CORES), Val{VectorizationBase.CACHE_COUNT[3]}()
+        )
+    )
+end
+
+function bench_size(S, Cs, As, Bs, ::Val{M_c}, ::Val{K_c}, ::Val{N_c}, ::Val{R₂}, ::Val{R₃}) where {M_c, K_c, N_c, R₂, R₃}
+    jmultpackab!(first(Cs), first(As), first(Bs), Val{M_c}(), Val{K_c}(), Val{N_c}(), Val{R₂}(), Val{R₃}()) # compile
+    gflop = 0.0
+    for sCAB ∈ zip(S,As,Bs,Cs)
+        (s,C,A,B) = sCAB::Tuple{Int,Matrix{Float64},Matrix{Float64},Matrix{Float64}}
+        # sleep(0.5)
+        t = jmultpackab!(C, A, B, Val{M_c}(), Val{K_c}(), Val{N_c}(), Val{R₂}(), Val{R₃}())
+        gf = 2e-9*s*s*s / t
+        gflop += gf
+    end
+    gflop / length(S)
+end
+function search(Mc_range = 96:24:144, Kc_range = 700:200:1100, Nc_range = 2000:1000:4000, r₂range = 1.8:0.1:1.9, r₃range = 1.0:0.1:1.1)
+    best = Ref(((0,0,0),(0.0,0.0),-Inf))
+    search_space = Iterators.product(Mc_range, Kc_range, Nc_range, r₂range, r₃range)
+    sizes = round.(Int, exp.(range(log(1500), stop = log(10000), length = 100)))
+    gflop_array = let S = sizes, As = map(s -> rand(s,s), S), Bs = map(s -> rand(s,s), S), Cs = similar.(As), iter_prod = search_space, p = Progress(length(iter_prod)), best = best
         map(iter_prod) do P
-            M_c, rk, rn = P
-            gflops = bench_size(S, Cs, As, Bs, Val(M_c), Val(rk), Val(rn))
+            M_c, K_c, N_c, R₂, R₃ = P
+            gflops = bench_size(S, Cs, As, Bs, Val(M_c), Val(K_c), Val(N_c), Val(R₂), Val(R₃))
             b = best[]
-            K_c = pick_K(M_c, rk)
-            N_c = pick_N(K_c, rn)
-            recent = (M_c, K_c, N_c, (rk, rn), gflops)
+            recent = ((M_c, K_c, N_c), (R₂, R₃), gflops)
             bb = if last(b) > gflops
                 b
             else
@@ -89,13 +95,31 @@ function search(Mc_range = 72:24:120, Kc_range = 1.5:0.25:1.7, Nc_range = 1.0:0.
     gflop_array, best
 end
 
-search_range = (72:24:120, 1.80:0.025:1.9, 1.00:0.25:1.1);
-# search_range = (96:24:144, 1.6:0.05:1.9, 1.0:0.05:1.2);
+search_range = (Mc_range = 96:24:144, Kc_range = 700:200:1100, Nc_range = 2000:2000:6000, r₂range = 0.5:0.05:0.6, r₃range = 0.9:0.05:1)
 gflop_array, best = search(search_range...); getindex.(search_range, Tuple(argmax(gflop_array)))
+
+
+function genmats(N)
+    A = rand(N,N)
+    B = rand(N,N)
+    C = similar(A); p = PaddedMatrices.zstridedpointer
+    C, A, B, p(C), p(A), p(B)
+end
+C10_000,A10_000,B10_000,zc10_000,za10_000,zb10_000 = genmats(10_000);
+@time(PaddedMatrices.jmultpackAB!(zc10_000, za10_000, zb10_000, StaticInt{1}(), StaticInt{0}(), Val(72), Val(1.875), Val(1.05), 10_000,10_000,10_000, PaddedMatrices.CloseOpen(0, 18), Val(1)))
+
+
+
+# search_range = (72:24:120, 1.80:0.025:1.9, 1.00:0.25:1.1);
+# search_range = (96:24:144, 1.6:0.05:1.9, 1.0:0.05:1.2);
 
 
 
 # julia> search_range = (72:24:120, 1.85:0.025:1.95, 1.1:0.25:1.2);
+
+#   Last:  (120, 583, 5562, (1.875, 1.0), 1553.379336642954)
+#   Best:  (120, 607, 5346, (1.8, 1.0), 1559.8622396497135)
+# (120, 1.8, 1.0)
 
 # julia> gflop_array, best = search(search_range...); getindex.(search_range, Tuple(argmax(gflop_array)))
 # Progress: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| Time: 0:05:24
