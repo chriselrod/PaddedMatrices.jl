@@ -14,12 +14,12 @@ using PaddedMatrices, VectorizationBase, ProgressMeter
 function pick_K(M_c, r = 1.6, Koff=0)
     L2 = VectorizationBase.CACHE_SIZE[2] ÷ sizeof(Float64)
     
-    Kbase = round(Int, (L2 / r) / M_c)
+    Kbase = round(Int, (L2 * r) / M_c)
     Kbase + Koff
 end
 function pick_N(K_c, r)
     L3 = VectorizationBase.CACHE_SIZE[3] ÷ sizeof(Float64)
-    round(Int, (L3 / r) / (K_c * PaddedMatrices.nᵣ)) * PaddedMatrices.nᵣ
+    round(Int, (L3 * r) / (K_c * PaddedMatrices.nᵣ)) * PaddedMatrices.nᵣ
 end
 
 # function jmultpackab!(C, A, B, ::Val{M_c}, ::Val{K_c}, ::Val{N_c}) where {M_c, K_c, N_c}
@@ -29,8 +29,10 @@ end
 # end
 function jmultpackab!(C, A, B, ::Val{M_c}, ::Val{K_c}, ::Val{N_c}) where {M_c, K_c, N_c}
     M, N = size(C); K = size(B,1)
-    zc, za, zb = PaddedMatrices.zstridedpointer.((C,A,B))
-    @elapsed(PaddedMatrices.jmultpackAB!(zc, za, zb, StaticInt{1}(), StaticInt{0}(), Val{M_c}(), Val{K_c}(), Val{N_c}(), M, K, N, PaddedMatrices.CloseOpen(0, VectorizationBase.NUM_CORES), Val{VectorizationBase.CACHE_COUNT[3]}()))
+    GC.@preserve C A B begin
+        zc, za, zb = PaddedMatrices.zstridedpointer.((C,A,B))
+        @elapsed(PaddedMatrices.jmultpackAB!(zc, za, zb, StaticInt{1}(), StaticInt{0}(), Val{M_c}(), Val{K_c}(), Val{N_c}(), M, K, N, PaddedMatrices.CloseOpen(0, VectorizationBase.NUM_CORES), Val{VectorizationBase.CACHE_COUNT[3]}()))
+    end
 end
 
 function bench_size(S, Cs, As, Bs, ::Val{M_c}, ::Val{K_c}, ::Val{N_c}) where {M_c, K_c, N_c}
@@ -89,31 +91,37 @@ function search(Mc_range = 72:24:120, Kc_range = 1.5:0.25:1.7, Nc_range = 1.0:0.
     gflop_array, best
 end
 
-search_range = (72:24:120, 1.80:0.025:1.9, 1.00:0.25:1.1);
-# search_range = (96:24:144, 1.6:0.05:1.9, 1.0:0.05:1.2);
+search_range = (72:24:120, 0.52:0.02:0.56, 0.9:0.01:0.92)
 gflop_array, best = search(search_range...); getindex.(search_range, Tuple(argmax(gflop_array)))
 
 
 
-# julia> search_range = (72:24:120, 1.85:0.025:1.95, 1.1:0.25:1.2);
-
 # julia> gflop_array, best = search(search_range...); getindex.(search_range, Tuple(argmax(gflop_array)))
-# Progress: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| Time: 0:05:24
-#   Last:  (120, 560, 5265, 1514.4606921365082)
-#   Best:  (96, 738, 3996, 1560.6626281274844)
-# (96, 1.85, 1.1)
+# Progress: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| Time: 0:23:06
+#   Last:  (120, 557, 5301, (0.51, 0.91), 1468.106008702092)
+#   Best:  (72, 819, 3600, (0.45, 0.91), 1563.9777269382319)
+# (72, 0.45, 0.91)
 
-# julia> best_gflop_array, best_search_range = gflop_array, search_range;
+# 72 with (0.4-0.44) x 0.9-9.92 looks good
+# julia> permutedims(gflop_array, (2,3,1))
+# 7×5×2 Array{Float64, 3}:
+# [:, :, 1] =   # (96 x 0.40:0.01:0.46 x 0.9:0.005:0.92)
+#  1566.74  1512.84  1521.73  1558.3   1559.93
+#  1569.36  1563.85  1563.67  1559.56  1563.38
+#  1566.34  1551.83  1562.32  1558.95  1561.91
+#  1567.51  1561.19  1560.29  1557.78  1564.33
+#  1567.02  1560.08  1547.32  1559.42  1565.47
+#  1501.42  1550.91  1484.06  1554.05  1553.47
+#  1503.18  1545.86  1549.18  1550.41  1548.85
 
-# julia> search_range = (72:24:120, 1.80:0.025:1.9, 1.05:0.25:1.1);
-
-# julia> gflop_array, best = search(search_range...); getindex.(search_range, Tuple(argmax(gflop_array)))
-# Progress: 100%|████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████████| Time: 0:05:27
-#   Last:  (120, 575, 5373, 1445.457326021271)
-#   Best:  (72, 971, 3186, 1551.317089863005)
-# (72, 1.875, 1.05)
-
-
+# [:, :, 2] =   # (72 x 0.40:0.01:0.46 x 0.9:0.005:0.92)
+#  1531.42  1521.71  1520.14  1520.35  1520.72
+#  1539.86  1536.97  1532.17  1532.33  1536.38
+#  1543.98  1541.24  1535.58  1540.67  1536.43
+#  1550.4   1543.33  1542.23  1540.41  1548.76
+#  1552.08  1544.08  1548.16  1547.86  1546.74
+#  1548.65  1487.99  1544.13  1542.94  1541.12
+#  1476.7   1512.51  1542.46  1537.65  1535.09
 
 using JuMP
 model = Model()

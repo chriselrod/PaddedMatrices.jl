@@ -10,7 +10,7 @@ using VectorizationBase, ArrayInterface,
 
 using VectorizationBase: align, gep, AbstractStridedPointer, AbstractSIMDVector, vnoaliasstore!, staticm1,
     static_sizeof, lazymul, vmul, vadd, vsub, StridedPointer, gesp, zero_offsets, pause,
-    CACHE_COUNT, NUM_CORES, CACHE_INCLUSIVITY
+    CACHE_COUNT, NUM_CORES, CACHE_INCLUSIVITY, zstridedpointer
 using LoopVectorization: maybestaticsize, mᵣ, nᵣ, preserve_buffer, CloseOpen
 using ArrayInterface: StaticInt, Zero, One, OptionallyStaticUnitRange, size, strides, offsets, indices,
     static_length, static_first, static_last, axes,

@@ -37,7 +37,6 @@ function Base.copyto!(B::AbstractStrideArray{<:Any,<:Any,<:Any,N}, A::AbstractSt
     end
     B
 end
-@inline zstridedpointer(A) = VectorizationBase.zero_offsets(stridedpointer(A))
 
 @generated _max(::StaticInt{N}, ::StaticInt{M}) where {N,M} = :(StaticInt{$(max(N,M))}())
 const MᵣW_mul_factor = VectorizationBase.REGISTER_SIZE === 64 ? StaticInt{4}() : StaticInt{9}()
@@ -884,7 +883,7 @@ end
 
 
 function pick_block(M, ::Val{N}, ::Val{R}, ::Type{T}) where {N, R, T}
-    Base.fptosi(Int, (effective_cache(T, Val{N}()) * inv(R)) / M)
+    Base.fptosi(Int, (effective_cache(T, Val{N}()) * R) / M)
 end
 # function block_sizes(M, K, N, ::Val{Mc}, ::Val{Kc}, ::Val{Nc}) where {Mc,Kc,Nc}
     
