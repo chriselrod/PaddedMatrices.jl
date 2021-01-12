@@ -37,7 +37,6 @@ function Base.copyto!(B::AbstractStrideArray{<:Any,<:Any,<:Any,N}, A::AbstractSt
     end
     B
 end
-@inline zstridedpointer(A) = VectorizationBase.zero_offsets(stridedpointer(A))
 
 @generated _max(::StaticInt{N}, ::StaticInt{M}) where {N,M} = :(StaticInt{$(max(N,M))}())
 const MᵣW_mul_factor = VectorizationBase.REGISTER_SIZE === 64 ? StaticInt{4}() : StaticInt{9}()
