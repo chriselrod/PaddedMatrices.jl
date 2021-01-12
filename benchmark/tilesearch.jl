@@ -21,24 +21,21 @@ function pick_N(K_c, r)
     L3 = VectorizationBase.CACHE_SIZE[3] ÷ sizeof(Float64)
     round(Int, (L3 * r) / (K_c * PaddedMatrices.nᵣ)) * PaddedMatrices.nᵣ
 end
-
-# function jmultpackab!(C, A, B, ::Val{M_c}, ::Val{K_c}, ::Val{N_c}) where {M_c, K_c, N_c}
-#     M, N = size(C); K = size(B,1)
-#     zc, za, zb = PaddedMatrices.zstridedpointer.((C,A,B))
-#     @elapsed(PaddedMatrices.jmultpackAB!(zc, za, zb, StaticInt{1}(), StaticInt{0}(), StaticInt{M_c}(), StaticInt{K_c}(), StaticInt{N_c}(), M, K, N, PaddedMatrices.CloseOpen(0, VectorizationBase.NUM_CORES), Val{VectorizationBase.CACHE_COUNT[3]}()))
-# end
 function jmultpackab!(C, A, B, ::Val{M_c}, ::Val{K_c}, ::Val{N_c}) where {M_c, K_c, N_c}
     M, N = size(C); K = size(B,1)
     GC.@preserve C A B begin
         zc, za, zb = PaddedMatrices.zstridedpointer.((C,A,B))
-        @elapsed(PaddedMatrices.jmultpackAB!(zc, za, zb, StaticInt{1}(), StaticInt{0}(), Val{M_c}(), Val{K_c}(), Val{N_c}(), M, K, N, PaddedMatrices.CloseOpen(0, VectorizationBase.NUM_CORES), Val{VectorizationBase.CACHE_COUNT[3]}()))
+        @elapsed(PaddedMatrices.jmultpackAB!(
+            zc, za, zb, StaticInt{1}(), StaticInt{0}(), Val{M_c}(), Val{K_c}(), Val{N_c}(), M, K, N,
+            PaddedMatrices.CloseOpen(0, VectorizationBase.NUM_CORES), Val{VectorizationBase.CACHE_COUNT[3]}()
+        ))
     end
 end
 
 function bench_size(S, Cs, As, Bs, ::Val{M_c}, ::Val{K_c}, ::Val{N_c}) where {M_c, K_c, N_c}
     jmultpackab!(first(Cs), first(As), first(Bs), Val{M_c}(), Val{K_c}(), Val{N_c}()) # compile
     gflop = 0.0
-    for sCAB ∈ zip(S,As,Bs,Cs)
+    for sCAB ∈ zip(S,Cs,As,Bs)
         (s,C,A,B) = sCAB::Tuple{Int,Matrix{Float64},Matrix{Float64},Matrix{Float64}}
         # sleep(0.5)
         t = jmultpackab!(C, A, B, Val{M_c}(), Val{K_c}(), Val{N_c}())
@@ -47,31 +44,13 @@ function bench_size(S, Cs, As, Bs, ::Val{M_c}, ::Val{K_c}, ::Val{N_c}) where {M_
     end
     gflop / length(S)
 end
-
-# function search(Mc_range = 72:24:120, Kc_range = 1.5:0.25:1.7, Nc_range = 1.0:0.1:1.4)
-#     best = Ref((0,0,0,-Inf))
-#     gflop_array = let S = round.(Int, exp.(range(log(1500), stop = log(10000), length = 100))), As = map(s -> rand(s,s), S), Bs = map(s -> rand(s,s), S), Cs = similar.(As), iter_prod = Iterators.product(Mc_range, Kc_range, Nc_range), p = Progress(length(iter_prod)), best = best
-#         map(iter_prod) do P
-#             M_c, Koff, r = P
-#             K_c = pick_K(M_c, Koff)
-#             N_c = pick_N(K_c, r)
-#             gflops = bench_size(S, Cs, As, Bs, Val(M_c), Val(K_c), Val(N_c))
-#             b = best[]
-#             recent = (M_c,K_c,N_c,gflops)
-#             bb = if last(b) > gflops
-#                 b
-#             else
-#                 best[] = recent
-#             end
-#             ProgressMeter.next!(p, showvalues = [(:Last, recent), (:Best, bb)])
-#             gflops
-#         end
-#     end
-#     gflop_array, best
-# end
 function search(Mc_range = 72:24:120, Kc_range = 1.5:0.25:1.7, Nc_range = 1.0:0.1:1.4)
     best = Ref((0,0,0,(0.0,0.0),-Inf))
-    gflop_array = let S = round.(Int, exp.(range(log(1500), stop = log(10000), length = 100))), As = map(s -> rand(s,s), S), Bs = map(s -> rand(s,s), S), Cs = similar.(As), iter_prod = Iterators.product(Mc_range, Kc_range, Nc_range), p = Progress(length(iter_prod)), best = best
+    gflop_array = let S = round.(Int, exp.(range(log(1500), stop = log(10000), length = 100))),
+        As = map(s -> rand(s,s), S), Bs = map(s -> rand(s,s), S), Cs = map(similar, As),
+        iter_prod = Iterators.product(Mc_range, Kc_range, Nc_range), p = Progress(length(iter_prod)),
+        best = best
+        
         map(iter_prod) do P
             M_c, rk, rn = P
             gflops = bench_size(S, Cs, As, Bs, Val(M_c), Val(rk), Val(rn))
