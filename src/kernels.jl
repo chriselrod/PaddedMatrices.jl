@@ -733,108 +733,108 @@ end
 #     nothing
 # end
 
-@inline function inlineloopmul!(C, A, B, ::StaticInt{1}, ::StaticInt{0})
-    M, K, N = matmul_axes(C, A, B)
-    # @avx inline=true for n ∈ N, m ∈ M
-    @avx inline=true for m ∈ M, n ∈ N
+@inline function inlineloopmul!(_C, _A, _B, ::StaticInt{1}, ::StaticInt{0})
+    M, K, N = matmul_sizes(_C, _A, _B)
+    C = zstridedpointer(_C); A = zstridedpointer(_A); B = zstridedpointer(_B);
+    @avx inline=true for m ∈ CloseOpen(M), n ∈ CloseOpen(N)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Cₘₙ += A[m,k] * B[k,n]
         end
         C[m,n] = Cₘₙ
     end
     C
 end
-@inline function inlineloopmul!(C, A, B, ::StaticInt{1}, ::StaticInt{1})
-    M, K, N = matmul_axes(C, A, B)
-    # @avx inline=true for n ∈ N, m ∈ M
-    @avx inline=true for m ∈ M, n ∈ N
+@inline function inlineloopmul!(_C, _A, _B, ::StaticInt{1}, ::StaticInt{1})
+    M, K, N = matmul_sizes(_C, _A, _B)
+    C = zstridedpointer(_C); A = zstridedpointer(_A); B = zstridedpointer(_B);
+    @avx inline=true for m ∈ CloseOpen(M), n ∈ CloseOpen(N)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Cₘₙ += A[m,k] * B[k,n]
         end
         C[m,n] += Cₘₙ
     end
     C
 end
-@inline function inlineloopmul!(C, A, B, ::StaticInt{1}, β)
-    M, K, N = matmul_axes(C, A, B)
-    # @avx inline=true for n ∈ N, m ∈ M
-    @avx inline=true for m ∈ M, n ∈ N
+@inline function inlineloopmul!(_C, _A, _B, ::StaticInt{1}, β)
+    M, K, N = matmul_sizes(_C, _A, _B)
+    C = zstridedpointer(_C); A = zstridedpointer(_A); B = zstridedpointer(_B);
+    @avx inline=true for m ∈ CloseOpen(M), n ∈ CloseOpen(N)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Cₘₙ += A[m,k] * B[k,n]
         end
         C[m,n] = Cₘₙ + β * C[m,n]
     end
     C
 end
-@inline function inlineloopmul!(C, A, B, ::StaticInt{-1}, ::StaticInt{0})
-    M, K, N = matmul_axes(C, A, B)
-    # @avx inline=true for n ∈ N, m ∈ M
-    @avx inline=true for m ∈ M, n ∈ N
+@inline function inlineloopmul!(_C, _A, _B, ::StaticInt{-1}, ::StaticInt{0})
+    M, K, N = matmul_sizes(_C, _A, _B)
+    C = zstridedpointer(_C); A = zstridedpointer(_A); B = zstridedpointer(_B);
+    @avx inline=true for m ∈ CloseOpen(M), n ∈ CloseOpen(N)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Cₘₙ -= A[m,k] * B[k,n]
         end
         C[m,n] = Cₘₙ
     end
     C
 end
-@inline function inlineloopmul!(C, A, B, ::StaticInt{-1}, ::StaticInt{1})
-    M, K, N = matmul_axes(C, A, B)
-    # @avx inline=true for n ∈ N, m ∈ M
-    @avx inline=true for m ∈ M, n ∈ N
+@inline function inlineloopmul!(_C, _A, _B, ::StaticInt{-1}, ::StaticInt{1})
+    M, K, N = matmul_sizes(_C, _A, _B)
+    C = zstridedpointer(_C); A = zstridedpointer(_A); B = zstridedpointer(_B);
+    @avx inline=true for m ∈ CloseOpen(M), n ∈ CloseOpen(N)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Cₘₙ -= A[m,k] * B[k,n]
         end
         C[m,n] += Cₘₙ
     end
     C
 end
-@inline function inlineloopmul!(C, A, B, ::StaticInt{-1}, β)
-    M, K, N = matmul_axes(C, A, B)
-    # @avx inline=true for n ∈ N, m ∈ M
-    @avx inline=true for m ∈ M, n ∈ N
+@inline function inlineloopmul!(_C, _A, _B, ::StaticInt{-1}, β)
+    M, K, N = matmul_sizes(_C, _A, _B)
+    C = zstridedpointer(_C); A = zstridedpointer(_A); B = zstridedpointer(_B);
+    @avx inline=true for m ∈ CloseOpen(M), n ∈ CloseOpen(N)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Cₘₙ -= A[m,k] * B[k,n]
         end
         C[m,n] = Cₘₙ + β * C[m,n]
     end
     C
 end
-@inline function inlineloopmul!(C, A, B, α, ::StaticInt{0})
-    M, K, N = matmul_axes(C, A, B)
-    # @avx inline=true for n ∈ N, m ∈ M
-    @avx inline=true for m ∈ M, n ∈ N
+@inline function inlineloopmul!(_C, _A, _B, α, ::StaticInt{0})
+    M, K, N = matmul_sizes(_C, _A, _B)
+    C = zstridedpointer(_C); A = zstridedpointer(_A); B = zstridedpointer(_B);
+    @avx inline=true for m ∈ CloseOpen(M), n ∈ CloseOpen(N)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Cₘₙ += A[m,k] * B[k,n]
         end
         C[m,n] = α * Cₘₙ
     end
     C
 end
-@inline function inlineloopmul!(C, A, B, α, ::StaticInt{1})
-    M, K, N = matmul_axes(C, A, B)
-    # @avx inline=true for n ∈ N, m ∈ M
-    @avx inline=true for m ∈ M, n ∈ N
+@inline function inlineloopmul!(_C, _A, _B, α, ::StaticInt{1})
+    M, K, N = matmul_sizes(_C, _A, _B)
+    C = zstridedpointer(_C); A = zstridedpointer(_A); B = zstridedpointer(_B);
+    @avx inline=true for m ∈ CloseOpen(M), n ∈ CloseOpen(N)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Cₘₙ += A[m,k] * B[k,n]
         end
         C[m,n] += α * Cₘₙ
     end
     C
 end
-@inline function inlineloopmul!(C, A, B, α, β)
-    M, K, N = matmul_axes(C, A, B)
-    # @avx inline=true for n ∈ N, m ∈ M
-    @avx inline=true for m ∈ M, n ∈ N
+@inline function inlineloopmul!(_C, _A, _B, α, β)
+    M, K, N = matmul_sizes(_C, _A, _B)
+    C = zstridedpointer(_C); A = zstridedpointer(_A); B = zstridedpointer(_B);
+    @avx inline=true for m ∈ CloseOpen(M), n ∈ CloseOpen(N)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Cₘₙ += A[m,k] * B[k,n]
         end
         C[m,n]  = α * Cₘₙ + β * C[m,n]
@@ -863,7 +863,7 @@ function two_cols_per_vector_add_kn_block!(q::Expr, Kunroll, Nunroll, Koffset, N
         )
         push!(q.args, Expr(:(=), Bsym, Expr(:call, :shufflevector, shuffle, Bshuffle)))
         if iszero(Koffset | kk)
-            push!(q.args, Expr(:(=), Csym, Expr(:call, :vmul, Symbol(:A_, kk), Bsym)))
+            push!(q.args, Expr(:(=), Csym, Expr(:call, :vmul_fast, Symbol(:A_, kk), Bsym)))
         else
             push!(q.args, Expr(:(=), Csym, Expr(:call, :vfmadd, Symbol(:A_, kk), Bsym, Csym)))
         end
@@ -938,7 +938,7 @@ function two_cols_per_vector_quote!(q, K, N, W, Wshift, Noffbase = 0, Amask = no
             push!(q.args, Expr(:(=), Asym, Expr(:call, :extract_data, Aload)))
             push!(q.args, Expr(:(=), Bsym, Expr(:call, :vload, :ptrB, Expr(:tuple, k, N-1))))
             if iszero(k)
-                push!(q.args, Expr(:(=), Csym, Expr(:call, :vmul, Asym, Bsym)))
+                push!(q.args, Expr(:(=), Csym, Expr(:call, :vmul_fast, Asym, Bsym)))
             else
                 push!(q.args, Expr(:(=), Csym, Expr(:call, :vfmadd, Asym, Bsym, Csym)))
             end
@@ -991,7 +991,7 @@ function four_cols_per_vector_add_kn_block!(q::Expr, Kunroll, Nunroll, Koffset, 
         )
         push!(q.args, Expr(:(=), Bsym, Expr(:call, :shufflevector, shuffle, Bshuffle)))
         if iszero(Koffset | kk)
-            push!(q.args, Expr(:(=), Csym, Expr(:call, :vmul, Symbol(:A_, kk), Bsym)))
+            push!(q.args, Expr(:(=), Csym, Expr(:call, :vmul_fast, Symbol(:A_, kk), Bsym)))
         else
             push!(q.args, Expr(:(=), Csym, Expr(:call, :vfmadd, Symbol(:A_, kk), Bsym, Csym)))
         end

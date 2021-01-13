@@ -13,7 +13,6 @@ cld_fast(::StaticInt{N}, ::StaticInt{M}) where {N,M}= (StaticInt{N}() + StaticIn
     ux = unsigned(x); uy = unsigned(y)
     d = Base.udiv_int(ux, uy)
     r = ux - d * uy
-    # r = vsub(ux, vmul(d, uy))
     d % I, r % I
 end
 @inline divrem_fast(::StaticInt{x}, y::I) where {x, I <: Integer} = divrem_fast(x % I, y)
@@ -1137,7 +1136,7 @@ end
     mv
 end
 
-@inline function LinearAlgebra.mul!(
+function LinearAlgebra.mul!(
     C::AbstractStrideMatrix{<:Any,<:Any,T},
     A::LinearAlgebra.Diagonal{T,<:AbstractStrideVector{<:Any,T}},
     B::StridedMatrix{T}
