@@ -55,7 +55,7 @@ function ptrarray_densestride_quote(::Type{T}, N, stridedpointer_offsets) where 
         push!(d.args, true)
         n == N && break
         new_sx = Symbol(:s_,n)
-        push!(q.args, Expr(:(=), new_sx, Expr(:call, :vmul, last_sx, Expr(:ref, :s, n))))
+        push!(q.args, Expr(:(=), new_sx, Expr(:call, :vmul_fast, last_sx, Expr(:ref, :s, n))))
         last_sx = new_sx
     end
     push!(q.args, :(PtrArray($stridedpointer_offsets(ptr, $t), s, DenseDims{$d}())))
@@ -87,7 +87,7 @@ end
     for n ∈ 1:N
         push!(t.args, last_sx)
         new_sx = Symbol(:s_,n)
-        push!(q.args, Expr(:(=), new_sx, Expr(:call, :vmul, last_sx, Expr(:ref, :s, n))))
+        push!(q.args, Expr(:(=), new_sx, Expr(:call, :vmul_fast, last_sx, Expr(:ref, :s, n))))
         last_sx = new_sx
     end
     push!(q.args, Expr(:tuple, t, last_sx))

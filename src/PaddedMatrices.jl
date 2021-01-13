@@ -9,7 +9,7 @@ using VectorizationBase, ArrayInterface,
     # SpecialFunctions # Perhaps there is a better way to support erf?
 
 using VectorizationBase: align, gep, AbstractStridedPointer, AbstractSIMDVector, vnoaliasstore!, staticm1,
-    static_sizeof, lazymul, vmul, vadd, vsub, StridedPointer, gesp, zero_offsets, pause,
+    static_sizeof, lazymul, vmul_fast, StridedPointer, gesp, zero_offsets, pause,
     CACHE_COUNT, NUM_CORES, CACHE_INCLUSIVITY, zstridedpointer
 using LoopVectorization: maybestaticsize, mᵣ, nᵣ, preserve_buffer, CloseOpen
 using ArrayInterface: StaticInt, Zero, One, OptionallyStaticUnitRange, size, strides, offsets, indices,
