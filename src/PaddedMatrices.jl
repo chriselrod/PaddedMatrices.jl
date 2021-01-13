@@ -35,6 +35,7 @@ export @StrideArray, @gc_preserve, # @Constant,
 
 
 include("type_declarations.jl")
+include("staticfloats.jl")
 include("l3_cache_buffer.jl")
 include("size_and_strides.jl")
 include("adjoints.jl")
@@ -43,6 +44,7 @@ include("indexing.jl")
 include("initialization.jl")
 include("views.jl")
 include("rand.jl")
+include("blocksizes.jl")
 include("kernels.jl")
 include("blas.jl")
 include("broadcast.jl")

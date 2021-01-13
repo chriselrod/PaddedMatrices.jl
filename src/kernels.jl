@@ -22,77 +22,70 @@ end
 #     static_length(M), static_length(K), static_length(N)
 # end
 
-@inline function loopmul!(C, A, B, ::StaticInt{1}, ::StaticInt{0}, (M, K, N))
-    # @avx for n ∈ N, m ∈ M
-    @avx for m ∈ M, n ∈ N
+@inline function loopmul!(C, A, B, ::StaticInt{1}, ::StaticInt{0}, M, K, N)
+    @avx for n ∈ CloseOpen(N), m ∈ CloseOpen(M)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Cₘₙ += A[m,k] * B[k,n]
         end
         C[m,n] = Cₘₙ
     end
     nothing
 end
-@inline function loopmul!(C, A, B, ::StaticInt{1}, ::StaticInt{1}, (M, K, N))
-    # @avx for n ∈ N, m ∈ M
-    @avx for m ∈ M, n ∈ N
+@inline function loopmul!(C, A, B, ::StaticInt{1}, ::StaticInt{1}, M, K, N)
+    @avx for n ∈ CloseOpen(N), m ∈ CloseOpen(M)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Cₘₙ += A[m,k] * B[k,n]
         end
         C[m,n] += Cₘₙ
     end
     nothing
 end
-@inline function loopmul!(C, A, B, ::StaticInt{1}, β, (M, K, N))
-    # @avx for n ∈ N, m ∈ M
-    @avx for m ∈ M, n ∈ N
+@inline function loopmul!(C, A, B, ::StaticInt{1}, β, M, K, N)
+    @avx for n ∈ CloseOpen(N), m ∈ CloseOpen(M)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Cₘₙ += A[m,k] * B[k,n]
         end
         C[m,n] = Cₘₙ + β * C[m,n]
     end
     nothing
 end
-@inline function loopmul!(C, A, B, ::StaticInt{-1}, ::StaticInt{0}, (M, K, N))
-    # @avx for n ∈ N, m ∈ M
-    @avx for m ∈ M, n ∈ N
+@inline function loopmul!(C, A, B, ::StaticInt{-1}, ::StaticInt{0}, M, K, N)
+    @avx for n ∈ CloseOpen(N), m ∈ CloseOpen(M)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Cₘₙ -= A[m,k] * B[k,n]
         end
         C[m,n] = Cₘₙ
     end
     nothing
 end
-@inline function loopmul!(C, A, B, ::StaticInt{-1}, ::StaticInt{1}, (M, K, N))
-    # @avx for n ∈ N, m ∈ M
-    @avx for m ∈ M, n ∈ N
+@inline function loopmul!(C, A, B, ::StaticInt{-1}, ::StaticInt{1}, M, K, N)
+    @avx for n ∈ CloseOpen(N), m ∈ CloseOpen(M)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Cₘₙ -= A[m,k] * B[k,n]
         end
         C[m,n] += Cₘₙ
     end
     nothing
 end
-@inline function loopmul!(C, A, B, ::StaticInt{-1}, β, (M, K, N))
-    # @avx for n ∈ N, m ∈ M
-    @avx for m ∈ M, n ∈ N
+@inline function loopmul!(C, A, B, ::StaticInt{-1}, β, M, K, N)
+    @avx for n ∈ CloseOpen(N), m ∈ CloseOpen(M)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Cₘₙ -= A[m,k] * B[k,n]
         end
         C[m,n] = Cₘₙ + β * C[m,n]
     end
     nothing
 end
-@inline function loopmul!(C, A, B, α, ::StaticInt{0}, (M, K, N))
-    # @avx for n ∈ N, m ∈ M
-    @avx for m ∈ M, n ∈ N
+@inline function loopmul!(C, A, B, α, ::StaticInt{0}, M, K, N)
+    @avx for n ∈ CloseOpen(N), m ∈ CloseOpen(M)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Cₘₙ += A[m,k] * B[k,n]
         end
         C[m,n] = α * Cₘₙ
@@ -100,22 +93,20 @@ end
     nothing
 end
 
-@inline function loopmul!(C, A, B, α, ::StaticInt{1}, (M, K, N))
-    # @avx for n ∈ N, m ∈ M
-    @avx for m ∈ M, n ∈ N
+@inline function loopmul!(C, A, B, α, ::StaticInt{1}, M, K, N)
+    @avx for n ∈ CloseOpen(N), m ∈ CloseOpen(M)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Cₘₙ += A[m,k] * B[k,n]
         end
         C[m,n] += α * Cₘₙ
     end
     nothing
 end
-@inline function loopmul!(C, A, B, α, β, (M, K, N))
-    # @avx for n ∈ N, m ∈ M
-    @avx for m ∈ M, n ∈ N
+@inline function loopmul!(C, A, B, α, β, M, K, N)
+    @avx for n ∈ CloseOpen(N), m ∈ CloseOpen(M)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Cₘₙ += A[m,k] * B[k,n]
         end
         C[m,n] = α * Cₘₙ + β * C[m,n]
@@ -129,10 +120,9 @@ end
     ::StaticInt{1}, ::StaticInt{0},
     M, K, N
 )
-    # @avx for n ∈ N, m ∈ M
-    @avx for m ∈ M, n ∈ N
+    @avx for n ∈ CloseOpen(N), m ∈ CloseOpen(M)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Aₘₖ = A[m,k]
             Cₘₙ += Aₘₖ * B[k,n]
             Ãₚ[m,k] = Aₘₖ 
@@ -145,10 +135,9 @@ end
     ::StaticInt{1}, ::StaticInt{1},
     M, K, N
 )
-    # @avx for n ∈ N, m ∈ M
-    @avx for m ∈ M, n ∈ N
+    @avx for n ∈ CloseOpen(N), m ∈ CloseOpen(M)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Aₘₖ = A[m,k]
             Cₘₙ += Aₘₖ * B[k,n]
             Ãₚ[m,k] = Aₘₖ
@@ -161,10 +150,9 @@ end
     ::StaticInt{1}, β,
     M, K, N
 )
-    # @avx for n ∈ N, m ∈ M
-    @avx for m ∈ M, n ∈ N
+    @avx for n ∈ CloseOpen(N), m ∈ CloseOpen(M)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Aₘₖ = A[m,k]
             Cₘₙ += Aₘₖ * B[k,n]
             Ãₚ[m,k] = Aₘₖ 
@@ -177,10 +165,9 @@ end
     ::StaticInt{-1}, ::StaticInt{0},
     M, K, N
 )
-    # @avx for n ∈ N, m ∈ M
-    @avx for m ∈ M, n ∈ N
+    @avx for n ∈ CloseOpen(N), m ∈ CloseOpen(M)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Aₘₖ = A[m,k]
             Cₘₙ -= Aₘₖ * B[k,n]
             Ãₚ[m,k] = Aₘₖ 
@@ -193,10 +180,9 @@ end
     ::StaticInt{-1}, ::StaticInt{1},
     M, K, N
 )
-    # @avx for n ∈ N, m ∈ M
-    @avx for m ∈ M, n ∈ N
+    @avx for n ∈ CloseOpen(N), m ∈ CloseOpen(M)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Aₘₖ = A[m,k]
             Cₘₙ -= Aₘₖ * B[k,n]
             Ãₚ[m,k] = Aₘₖ
@@ -209,10 +195,9 @@ end
     ::StaticInt{-1}, β,
     M, K, N
 )
-    # @avx for n ∈ N, m ∈ M
-    @avx for m ∈ M, n ∈ N
+    @avx for n ∈ CloseOpen(N), m ∈ CloseOpen(M)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Aₘₖ = A[m,k]
             Cₘₙ -= Aₘₖ * B[k,n]
             Ãₚ[m,k] = Aₘₖ 
@@ -225,10 +210,9 @@ end
     α, ::StaticInt{0},
     M, K, N
 )
-    # @avx for n ∈ N, m ∈ M
-    @avx for m ∈ M, n ∈ N
+    @avx for n ∈ CloseOpen(N), m ∈ CloseOpen(M)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Aₘₖ = A[m,k]
             Cₘₙ += Aₘₖ * B[k,n]
             Ãₚ[m,k] = Aₘₖ 
@@ -241,10 +225,9 @@ end
     α, ::StaticInt{1},
     M, K, N
 )
-    # @avx for n ∈ N, m ∈ M
-    @avx for m ∈ M, n ∈ N
+    @avx for n ∈ CloseOpen(N), m ∈ CloseOpen(M)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Aₘₖ = A[m,k]
             Cₘₙ += Aₘₖ * B[k,n]
             Ãₚ[m,k] = Aₘₖ 
@@ -256,10 +239,9 @@ end
     C, Ãₚ, A, B,
     α, β, M, K, N
 )
-    # @avx for n ∈ N, m ∈ M
-    @avx for m ∈ M, n ∈ N
+    @avx for n ∈ CloseOpen(N), m ∈ CloseOpen(M)
         Cₘₙ = zero(eltype(C))
-        for k ∈ K
+        for k ∈ CloseOpen(K)
             Aₘₖ = A[m,k]
             Cₘₙ += Aₘₖ * B[k,n]
             Ãₚ[m,k] = Aₘₖ 
@@ -280,18 +262,15 @@ end
     C::AbstractStridedPointer{T},
     A::AbstractStridedPointer,
     B::AbstractStridedPointer,
-    α, β, (M, K, N)
+    α, β, M, K, N
 ) where {T}
     Ãₚ, buffer = alloc_a_pack(A, M, T)
     # @show M,K,N, threadid()
     # @show pointer.((C,A,B)), threadid()
     GC.@preserve buffer begin
         Nᵣ = StaticInt{nᵣ}()
-        packamul!(C, Ãₚ, A, B, α, β, CloseOpen(M), CloseOpen(K), CloseOpen(Nᵣ))
-        loopmul!(
-            gesp(C, (Zero(), Nᵣ)), Ãₚ, gesp(B, (Zero(), Nᵣ)), α, β,
-            (CloseOpen(M), CloseOpen(K), CloseOpen(N - Nᵣ))
-        )
+        packamul!(C, Ãₚ, A, B, α, β, M, K, Nᵣ)
+        loopmul!(gesp(C, (Zero(), Nᵣ)), Ãₚ, gesp(B, (Zero(), Nᵣ)), α, β, M, K, N - Nᵣ)
     end
     nothing
 end
