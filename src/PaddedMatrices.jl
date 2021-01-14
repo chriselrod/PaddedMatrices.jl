@@ -36,6 +36,11 @@ export @StrideArray, @gc_preserve, # @Constant,
 
 include("type_declarations.jl")
 include("staticfloats.jl")
+
+include("funcptrs.jl")
+include("threadpool.jl")
+# include("matmulproblem.jl")
+
 include("l3_cache_buffer.jl")
 include("size_and_strides.jl")
 include("adjoints.jl")
@@ -46,7 +51,7 @@ include("views.jl")
 include("rand.jl")
 include("blocksizes.jl")
 include("kernels.jl")
-include("blasclosures.jl")
+# include("blasclosures.jl")
 include("blas.jl")
 include("broadcast.jl")
 include("miscellaneous.jl")
@@ -76,28 +81,28 @@ const CORE_FACTORS = calc_factors()
 
 
 const BCACHE = Float64[]
-"""
-Length is one less than `Base.nthreads()`
-"""
+# """
+# Length is one less than `Base.nthreads()`
+# """
 const MULTASKS = Task[]
 _nthreads() = min(NUM_CORES, length(MULTASKS));
 
-function runfunc(t::Task, tid)
-    t.sticky = true
-    ccall(:jl_set_task_tid, Cvoid, (Any, Cint), t, tid)
-    push!(@inbounds(Base.Workqueues[tid+1]), t)
-    ccall(:jl_wakeup_thread, Cvoid, (Int16,), tid % Int16)
-    t
-end
-runfunc(func, tid) = runfunc(Task(func), tid)
-function runfunc!(ft, tid)
-    @inbounds MULTASKS[tid] = runfunc(ft, tid)
-    nothing
-end
+# function runfunc(t::Task, tid)
+#     t.sticky = true
+#     ccall(:jl_set_task_tid, Cvoid, (Any, Cint), t, tid)
+#     push!(@inbounds(Base.Workqueues[tid+1]), t)
+#     ccall(:jl_wakeup_thread, Cvoid, (Int16,), tid % Int16)
+#     t
+# end
+# runfunc(func, tid) = runfunc(Task(func), tid)
+# function runfunc!(ft, tid)
+#     @inbounds MULTASKS[tid] = runfunc(ft, tid)
+#     nothing
+# end
 
 function __init__()
     resize!(BCACHE, BSIZE * BCACHE_COUNT)
-    _nt = nthreads() - 1
+    _nt = min(nthreads() - 1, NUM_CORES)
     _nt > 1 && resize!(MULTASKS, _nt)
     if _nt < NUM_CORES
         msg = string(
@@ -108,6 +113,19 @@ function __init__()
             "",
         )
         @warn msg
+    end
+    for tid ∈ Base.OneTo(_nt)
+        m = MATMULLERS[tid]
+        GC.@preserve m _atomic_min!(pointer(m), SPIN)
+        t = Task(m)
+        t.sticky = true
+        ccall(:jl_set_task_tid, Cvoid, (Any, Cint), t, tid % Cint)
+        
+        MULTASKS[tid] = t
+        wake_thread!(tid) # task should immediately sleep
+        while !_atomic_cas_cmp!(pointer(m), WAIT, WAIT)
+            pause()
+        end
     end
 end
 

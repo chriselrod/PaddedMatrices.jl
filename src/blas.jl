@@ -397,17 +397,17 @@ function jmultsplitn!(C::AbstractStridedPointer{T}, A, B, α, β, ::StaticInt{Mc
     tnum = 0
     # @show Mblocks, Nblocks, (Mbsize,Mrem), (Nbsize,Nrem)
     let _A = A, _B = B, _C = C
-        for n ∈ Base.OneTo(Nblocks)
-            nsize = ifelse(n ≤ Nrem, Nbsize_Nrem, Nbsize_)
+        for n ∈ CloseOpen(Nblocks)
+            nsize = ifelse(n < Nrem, Nbsize_Nrem, Nbsize_)
             let _A = _A, _C = _C
-                for m ∈ Base.OneTo(Mblocks)
-                    msize = ifelse(m == Mblocks, Mremfinal, ifelse(m ≤ Mrem, Mbsize_Mrem, Mbsize_))
-                    if tnum == _nspawn_m1
-                        wait(runfunc(LoopMulClosure{PACK}(_C, _A, _B, α, β, msize, K, nsize), _nspawn))
-                        waitonmultasks(CloseOpen(_nspawn))
-                        return
+                for m ∈ CloseOpen(Mblocks)
+                    msize = ifelse((m+1) == Mblocks, Mremfinal, ifelse(m < Mrem, Mbsize_Mrem, Mbsize_))
+                    tnum += 1
+                    if tnum == _nspawn
+                        call_loopmul!(_C, _A, _B, α, β, msize, K, nsize, Val{PACK}())
+                    else
+                        launch_thread_mul!(_C, _A, _B, α, β, msize, K, nsize, tnum, Val{PACK}())
                     end
-                    runfunc!(LoopMulClosure{PACK}(_C, _A, _B, α, β, msize, K, nsize), (tnum += 1))
                     _A = gesp(_A, (msize, Zero()))
                     _C = gesp(_C, (msize, Zero()))
                 end
@@ -416,6 +416,7 @@ function jmultsplitn!(C::AbstractStridedPointer{T}, A, B, α, β, ::StaticInt{Mc
             _C = gesp(_C, (Zero(), nsize))
         end
     end
+    waitonmultasks(CloseOpen(One(), tnum))
 end
 
 function _matmul!(
@@ -461,10 +462,9 @@ function _matmul!(
 end
 
 # If tasks is [0,1,2,3] (e.g., `CloseOpen(0,4)`), it will wait on `MULTASKS[i]` for `i = [1,2,3]`.
-function waitonmultasks(tasks::CloseOpen)
-    tid = Int(first(tasks))
-    while (tid += 1) < tasks.upper
-        @inbounds wait(MULTASKS[tid])
+function waitonmultasks(tasks)
+    for tid ∈ tasks
+        __wait(tid)
     end
 end
 
@@ -523,14 +523,24 @@ function jmultpackAB!(
     bc_ptr = Base.unsafe_convert(typeof(pointer(C)), pointer(bc))
     # Mblock = cld_fast(cld_fast(M, to_spawn), MᵣW) * Mᵣ*W
     GC.@preserve atomicsync begin
-        for i ∈ CloseOpen(One(), _to_spawn) # ...thus the fact that `CloseOpen()` iterates at least once is okay.
-            Mblock = ifelse(i ≤ Mrem, Mblock_Mrem, Mblock_)
-            runfunc!(SyncClosure{W₁,W₂,R₁,R₂}(C, A, B, α, β, Mblock, K, N, p, bc_ptr, i % UInt, u_to_spawn), (tid += 1))
+        for m ∈ CloseOpen(_to_spawn) # ...thus the fact that `CloseOpen()` iterates at least once is okay.
+            Mblock = ifelse((m+1) == _to_spawn, Mremfinal, ifelse(m < Mrem, Mblock_Mrem, Mblock_))
+            tid += 1
+            if tid == _to_spawn
+                sync_mul!(
+                    C, A, B, α, β, Mblock, K, N, p, bc_ptr, m % UInt, u_to_spawn,
+                    StaticFloat{W₁}(), StaticFloat{W₂}(), StaticFloat{R₁}, StaticFloat{R₂}()
+                )
+            else
+                launch_thread_mul!(
+                    C, A, B, α, β, Mblock, K, N, p, bc_ptr, m % UInt, u_to_spawn, tid,
+                    StaticFloat{W₁}(),StaticFloat{W₂}(),StaticFloat{R₁}(),StaticFloat{R₂}()
+                )
+            end
             A = gesp(A, (Mblock, Zero()))
             C = gesp(C, (Mblock, Zero()))
-        end
-        wait(runfunc(SyncClosure{W₁,W₂,R₁,R₂}(C, A, B, α, β, Mremfinal, K, N, p, bc_ptr, zero(UInt), u_to_spawn), (tid += 1)))
-        waitonmultasks(CloseOpen(ft, tid))
+        end # TODO: Fix this for multiple L3s
+        waitonmultasks(CloseOpen(ft+1, tid))
     end
     _free_bcache!(bc)
     return
