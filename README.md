@@ -1,4 +1,5 @@
-# PaddedMatrices
+# PaddedMatrices.jl
+# ⚠️ DEPRECATED: PaddedMatrices.jl is now deprecated in favor of [StrideArrays.jl](https://github.com/chriselrod/StrideArrays.jl)
 
 [![Stable](https://img.shields.io/badge/docs-stable-blue.svg)](https://chriselrod.github.io/PaddedMatrices.jl/stable)
 [![Latest](https://img.shields.io/badge/docs-latest-blue.svg)](https://chriselrod.github.io/PaddedMatrices.jl/dev)
